@@ -1,0 +1,187 @@
+# alter — Release Workflow
+# Triggers on version tags (v*) → builds release binary → creates Inno Setup installer → publishes GitHub release
+# https://github.com/thechandanbhagat/alter-pm
+
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+  BINARY_NAME: alter
+
+jobs:
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Build Windows x64 release binary
+  # ─────────────────────────────────────────────────────────────────────────────
+  build-windows:
+    name: Build (Windows x64)
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      - name: Cache Cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
+      - name: Build release binary
+        run: cargo build --release --target x86_64-pc-windows-msvc
+
+      # Copy binary to target/release/ where Inno Setup script expects it
+      - name: Stage binary
+        run: |
+          New-Item -ItemType Directory -Force -Path target\release | Out-Null
+          Copy-Item target\x86_64-pc-windows-msvc\release\alter.exe target\release\alter.exe
+
+      - name: Upload binary artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: alter-windows-x64
+          path: target/release/alter.exe
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Package: Inno Setup installer
+  # ─────────────────────────────────────────────────────────────────────────────
+  package-installer:
+    name: Package Installer
+    runs-on: windows-latest
+    needs: build-windows
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download binary
+        uses: actions/download-artifact@v4
+        with:
+          name: alter-windows-x64
+          path: target/release
+
+      - name: Extract version from tag
+        id: version
+        shell: pwsh
+        run: |
+          $tag = "${{ github.ref_name }}"
+          $version = $tag.TrimStart("v")
+          echo "VERSION=$version" >> $env:GITHUB_OUTPUT
+          echo "TAG=$tag"         >> $env:GITHUB_OUTPUT
+
+      - name: Update version in Inno Setup script
+        shell: pwsh
+        run: |
+          $iss = Get-Content installer\alter-setup.iss -Raw
+          $iss = $iss -replace '#define AppVersion\s+"[^"]+"', "#define AppVersion  `"${{ steps.version.outputs.VERSION }}`""
+          Set-Content installer\alter-setup.iss $iss
+
+      - name: Install Inno Setup
+        run: choco install innosetup --no-progress -y
+
+      - name: Build installer
+        run: |
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer\alter-setup.iss
+
+      - name: Compute SHA256
+        id: sha256
+        shell: pwsh
+        run: |
+          $file = Get-ChildItem dist\*.exe | Select-Object -First 1
+          $hash = (Get-FileHash $file.FullName -Algorithm SHA256).Hash.ToLower()
+          echo "HASH=$hash"            >> $env:GITHUB_OUTPUT
+          echo "INSTALLER=$($file.Name)" >> $env:GITHUB_OUTPUT
+          Write-Host "SHA256: $hash"
+
+      - name: Upload installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: alter-installer
+          path: dist/*.exe
+
+      - name: Save hash for manifest step
+        uses: actions/upload-artifact@v4
+        with:
+          name: installer-hash
+          path: dist/
+
+    outputs:
+      version:   ${{ steps.version.outputs.VERSION }}
+      installer: ${{ steps.sha256.outputs.INSTALLER }}
+      sha256:    ${{ steps.sha256.outputs.HASH }}
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Publish GitHub Release
+  # ─────────────────────────────────────────────────────────────────────────────
+  publish-release:
+    name: Publish GitHub Release
+    runs-on: ubuntu-latest
+    needs: package-installer
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download installer
+        uses: actions/download-artifact@v4
+        with:
+          name: alter-installer
+          path: dist/
+
+      - name: Generate release notes
+        id: notes
+        run: |
+          VERSION="${{ needs.package-installer.outputs.version }}"
+          INSTALLER="${{ needs.package-installer.outputs.installer }}"
+          SHA256="${{ needs.package-installer.outputs.sha256 }}"
+
+          cat >> $GITHUB_OUTPUT << EOF
+          BODY<<ENDBODY
+          ## alter v${VERSION}
+
+          ### Install via WinGet
+          \`\`\`powershell
+          winget install thechandanbhagat.alter
+          \`\`\`
+
+          ### Manual Install
+          Download \`${INSTALLER}\` below, run it, and follow the wizard.
+          \`alter.exe\` will be added to your PATH automatically.
+
+          ### Verify download
+          \`\`\`
+          SHA256: ${SHA256}
+          \`\`\`
+
+          ### What's New
+          See [CHANGELOG](https://github.com/thechandanbhagat/alter-pm/blob/main/docs/CHANGELOG.md) for details.
+          ENDBODY
+          EOF
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: alter v${{ needs.package-installer.outputs.version }}
+          body: ${{ steps.notes.outputs.BODY }}
+          files: dist/*.exe
+          draft: false
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          generate_release_notes: false

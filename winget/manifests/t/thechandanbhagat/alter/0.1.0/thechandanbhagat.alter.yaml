@@ -1,0 +1,12 @@
+# alter WinGet Manifest — Version
+# PackageIdentifier: thechandanbhagat.alter
+# 
+# This file belongs in the winget-pkgs repository at:
+#   manifests/t/thechandanbhagat/alter/0.1.0/thechandanbhagat.alter.yaml
+# Submit via: https://github.com/microsoft/winget-pkgs
+
+PackageIdentifier: thechandanbhagat.alter
+PackageVersion: 0.1.0
+DefaultLocale: en-US
+ManifestType: version
+ManifestVersion: 1.6.0
