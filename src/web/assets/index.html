@@ -108,15 +108,21 @@
                 <input id="sf-cwd" type="text" placeholder="C:\Users\me\app"/>
               </div>
               <div class="form-field">
-                <label for="sf-args">Args (space-separated)</label>
-                <input id="sf-args" type="text" placeholder="--port 3000 --env prod"/>
+                <label for="sf-namespace">Namespace</label>
+                <input id="sf-namespace" type="text" placeholder="default"/>
               </div>
             </div>
             <div class="form-row">
               <div class="form-field">
+                <label for="sf-args">Args (space-separated)</label>
+                <input id="sf-args" type="text" placeholder="--port 3000 --env prod"/>
+              </div>
+              <div class="form-field">
                 <label for="sf-env">Env Vars (KEY=VAL, comma-separated)</label>
                 <input id="sf-env" type="text" placeholder="NODE_ENV=production,PORT=3000"/>
               </div>
+            </div>
+            <div class="form-row">
               <div class="form-field form-field-checks">
                 <label class="check-label">
                   <input type="checkbox" id="sf-autorestart" checked/>
@@ -197,6 +203,12 @@
                 <label for="ef-env">Env Vars (KEY=VAL, comma-separated)</label>
                 <input id="ef-env" type="text"/>
               </div>
+              <div class="form-field">
+                <label for="ef-namespace">Namespace</label>
+                <input id="ef-namespace" type="text" placeholder="default"/>
+              </div>
+            </div>
+            <div class="form-row">
               <div class="form-field">
                 <label for="ef-max-restarts">Max Restarts</label>
                 <input id="ef-max-restarts" type="text" placeholder="10"/>

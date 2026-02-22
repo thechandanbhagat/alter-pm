@@ -10,6 +10,9 @@ let activeDetailProcess = null; // { id, name, cwd, status }
 let logDates      = [];   // sorted newest-first list of available date strings
 let logDateIndex  = -1;   // -1 = today (live), 0..N = index into logDates[]
 
+// @group BusinessLogic > Namespace : Track which namespace groups are collapsed
+const collapsedNamespaces = new Set();
+
 // @group BusinessLogic > Init : Page load
 window.addEventListener('DOMContentLoaded', () => {
   loadProcesses();
@@ -58,15 +61,52 @@ async function loadHealth() {
   } catch {}
 }
 
-// @group BusinessLogic > Render : Build the process table rows
+// @group BusinessLogic > Render : Build the process table rows grouped by namespace
 function renderTable(processes) {
   const tbody = document.getElementById('process-tbody');
   if (!processes.length) {
     tbody.innerHTML = '<tr><td colspan="9" class="empty">No processes running.</td></tr>';
     return;
   }
-  tbody.innerHTML = processes.map(p => `
-    <tr>
+
+  // Group processes by namespace, preserving insertion order within each group
+  const groups = new Map();
+  for (const p of processes) {
+    const ns = p.namespace || 'default';
+    if (!groups.has(ns)) groups.set(ns, []);
+    groups.get(ns).push(p);
+  }
+
+  // Sort namespaces alphabetically, but keep "default" first
+  const sortedNs = [...groups.keys()].sort((a, b) => {
+    if (a === 'default') return -1;
+    if (b === 'default') return 1;
+    return a.localeCompare(b);
+  });
+
+  let html = '';
+  for (const ns of sortedNs) {
+    const procs = groups.get(ns);
+    const collapsed = collapsedNamespaces.has(ns);
+    const arrow = collapsed ? '▶' : '▼';
+    const allRunning = procs.every(p => p.status === 'running');
+    const allStopped = procs.every(p => p.status !== 'running');
+    html += `
+      <tr class="ns-header" onclick="toggleNamespace('${esc(ns)}')">
+        <td colspan="9">
+          <span class="ns-arrow">${arrow}</span>
+          <span class="ns-name">${esc(ns)}</span>
+          <span class="ns-count">${procs.length} process${procs.length !== 1 ? 'es' : ''}</span>
+          <span class="ns-actions" onclick="event.stopPropagation()">
+            ${!allRunning ? `<button class="ns-btn ns-btn-start" onclick="nsStartAll('${esc(ns)}')">▶ Start All</button>` : ''}
+            ${!allStopped ? `<button class="ns-btn ns-btn-stop"  onclick="nsStopAll('${esc(ns)}')">■ Stop All</button>` : ''}
+          </span>
+        </td>
+      </tr>`;
+    if (!collapsed) {
+      for (const p of procs) {
+        html += `
+    <tr class="ns-proc-row ns-group-${esc(ns).replace(/[^a-z0-9]/gi, '_')}">
       <td><code title="${p.id}">${p.id.slice(0, 8)}</code></td>
       <td><strong>${esc(p.name)}</strong></td>
       <td><span class="status-${p.status}">● ${p.status}</span></td>
@@ -84,8 +124,39 @@ function renderTable(processes) {
         <button class="action-btn" onclick="openEdit('${p.id}')">Edit</button>
         <button class="action-btn action-btn-danger" onclick="deleteProcess('${p.id}', '${esc(p.name)}')">Delete</button>
       </td>
-    </tr>
-  `).join('');
+    </tr>`;
+      }
+    }
+  }
+  tbody.innerHTML = html;
+}
+
+// @group BusinessLogic > Namespace : Toggle collapse state of a namespace group
+function toggleNamespace(ns) {
+  if (collapsedNamespaces.has(ns)) {
+    collapsedNamespaces.delete(ns);
+  } else {
+    collapsedNamespaces.add(ns);
+  }
+  loadProcesses();
+}
+
+// @group BusinessLogic > Namespace : Start all stopped processes in a namespace
+async function nsStartAll(ns) {
+  const res = await fetch(`${API}/processes`);
+  const { processes } = await res.json();
+  const targets = processes.filter(p => (p.namespace || 'default') === ns && p.status !== 'running');
+  await Promise.all(targets.map(p => fetch(`${API}/processes/${p.id}/start`, { method: 'POST' })));
+  setTimeout(loadProcesses, 300);
+}
+
+// @group BusinessLogic > Namespace : Stop all running processes in a namespace
+async function nsStopAll(ns) {
+  const res = await fetch(`${API}/processes`);
+  const { processes } = await res.json();
+  const targets = processes.filter(p => (p.namespace || 'default') === ns && p.status === 'running');
+  await Promise.all(targets.map(p => fetch(`${API}/processes/${p.id}/stop`, { method: 'POST' })));
+  setTimeout(loadProcesses, 400);
 }
 
 // @group BusinessLogic > Render : Build sidebar process list
@@ -201,6 +272,7 @@ async function openEdit(id) {
     document.getElementById('ef-cwd').value = p.cwd || '';
     document.getElementById('ef-args').value = (p.args || []).join(' ');
     document.getElementById('ef-max-restarts').value = p.max_restarts ?? 10;
+    document.getElementById('ef-namespace').value = p.namespace || 'default';
     document.getElementById('ef-autorestart').checked = !!p.autorestart;
     document.getElementById('ef-watch').checked = !!p.watch;
 
@@ -222,13 +294,14 @@ async function saveProcessEdit(event) {
   const errEl = document.getElementById('edit-form-error');
   errEl.textContent = '';
 
-  const id      = document.getElementById('ef-id').value;
-  const script  = document.getElementById('ef-script').value.trim();
-  const name    = document.getElementById('ef-name').value.trim() || null;
-  const cwd     = document.getElementById('ef-cwd').value.trim() || null;
-  const argsRaw = document.getElementById('ef-args').value.trim();
-  const envRaw  = document.getElementById('ef-env').value.trim();
-  const maxR    = parseInt(document.getElementById('ef-max-restarts').value, 10) || 10;
+  const id        = document.getElementById('ef-id').value;
+  const script    = document.getElementById('ef-script').value.trim();
+  const name      = document.getElementById('ef-name').value.trim() || null;
+  const cwd       = document.getElementById('ef-cwd').value.trim() || null;
+  const namespace = document.getElementById('ef-namespace').value.trim() || 'default';
+  const argsRaw   = document.getElementById('ef-args').value.trim();
+  const envRaw    = document.getElementById('ef-env').value.trim();
+  const maxR      = parseInt(document.getElementById('ef-max-restarts').value, 10) || 10;
 
   const args = argsRaw ? argsRaw.match(/(?:[^\s"']+|"[^"]*"|'[^']*')+/g) : [];
 
@@ -246,6 +319,7 @@ async function saveProcessEdit(event) {
     ...(cwd  && { cwd }),
     ...(args.length && { args }),
     ...(Object.keys(env).length && { env }),
+    namespace,
     autorestart: document.getElementById('ef-autorestart').checked,
     watch: document.getElementById('ef-watch').checked,
     max_restarts: maxR,
@@ -275,11 +349,12 @@ async function startProcess(event) {
   const errEl = document.getElementById('start-form-error');
   errEl.textContent = '';
 
-  const script = document.getElementById('sf-script').value.trim();
-  const name   = document.getElementById('sf-name').value.trim() || null;
-  const cwd    = document.getElementById('sf-cwd').value.trim() || null;
-  const argsRaw = document.getElementById('sf-args').value.trim();
-  const envRaw  = document.getElementById('sf-env').value.trim();
+  const script    = document.getElementById('sf-script').value.trim();
+  const name      = document.getElementById('sf-name').value.trim() || null;
+  const cwd       = document.getElementById('sf-cwd').value.trim() || null;
+  const namespace = document.getElementById('sf-namespace').value.trim() || 'default';
+  const argsRaw   = document.getElementById('sf-args').value.trim();
+  const envRaw    = document.getElementById('sf-env').value.trim();
 
   // Parse space-separated args
   const args = argsRaw ? argsRaw.match(/(?:[^\s"']+|"[^"]*"|'[^']*')+/g) : [];
@@ -299,6 +374,7 @@ async function startProcess(event) {
     ...(cwd  && { cwd }),
     ...(args.length && { args }),
     ...(Object.keys(env).length && { env }),
+    namespace,
     autorestart: document.getElementById('sf-autorestart').checked,
     watch: document.getElementById('sf-watch').checked,
   };
