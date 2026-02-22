@@ -103,6 +103,7 @@ fn build_app_config(info: &ProcessInfo) -> AppConfig {
         autorestart: info.autorestart,
         max_restarts: info.max_restarts,
         restart_delay_ms: 1000,
+        namespace: info.namespace.clone(),
         watch: info.watch,
         watch_paths: vec![],
         watch_ignore: vec![],

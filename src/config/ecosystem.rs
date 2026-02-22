@@ -35,12 +35,15 @@ pub struct AppConfig {
     pub watch_ignore: Vec<String>,
     #[serde(default)]
     pub env: HashMap<String, String>,
+    #[serde(default = "default_namespace")]
+    pub namespace: String,
     pub log_file: Option<String>,
     pub error_file: Option<String>,
     #[serde(default = "default_max_log_size_mb")]
     pub max_log_size_mb: u64,
 }
 
+fn default_namespace() -> String { "default".to_string() }
 fn default_instances() -> u32 { 1 }
 fn default_true() -> bool { true }
 fn default_max_restarts() -> u32 { 10 }

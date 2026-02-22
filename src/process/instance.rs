@@ -80,6 +80,7 @@ impl ManagedProcess {
             autorestart: self.config.autorestart,
             max_restarts: self.config.max_restarts,
             watch: self.config.watch,
+            namespace: self.config.namespace.clone(),
             created_at: self.created_at,
             started_at: self.started_at,
             stopped_at: self.stopped_at,

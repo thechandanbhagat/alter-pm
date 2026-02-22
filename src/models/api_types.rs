@@ -14,6 +14,7 @@ pub struct StartRequest {
     pub autorestart: Option<bool>,
     pub max_restarts: Option<u32>,
     pub restart_delay_ms: Option<u64>,
+    pub namespace: Option<String>,
     pub watch: Option<bool>,
     pub watch_paths: Option<Vec<String>>,
     pub watch_ignore: Option<Vec<String>>,

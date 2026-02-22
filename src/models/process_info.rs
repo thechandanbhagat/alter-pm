@@ -20,6 +20,7 @@ pub struct ProcessInfo {
     pub autorestart: bool,
     pub max_restarts: u32,
     pub watch: bool,
+    pub namespace: String,
     pub created_at: DateTime<Utc>,
     pub started_at: Option<DateTime<Utc>>,
     pub stopped_at: Option<DateTime<Utc>>,

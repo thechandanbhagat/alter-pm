@@ -57,6 +57,7 @@ async fn start_process(
         autorestart: req.autorestart.unwrap_or(true),
         max_restarts: req.max_restarts.unwrap_or(10),
         restart_delay_ms: req.restart_delay_ms.unwrap_or(1000),
+        namespace: req.namespace.unwrap_or_else(|| "default".to_string()),
         watch: req.watch.unwrap_or(false),
         watch_paths: req.watch_paths.unwrap_or_default(),
         watch_ignore: req.watch_ignore.unwrap_or_default(),
@@ -233,9 +234,10 @@ async fn update_process(
 ) -> Result<Json<Value>, ApiError> {
     let id = resolve(&state, &id_str).await?;
 
-    // Build updated config — preserve existing name if not provided
+    // Build updated config — preserve existing name/namespace if not provided
     let existing = state.manager.get(id).await.map_err(ApiError::from)?;
     let name = req.name.unwrap_or(existing.name);
+    let namespace = req.namespace.unwrap_or(existing.namespace);
 
     let config = AppConfig {
         name,
@@ -246,6 +248,7 @@ async fn update_process(
         autorestart: req.autorestart.unwrap_or(true),
         max_restarts: req.max_restarts.unwrap_or(10),
         restart_delay_ms: req.restart_delay_ms.unwrap_or(1000),
+        namespace,
         watch: req.watch.unwrap_or(false),
         watch_paths: req.watch_paths.unwrap_or_default(),
         watch_ignore: req.watch_ignore.unwrap_or_default(),
