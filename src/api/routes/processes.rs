@@ -24,6 +24,7 @@ pub fn router(state: Arc<DaemonState>) -> Router {
         .route("/{id}/restart", post(restart_process))
         .route("/{id}/reset", post(reset_process))
         .route("/{id}/logs", get(get_logs))
+        .route("/{id}/logs/dates", get(get_log_dates))
         .route("/{id}/logs/stream", get(stream_logs))
         .with_state(state)
 }
@@ -134,20 +135,27 @@ async fn reset_process(
     Ok(Json(json!(info)))
 }
 
-// @group APIEndpoints > Logs : GET /processes/:id/logs
+// @group APIEndpoints > Logs : GET /processes/:id/logs?lines=N&type=all|stdout|stderr&date=YYYY-MM-DD
 async fn get_logs(
     State(state): State<Arc<DaemonState>>,
     Path(id_str): Path<String>,
     axum::extract::Query(params): axum::extract::Query<HashMap<String, String>>,
 ) -> Result<Json<Value>, ApiError> {
+    use crate::logging::reader::{read_merged_logs, read_merged_logs_for_date};
+    use chrono::NaiveDate;
+
     let id = resolve(&state, &id_str).await?;
     let info = state.manager.get(id).await.map_err(ApiError::from)?;
     let lines: usize = params.get("lines").and_then(|v| v.parse().ok()).unwrap_or(100);
     let stream_filter = params.get("type").map(|s| s.as_str()).unwrap_or("all");
+    let date_param = params.get("date").and_then(|d| NaiveDate::parse_from_str(d, "%Y-%m-%d").ok());
 
     let log_dir = crate::config::paths::process_log_dir(&info.name);
-    let merged = crate::logging::reader::read_merged_logs(&log_dir, lines)
-        .unwrap_or_default();
+
+    let merged = match date_param {
+        Some(date) => read_merged_logs_for_date(&log_dir, date, lines).unwrap_or_default(),
+        None       => read_merged_logs(&log_dir, lines).unwrap_or_default(),
+    };
 
     let filtered: Vec<_> = merged
         .into_iter()
@@ -156,6 +164,22 @@ async fn get_logs(
         .collect();
 
     Ok(Json(json!({ "lines": filtered })))
+}
+
+// @group APIEndpoints > Logs : GET /processes/:id/logs/dates — list available rotated log dates
+async fn get_log_dates(
+    State(state): State<Arc<DaemonState>>,
+    Path(id_str): Path<String>,
+) -> Result<Json<Value>, ApiError> {
+    let id = resolve(&state, &id_str).await?;
+    let info = state.manager.get(id).await.map_err(ApiError::from)?;
+    let log_dir = crate::config::paths::process_log_dir(&info.name);
+    let dates = crate::logging::reader::list_log_dates(&log_dir)
+        .unwrap_or_default()
+        .into_iter()
+        .map(|d| d.format("%Y-%m-%d").to_string())
+        .collect::<Vec<_>>();
+    Ok(Json(json!({ "dates": dates })))
 }
 
 // @group APIEndpoints > Logs : GET /processes/:id/logs/stream (SSE)
