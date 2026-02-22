@@ -1,5 +1,6 @@
 // @group Types : Serializable snapshot of a managed process (sent over API)
 
+use crate::models::cron_run::CronRun;
 use crate::models::process_status::ProcessStatus;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -26,4 +27,5 @@ pub struct ProcessInfo {
     pub stopped_at: Option<DateTime<Utc>>,
     pub cron: Option<String>,
     pub cron_next_run: Option<DateTime<Utc>>,
+    pub cron_run_history: Vec<CronRun>,
 }

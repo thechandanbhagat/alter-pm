@@ -2,6 +2,7 @@
 
 use crate::config::ecosystem::AppConfig;
 use crate::logging::writer::LogWriter;
+use crate::models::cron_run::{CronRun, MAX_CRON_HISTORY};
 use crate::models::process_info::ProcessInfo;
 use crate::models::process_status::ProcessStatus;
 use crate::process::instance::{LogLine, ManagedProcess};
@@ -87,9 +88,10 @@ impl ProcessManager {
     }
 
     // @group BusinessLogic > Lifecycle : Register a cron process as Sleeping without spawning (used on restore)
-    pub async fn register_sleeping(&self, config: AppConfig) -> Result<ProcessInfo> {
+    pub async fn register_sleeping(&self, config: AppConfig, cron_run_history: Vec<CronRun>) -> Result<ProcessInfo> {
         let mut process = ManagedProcess::new(config.clone());
         process.status = ProcessStatus::Sleeping;
+        process.cron_run_history = cron_run_history;
         if let Some(expr) = &config.cron {
             process.cron_next_run = next_run(expr);
         }
@@ -514,11 +516,14 @@ impl ProcessManager {
                         proc.config.clone()
                     };
 
+                    // Capture start time before spawning for duration calculation
+                    let run_started_at = Utc::now();
+
                     // Transition to Starting
                     {
                         let mut proc = arc.write().await;
                         proc.status = ProcessStatus::Starting;
-                        proc.started_at = Some(Utc::now());
+                        proc.started_at = Some(run_started_at);
                         proc.stopped_at = None;
                         proc.cron_next_run = None;
                     }
@@ -546,15 +551,29 @@ impl ProcessManager {
                         mpsc::channel::<crate::process::restarter::RestartEvent>(4);
                     let arc2 = Arc::clone(&arc);
 
-                    // Handle the exit event inline
+                    // Handle the exit event inline — record run history and transition to Sleeping
                     tokio::spawn(async move {
                         if let Some(event) = local_restart_rx.recv().await {
                             if let crate::process::restarter::RestartEvent::Exited { exit_code, .. } = event {
+                                let finished_at = Utc::now();
+                                let duration_secs = (finished_at - run_started_at)
+                                    .num_seconds()
+                                    .max(0) as u64;
+                                let run = CronRun {
+                                    run_at: run_started_at,
+                                    exit_code,
+                                    duration_secs,
+                                };
                                 let mut proc = arc2.write().await;
                                 proc.status = ProcessStatus::Sleeping;
                                 proc.pid = None;
                                 proc.last_exit_code = exit_code;
-                                proc.stopped_at = Some(Utc::now());
+                                proc.stopped_at = Some(finished_at);
+                                // Append to history, capped at MAX_CRON_HISTORY
+                                proc.cron_run_history.push(run);
+                                if proc.cron_run_history.len() > MAX_CRON_HISTORY {
+                                    proc.cron_run_history.remove(0);
+                                }
                                 if let Some(expr) = &proc.config.cron.clone() {
                                     proc.cron_next_run = next_run(expr);
                                 }

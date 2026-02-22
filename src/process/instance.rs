@@ -2,6 +2,7 @@
 
 use crate::config::ecosystem::AppConfig;
 use crate::logging::writer::LogWriter;
+use crate::models::cron_run::CronRun;
 use crate::models::process_info::ProcessInfo;
 use crate::models::process_status::ProcessStatus;
 use chrono::{DateTime, Utc};
@@ -40,6 +41,8 @@ pub struct ManagedProcess {
     pub log_writer: Option<LogWriter>,
     /// Next scheduled run time for cron processes
     pub cron_next_run: Option<DateTime<Utc>>,
+    /// History of the last MAX_CRON_HISTORY cron runs (timestamp, exit code, duration)
+    pub cron_run_history: Vec<CronRun>,
 }
 
 impl ManagedProcess {
@@ -58,6 +61,7 @@ impl ManagedProcess {
             log_tx,
             log_writer: None,
             cron_next_run: None,
+            cron_run_history: vec![],
         }
     }
 
@@ -89,6 +93,7 @@ impl ManagedProcess {
             stopped_at: self.stopped_at,
             cron: self.config.cron.clone(),
             cron_next_run: self.cron_next_run,
+            cron_run_history: self.cron_run_history.clone(),
         }
     }
 }

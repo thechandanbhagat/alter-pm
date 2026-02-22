@@ -2,13 +2,14 @@
 
 use crate::config::daemon_config::DaemonConfig;
 use crate::config::ecosystem::AppConfig;
+use crate::models::cron_run::CronRun;
 use crate::models::process_info::ProcessInfo;
 use crate::process::manager::ProcessManager;
 use anyhow::Result;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use std::sync::Arc;
 use uuid::Uuid;
+
 
 /// Persistent snapshot of process configs (saved to disk)
 #[derive(Serialize, Deserialize, Default)]
@@ -23,6 +24,8 @@ pub struct SavedApp {
     pub config: AppConfig,
     pub restart_count: u32,
     pub autorestart_on_restore: bool,
+    #[serde(default)]
+    pub cron_run_history: Vec<CronRun>,
 }
 
 /// Live daemon state — shared across all Axum handlers
@@ -51,6 +54,7 @@ impl DaemonState {
                 config: build_app_config(&p),
                 restart_count: p.restart_count,
                 autorestart_on_restore: p.autorestart,
+                cron_run_history: p.cron_run_history,
             })
             .collect();
 
@@ -83,7 +87,7 @@ impl DaemonState {
         for app in saved.apps {
             if app.config.cron.is_some() {
                 // Restore cron jobs in Sleeping state — scheduler will fire them at the right time
-                if let Err(e) = self.manager.register_sleeping(app.config).await {
+                if let Err(e) = self.manager.register_sleeping(app.config, app.cron_run_history).await {
                     tracing::warn!("failed to restore cron process '{}': {e}", app.id);
                 }
             } else if app.autorestart_on_restore {

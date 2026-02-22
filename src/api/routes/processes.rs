@@ -27,6 +27,7 @@ pub fn router(state: Arc<DaemonState>) -> Router {
         .route("/{id}/logs", get(get_logs))
         .route("/{id}/logs/dates", get(get_log_dates))
         .route("/{id}/logs/stream", get(stream_logs))
+        .route("/{id}/cron/history", get(get_cron_history))
         .with_state(state)
 }
 
@@ -313,6 +314,16 @@ async fn open_terminal(
     }
 
     Ok(Json(json!({ "success": true, "message": "terminal opened" })))
+}
+
+// @group APIEndpoints > Process : GET /processes/:id/cron/history
+async fn get_cron_history(
+    State(state): State<Arc<DaemonState>>,
+    Path(id_str): Path<String>,
+) -> Result<Json<Value>, ApiError> {
+    let id = resolve(&state, &id_str).await?;
+    let info = state.manager.get(id).await.map_err(ApiError::from)?;
+    Ok(Json(json!({ "runs": info.cron_run_history })))
 }
 
 async fn resolve(state: &DaemonState, id_str: &str) -> Result<Uuid, ApiError> {
