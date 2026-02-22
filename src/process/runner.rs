@@ -12,6 +12,11 @@ use tokio::sync::broadcast;
 use tokio::sync::mpsc;
 use uuid::Uuid;
 
+// @group BusinessLogic > Windows : CREATE_NO_WINDOW flag — hides the console window
+// that Windows would otherwise pop up for every spawned child process.
+#[cfg(target_os = "windows")]
+const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+
 /// Result of a child process run: the exit code (or None on signal/kill)
 pub struct RunResult {
     pub exit_code: Option<i32>,
@@ -39,12 +44,14 @@ pub async fn spawn_process(
         if is_native {
             let mut c = Command::new(script);
             c.args(args);
+            c.creation_flags(CREATE_NO_WINDOW);
             c
         } else {
             let mut c = Command::new("cmd");
             c.arg("/C");
             c.arg(script);
             c.args(args);
+            c.creation_flags(CREATE_NO_WINDOW);
             c
         }
     };
