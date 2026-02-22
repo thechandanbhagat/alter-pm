@@ -832,105 +832,105 @@
     },
     {
       "functionality": "businesslogic > render",
-      "description": "Build sidebar process list",
+      "description": "Build sidebar process list (running only)",
       "filePath": "src/web/assets/app.js",
-      "lineNumbers": "162-176"
+      "lineNumbers": "162-177"
     },
     {
       "functionality": "businesslogic > navigation",
       "description": "Scroll to and highlight a process row in the table",
       "filePath": "src/web/assets/app.js",
-      "lineNumbers": "188-190"
+      "lineNumbers": "189-191"
     },
     {
       "functionality": "businesslogic > actions",
       "description": "Process control buttons",
       "filePath": "src/web/assets/app.js",
-      "lineNumbers": "204-242"
+      "lineNumbers": "205-243"
     },
     {
       "functionality": "businesslogic > navigation",
       "description": "Switch between sidebar views",
       "filePath": "src/web/assets/app.js",
-      "lineNumbers": "243-247"
+      "lineNumbers": "244-248"
     },
     {
       "functionality": "businesslogic > actions",
       "description": "Open edit view pre-filled with process config",
       "filePath": "src/web/assets/app.js",
-      "lineNumbers": "263-278"
+      "lineNumbers": "264-279"
     },
     {
       "functionality": "businesslogic > actions",
       "description": "Submit edited process config via PATCH",
       "filePath": "src/web/assets/app.js",
-      "lineNumbers": "291-343"
+      "lineNumbers": "292-344"
     },
     {
       "functionality": "businesslogic > actions",
       "description": "Submit start-process form",
       "filePath": "src/web/assets/app.js",
-      "lineNumbers": "346-358"
+      "lineNumbers": "347-359"
     },
     {
       "functionality": "businesslogic > logs",
       "description": "Open log panel and stream logs via SSE",
       "filePath": "src/web/assets/app.js",
-      "lineNumbers": "402-411"
+      "lineNumbers": "403-412"
     },
     {
       "functionality": "businesslogic > datedlogs",
       "description": "Fetch available log dates and render the nav bar",
       "filePath": "src/web/assets/app.js",
-      "lineNumbers": "425-436"
+      "lineNumbers": "426-437"
     },
     {
       "functionality": "businesslogic > datedlogs",
       "description": "Render the ← Today → navigation bar for historical logs",
       "filePath": "src/web/assets/app.js",
-      "lineNumbers": "437-450"
+      "lineNumbers": "438-451"
     },
     {
       "functionality": "businesslogic > datedlogs",
       "description": "Navigate one step older/newer in the rotated log list",
       "filePath": "src/web/assets/app.js",
-      "lineNumbers": "451-458"
+      "lineNumbers": "452-459"
     },
     {
       "functionality": "businesslogic > datedlogs",
       "description": "Fetch historical (or today's) log lines from the API",
       "filePath": "src/web/assets/app.js",
-      "lineNumbers": "472-485"
+      "lineNumbers": "473-486"
     },
     {
       "functionality": "businesslogic > logs",
       "description": "Start live SSE stream and append lines to outputId",
       "filePath": "src/web/assets/app.js",
-      "lineNumbers": "486-521"
+      "lineNumbers": "487-522"
     },
     {
       "functionality": "businesslogic > processdetail",
       "description": "Full-screen process detail view with live logs",
       "filePath": "src/web/assets/app.js",
-      "lineNumbers": "522-523"
+      "lineNumbers": "523-524"
     },
     {
       "functionality": "businesslogic > processdetail",
       "description": "Toolbar action buttons",
       "filePath": "src/web/assets/app.js",
-      "lineNumbers": "580-620"
+      "lineNumbers": "581-621"
     },
     {
       "functionality": "businesslogic > autorefresh",
       "description": "Periodic process list refresh",
       "filePath": "src/web/assets/app.js",
-      "lineNumbers": "621-634"
+      "lineNumbers": "622-635"
     },
     {
       "functionality": "utilities",
       "description": "Helpers",
       "filePath": "src/web/assets/app.js",
-      "lineNumbers": "635-659"
+      "lineNumbers": "636-660"
     }
   ],
   "css": [
@@ -950,13 +950,13 @@
       "functionality": "layout > processdetail",
       "description": "Full-screen process detail view",
       "filePath": "src/web/assets/style.css",
-      "lineNumbers": "375-382"
+      "lineNumbers": "384-391"
     },
     {
       "functionality": "styles > datedlogs",
       "description": "Date navigation bar for historical log browsing",
       "filePath": "src/web/assets/style.css",
-      "lineNumbers": "480-489"
+      "lineNumbers": "489-498"
     }
   ]
 }
