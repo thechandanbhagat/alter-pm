@@ -8,9 +8,11 @@ import { CodeEditor } from '@/components/CodeEditor'
 import { RunOutput } from '@/components/RunOutput'
 import type { OutputLine } from '@/components/RunOutput'
 import { inputStyle, primaryBtnStyle } from './StartPage'
+import type { AppSettings } from '@/lib/settings'
 
 interface Props {
   onDone: () => void
+  settings: AppSettings
 }
 
 // @group Configuration > Interpreters : Supported interpreter presets
@@ -79,7 +81,7 @@ function langLabel(value: string): string {
   return INTERPRETERS.find(i => i.value === value)?.label ?? value
 }
 
-export default function CreateCronJobPage({ onDone }: Props) {
+export default function CreateCronJobPage({ onDone, settings }: Props) {
   // @group BusinessLogic > State : Left panel — editor state
   const [interpreter, setInterpreter]       = useState('python')
   const [customInterpreter, setCustomInterp] = useState('')
@@ -96,7 +98,7 @@ export default function CreateCronJobPage({ onDone }: Props) {
   const [cron, setCron]           = useState('')
   const [cwd, setCwd]             = useState('')
   const [envStr, setEnvStr]       = useState('')
-  const [namespace, setNamespace] = useState('default')
+  const [namespace, setNamespace] = useState(settings.defaultNamespace || 'default')
   const [argsStr, setArgsStr]     = useState('')
   const [jobName, setJobName]     = useState('')
   const [submitError, setSubmitError] = useState('')

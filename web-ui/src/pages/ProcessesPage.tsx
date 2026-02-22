@@ -3,17 +3,22 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { api } from '@/lib/api'
+import { useDialog } from '@/hooks/useDialog'
+import { Dialog } from '@/components/Dialog'
 import { formatLastRun, formatNextRun, formatUptime, statusColor } from '@/lib/utils'
+import type { AppSettings } from '@/lib/settings'
 import type { ProcessInfo } from '@/types'
 
 interface Props {
   processes: ProcessInfo[]
   reload: () => void
+  settings: AppSettings
 }
 
-export default function ProcessesPage({ processes, reload }: Props) {
+export default function ProcessesPage({ processes, reload, settings }: Props) {
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
   const navigate = useNavigate()
+  const { dialogState, confirm, danger, handleConfirm, handleCancel } = useDialog()
 
   // Group by namespace
   const groups = new Map<string, ProcessInfo[]>()
@@ -42,6 +47,8 @@ export default function ProcessesPage({ processes, reload }: Props) {
 
   async function stopAll(ns: string) {
     const targets = (groups.get(ns) ?? []).filter(p => p.status === 'running' || p.status === 'watching')
+    const ok = await confirm(`Stop all in "${ns}"?`, `${targets.length} running process${targets.length !== 1 ? 'es' : ''} will be stopped.`)
+    if (!ok) return
     await Promise.all(targets.map(p => api.stopProcess(p.id).catch(() => {})))
     setTimeout(reload, 400)
   }
@@ -54,6 +61,17 @@ export default function ProcessesPage({ processes, reload }: Props) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+      <Dialog
+        open={dialogState.open}
+        title={dialogState.title}
+        message={dialogState.message}
+        variant={dialogState.variant}
+        confirmLabel={dialogState.confirmLabel}
+        cancelLabel={dialogState.cancelLabel}
+        onConfirm={handleConfirm}
+        onCancel={handleCancel}
+      />
+
       <div style={{ padding: '16px 20px 10px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid var(--color-border)' }}>
         <h2 style={{ fontSize: 16, fontWeight: 600 }}>Processes</h2>
         <button onClick={reload} style={smallBtnStyle}>↻ Refresh</button>
@@ -94,7 +112,13 @@ export default function ProcessesPage({ processes, reload }: Props) {
                 </tr>,
                 // Process rows
                 ...(!isCollapsed ? procs.map(p => (
-                  <ProcessRow key={p.id} p={p} reload={reload} onOpenDetail={() => navigate(`/processes/${p.id}`)} onEdit={() => navigate(`/edit/${p.id}`)} />
+                  <ProcessRow
+                    key={p.id} p={p} reload={reload}
+                    confirmDelete={settings.confirmBeforeDelete}
+                    onConfirm={confirm} onDanger={danger}
+                    onOpenDetail={() => navigate(`/processes/${p.id}`)}
+                    onEdit={() => navigate(`/edit/${p.id}`)}
+                  />
                 )) : []),
               ]
             })}
@@ -105,9 +129,13 @@ export default function ProcessesPage({ processes, reload }: Props) {
   )
 }
 
-function ProcessRow({ p, reload, onOpenDetail, onEdit }: {
+// @group BusinessLogic > ProcessRow : Single process table row
+function ProcessRow({ p, reload, confirmDelete, onConfirm, onDanger, onOpenDetail, onEdit }: {
   p: ProcessInfo
   reload: () => void
+  confirmDelete: boolean
+  onConfirm: (title: string, message?: string) => Promise<boolean>
+  onDanger: (title: string, message?: string, confirmLabel?: string) => Promise<boolean>
   onOpenDetail: () => void
   onEdit: () => void
 }) {
@@ -124,7 +152,8 @@ function ProcessRow({ p, reload, onOpenDetail, onEdit }: {
     : p.watch ? 'watch' : '-'
 
   async function doStop() {
-    if (!confirm(`Stop '${p.name}'?`)) return
+    const ok = await onConfirm(`Stop "${p.name}"?`, 'The process will be stopped. You can restart it later.')
+    if (!ok) return
     await api.stopProcess(p.id).catch(() => {})
     setTimeout(reload, 300)
   }
@@ -137,7 +166,10 @@ function ProcessRow({ p, reload, onOpenDetail, onEdit }: {
     reload()
   }
   async function doDelete() {
-    if (!confirm(`Delete '${p.name}'? This will stop and remove the process.`)) return
+    if (confirmDelete) {
+      const ok = await onDanger(`Delete "${p.name}"?`, 'This will stop and permanently remove the process.', 'Delete')
+      if (!ok) return
+    }
     await api.deleteProcess(p.id).catch(() => {})
     setTimeout(reload, 300)
   }

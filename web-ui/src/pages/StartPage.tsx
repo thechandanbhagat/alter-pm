@@ -4,16 +4,18 @@ import { useState } from 'react'
 import { api } from '@/lib/api'
 import { parseArgs, parseEnvString } from '@/lib/utils'
 import { FormCard, FormField, FormRow } from '@/components/FormLayout'
+import type { AppSettings } from '@/lib/settings'
 
 interface Props {
   onDone: () => void
+  settings: AppSettings
 }
 
-export default function StartPage({ onDone }: Props) {
+export default function StartPage({ onDone, settings }: Props) {
   const [script, setScript]         = useState('')
   const [name, setName]             = useState('')
   const [cwd, setCwd]               = useState('')
-  const [namespace, setNamespace]   = useState('default')
+  const [namespace, setNamespace]   = useState(settings.defaultNamespace || 'default')
   const [args, setArgs]             = useState('')
   const [env, setEnv]               = useState('')
   const [autorestart, setAutorestart] = useState(true)

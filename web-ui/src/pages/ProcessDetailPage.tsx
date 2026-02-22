@@ -3,14 +3,18 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { api } from '@/lib/api'
+import { useDialog } from '@/hooks/useDialog'
+import { Dialog } from '@/components/Dialog'
 import { statusColor } from '@/lib/utils'
+import type { AppSettings } from '@/lib/settings'
 import type { ProcessInfo } from '@/types'
 
 interface Props {
   reload: () => void
+  settings: AppSettings
 }
 
-export default function ProcessDetailPage({ reload }: Props) {
+export default function ProcessDetailPage({ reload, settings }: Props) {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const [process, setProcess] = useState<ProcessInfo | null>(null)
@@ -19,17 +23,18 @@ export default function ProcessDetailPage({ reload }: Props) {
   const [dateIndex, setDateIndex] = useState(-1) // -1 = today (live)
   const logEndRef = useRef<HTMLDivElement>(null)
   const esRef = useRef<EventSource | null>(null)
+  const { dialogState, confirm, danger, alert, handleConfirm, handleCancel } = useDialog()
 
-  // Load process info + poll every 3s
+  // Load process info + poll at configured interval
   useEffect(() => {
     if (!id) return
     function loadProc() {
       api.getProcess(id!).then(setProcess).catch(() => {})
     }
     loadProc()
-    const timer = setInterval(loadProc, 3000)
+    const timer = setInterval(loadProc, settings.processRefreshInterval)
     return () => clearInterval(timer)
-  }, [id])
+  }, [id, settings.processRefreshInterval])
 
   // Load available log dates
   useEffect(() => {
@@ -48,7 +53,7 @@ export default function ProcessDetailPage({ reload }: Props) {
     const dateParam = isToday ? undefined : logDates[dateIndex]
 
     // Fetch historical
-    api.getLogs(id, { lines: isToday ? 200 : 500, date: dateParam })
+    api.getLogs(id, { lines: isToday ? settings.logTailLines : Math.max(settings.logTailLines, 500), date: dateParam })
       .then(d => setLogLines(d.lines.map(l => ({ stream: l.stream, content: l.content }))))
       .catch(() => {})
 
@@ -66,7 +71,7 @@ export default function ProcessDetailPage({ reload }: Props) {
     }
 
     return () => { if (esRef.current) { esRef.current.close(); esRef.current = null } }
-  }, [id, dateIndex, logDates])
+  }, [id, dateIndex, logDates, settings.logTailLines])
 
   // Auto-scroll to bottom
   useEffect(() => {
@@ -87,12 +92,16 @@ export default function ProcessDetailPage({ reload }: Props) {
     reload()
   }
   async function doStop() {
-    if (!confirm(`Stop '${process!.name}'?`)) return
+    const ok = await confirm(`Stop "${process!.name}"?`, 'The process will be stopped. You can restart it later.')
+    if (!ok) return
     await api.stopProcess(process!.id).catch(() => {})
     reload()
   }
   async function doDelete() {
-    if (!confirm(`Delete '${process!.name}'?`)) return
+    if (settings.confirmBeforeDelete) {
+      const ok = await danger(`Delete "${process!.name}"?`, 'This will permanently remove the process and its configuration.', 'Delete')
+      if (!ok) return
+    }
     await api.deleteProcess(process!.id).catch(() => {})
     navigate('/')
     reload()
@@ -100,13 +109,27 @@ export default function ProcessDetailPage({ reload }: Props) {
   async function doTerminal() {
     await api.openTerminal(process!.id).catch(() => {})
   }
-  function doVSCode() {
-    if (!process!.cwd) { alert('No working directory set.'); return }
+  async function doVSCode() {
+    if (!process!.cwd) {
+      await alert('No working directory', 'This process has no working directory configured.')
+      return
+    }
     window.open(`vscode://file/${process!.cwd.replace(/\\/g, '/')}`)
   }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
+      <Dialog
+        open={dialogState.open}
+        title={dialogState.title}
+        message={dialogState.message}
+        variant={dialogState.variant}
+        confirmLabel={dialogState.confirmLabel}
+        cancelLabel={dialogState.cancelLabel}
+        onConfirm={handleConfirm}
+        onCancel={handleCancel}
+      />
+
       {/* Toolbar */}
       <div style={{
         padding: '10px 16px',

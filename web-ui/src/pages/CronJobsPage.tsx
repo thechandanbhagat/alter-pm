@@ -2,12 +2,16 @@
 
 import { useNavigate } from 'react-router-dom'
 import { api } from '@/lib/api'
+import { useDialog } from '@/hooks/useDialog'
+import { Dialog } from '@/components/Dialog'
 import { formatNextRun, statusColor } from '@/lib/utils'
+import type { AppSettings } from '@/lib/settings'
 import type { CronRun, ProcessInfo } from '@/types'
 
 interface Props {
   processes: ProcessInfo[]
   reload: () => void
+  settings: AppSettings
 }
 
 // @group Utilities > CronDescription : Human-readable schedule description (duplicated for tree-shaking)
@@ -59,9 +63,10 @@ function LastRunCell({ history }: { history: CronRun[] }) {
   )
 }
 
-export default function CronJobsPage({ processes, reload }: Props) {
+export default function CronJobsPage({ processes, reload, settings }: Props) {
   const navigate = useNavigate()
   const cronJobs = processes.filter(p => p.cron !== null)
+  const { dialogState, confirm, danger, handleConfirm, handleCancel } = useDialog()
 
   if (cronJobs.length === 0) {
     return (
@@ -84,6 +89,17 @@ export default function CronJobsPage({ processes, reload }: Props) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+      <Dialog
+        open={dialogState.open}
+        title={dialogState.title}
+        message={dialogState.message}
+        variant={dialogState.variant}
+        confirmLabel={dialogState.confirmLabel}
+        cancelLabel={dialogState.cancelLabel}
+        onConfirm={handleConfirm}
+        onCancel={handleCancel}
+      />
+
       {/* Header */}
       <div style={{
         padding: '16px 20px 10px',
@@ -111,7 +127,10 @@ export default function CronJobsPage({ processes, reload }: Props) {
           </thead>
           <tbody>
             {cronJobs.map(p => (
-              <CronJobRow key={p.id} p={p} reload={reload} />
+              <CronJobRow key={p.id} p={p} reload={reload}
+                confirmDelete={settings.confirmBeforeDelete}
+                onConfirm={confirm} onDanger={danger}
+              />
             ))}
           </tbody>
         </table>
@@ -120,7 +139,13 @@ export default function CronJobsPage({ processes, reload }: Props) {
   )
 }
 
-function CronJobRow({ p, reload }: { p: ProcessInfo; reload: () => void }) {
+function CronJobRow({ p, reload, confirmDelete, onConfirm, onDanger }: {
+  p: ProcessInfo
+  reload: () => void
+  confirmDelete: boolean
+  onConfirm: (title: string, message?: string) => Promise<boolean>
+  onDanger: (title: string, message?: string, confirmLabel?: string) => Promise<boolean>
+}) {
   const navigate = useNavigate()
   const isActive = p.status === 'running' || p.status === 'sleeping'
 
@@ -129,12 +154,16 @@ function CronJobRow({ p, reload }: { p: ProcessInfo; reload: () => void }) {
     setTimeout(reload, 400)
   }
   async function doStop() {
-    if (!confirm(`Stop '${p.name}'?`)) return
+    const ok = await onConfirm(`Stop "${p.name}"?`, 'The cron job will stop. The schedule will resume when you start it again.')
+    if (!ok) return
     await api.stopProcess(p.id).catch(() => {})
     reload()
   }
   async function doDelete() {
-    if (!confirm(`Delete cron job '${p.name}'?`)) return
+    if (confirmDelete) {
+      const ok = await onDanger(`Delete "${p.name}"?`, 'This will permanently remove the cron job and its configuration.', 'Delete')
+      if (!ok) return
+    }
     await api.deleteProcess(p.id).catch(() => {})
     setTimeout(reload, 300)
   }
