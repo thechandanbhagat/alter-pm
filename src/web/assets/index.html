@@ -37,6 +37,15 @@
 
       <div class="sidebar-footer">
         <div class="sidebar-actions">
+          <label class="sidebar-btn check-label" title="Auto-refresh every 3s">
+            <input type="checkbox" id="auto-refresh" checked onchange="toggleAutoRefresh()"/>
+            <svg class="sb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="23 4 23 10 17 10"/>
+              <polyline points="1 20 1 14 7 14"/>
+              <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
+            </svg>
+            Auto-refresh
+          </label>
           <button class="sidebar-btn" onclick="saveState()" title="Save state">
             <svg class="sb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
@@ -52,15 +61,6 @@
             </svg>
             Shutdown
           </button>
-          <label class="sidebar-btn check-label" title="Auto-refresh every 3s">
-            <input type="checkbox" id="auto-refresh" checked onchange="toggleAutoRefresh()"/>
-            <svg class="sb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <polyline points="23 4 23 10 17 10"/>
-              <polyline points="1 20 1 14 7 14"/>
-              <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
-            </svg>
-            Auto-refresh
-          </label>
         </div>
       </div>
     </aside>
