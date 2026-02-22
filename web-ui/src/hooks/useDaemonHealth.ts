@@ -1,11 +1,13 @@
-// @group BusinessLogic : Fetch daemon health info
+// @group BusinessLogic : Fetch daemon health info at a configurable interval
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { api } from '@/lib/api'
 import type { DaemonHealth } from '@/types'
 
-export function useDaemonHealth() {
+// @group BusinessLogic > useDaemonHealth : Polls /system/health; interval driven by settings
+export function useDaemonHealth(intervalMs = 5000) {
   const [health, setHealth] = useState<DaemonHealth | null>(null)
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   const load = useCallback(async () => {
     try {
@@ -18,9 +20,12 @@ export function useDaemonHealth() {
 
   useEffect(() => {
     load()
-    const timer = setInterval(load, 5000)
-    return () => clearInterval(timer)
-  }, [load])
+    if (timerRef.current) clearInterval(timerRef.current)
+    timerRef.current = setInterval(load, intervalMs)
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current)
+    }
+  }, [load, intervalMs])
 
   return health
 }

@@ -1,10 +1,11 @@
-// @group BusinessLogic : Poll /api/v1/processes every 3s
+// @group BusinessLogic : Poll /api/v1/processes at a configurable interval
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { api } from '@/lib/api'
 import type { ProcessInfo } from '@/types'
 
-export function useProcesses(autoRefresh = true) {
+// @group BusinessLogic > useProcesses : Polls the process list; interval and toggle driven by settings
+export function useProcesses(autoRefresh = true, intervalMs = 3000) {
   const [processes, setProcesses] = useState<ProcessInfo[]>([])
   const [error, setError] = useState<string | null>(null)
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
@@ -21,13 +22,14 @@ export function useProcesses(autoRefresh = true) {
 
   useEffect(() => {
     load()
+    if (timerRef.current) clearInterval(timerRef.current)
     if (autoRefresh) {
-      timerRef.current = setInterval(load, 3000)
+      timerRef.current = setInterval(load, intervalMs)
     }
     return () => {
       if (timerRef.current) clearInterval(timerRef.current)
     }
-  }, [load, autoRefresh])
+  }, [load, autoRefresh, intervalMs])
 
   return { processes, error, reload: load }
 }
