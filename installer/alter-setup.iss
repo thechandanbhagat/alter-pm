@@ -47,7 +47,7 @@ ArchitecturesInstallIn64BitMode=x64
 Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Tasks]
-Name: "addtopath"; Description: "Add alter to PATH (recommended)"; GroupDescription: "System integration:"; Flags: checked
+Name: "addtopath"; Description: "Add alter to PATH (recommended)"; GroupDescription: "System integration:"
 
 [Files]
 ; Main binary
