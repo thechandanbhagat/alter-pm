@@ -26,12 +26,6 @@
     },
     {
       "functionality": "configuration",
-      "description": "Ecosystem and app configuration types",
-      "filePath": "src/config/ecosystem.rs",
-      "lineNumbers": "1-64"
-    },
-    {
-      "functionality": "configuration",
       "description": "Daemon runtime configuration",
       "filePath": "src/config/daemon_config.rs",
       "lineNumbers": "1-23"
@@ -49,52 +43,10 @@
       "lineNumbers": "1-6"
     },
     {
-      "functionality": "types",
-      "description": "Serializable snapshot of a managed process (sent over API)",
-      "filePath": "src/models/process_info.rs",
-      "lineNumbers": "1-27"
-    },
-    {
       "functionality": "exports",
       "description": "Logging module re-exports",
       "filePath": "src/logging/mod.rs",
       "lineNumbers": "1-6"
-    },
-    {
-      "functionality": "types",
-      "description": "REST API request and response structs",
-      "filePath": "src/models/api_types.rs",
-      "lineNumbers": "1-5"
-    },
-    {
-      "functionality": "types > request",
-      "description": "Start a new process",
-      "filePath": "src/models/api_types.rs",
-      "lineNumbers": "6-22"
-    },
-    {
-      "functionality": "types > request",
-      "description": "Load an ecosystem config file",
-      "filePath": "src/models/api_types.rs",
-      "lineNumbers": "23-28"
-    },
-    {
-      "functionality": "types > response",
-      "description": "Generic operation response",
-      "filePath": "src/models/api_types.rs",
-      "lineNumbers": "29-35"
-    },
-    {
-      "functionality": "types > response",
-      "description": "Daemon health check",
-      "filePath": "src/models/api_types.rs",
-      "lineNumbers": "36-44"
-    },
-    {
-      "functionality": "types > response",
-      "description": "Log lines response",
-      "filePath": "src/models/api_types.rs",
-      "lineNumbers": "45-57"
     },
     {
       "functionality": "types",
@@ -131,12 +83,6 @@
       "description": "Process management module re-exports",
       "filePath": "src/process/mod.rs",
       "lineNumbers": "1-8"
-    },
-    {
-      "functionality": "businesslogic",
-      "description": "Managed process instance — holds full lifecycle state",
-      "filePath": "src/process/instance.rs",
-      "lineNumbers": "1-10"
     },
     {
       "functionality": "configuration",
@@ -565,84 +511,6 @@
       "lineNumbers": "73-87"
     },
     {
-      "functionality": "apiendpoints",
-      "description": "Process CRUD endpoints",
-      "filePath": "src/api/routes/processes.rs",
-      "lineNumbers": "1-31"
-    },
-    {
-      "functionality": "apiendpoints > process",
-      "description": "GET /processes",
-      "filePath": "src/api/routes/processes.rs",
-      "lineNumbers": "32-37"
-    },
-    {
-      "functionality": "apiendpoints > process",
-      "description": "POST /processes",
-      "filePath": "src/api/routes/processes.rs",
-      "lineNumbers": "38-73"
-    },
-    {
-      "functionality": "apiendpoints > process",
-      "description": "GET /processes/:id",
-      "filePath": "src/api/routes/processes.rs",
-      "lineNumbers": "74-83"
-    },
-    {
-      "functionality": "apiendpoints > process",
-      "description": "DELETE /processes/:id",
-      "filePath": "src/api/routes/processes.rs",
-      "lineNumbers": "84-94"
-    },
-    {
-      "functionality": "apiendpoints > process",
-      "description": "POST /processes/:id/stop",
-      "filePath": "src/api/routes/processes.rs",
-      "lineNumbers": "95-105"
-    },
-    {
-      "functionality": "apiendpoints > process",
-      "description": "POST /processes/:id/start",
-      "filePath": "src/api/routes/processes.rs",
-      "lineNumbers": "106-116"
-    },
-    {
-      "functionality": "apiendpoints > process",
-      "description": "POST /processes/:id/restart",
-      "filePath": "src/api/routes/processes.rs",
-      "lineNumbers": "117-127"
-    },
-    {
-      "functionality": "apiendpoints > process",
-      "description": "POST /processes/:id/reset",
-      "filePath": "src/api/routes/processes.rs",
-      "lineNumbers": "128-137"
-    },
-    {
-      "functionality": "apiendpoints > logs",
-      "description": "GET /processes/:id/logs?lines=N&type=all|stdout|stderr&date=YYYY-MM-DD",
-      "filePath": "src/api/routes/processes.rs",
-      "lineNumbers": "138-168"
-    },
-    {
-      "functionality": "apiendpoints > logs",
-      "description": "GET /processes/:id/logs/dates — list available rotated log dates",
-      "filePath": "src/api/routes/processes.rs",
-      "lineNumbers": "169-184"
-    },
-    {
-      "functionality": "apiendpoints > logs",
-      "description": "GET /processes/:id/logs/stream (SSE)",
-      "filePath": "src/api/routes/processes.rs",
-      "lineNumbers": "185-200"
-    },
-    {
-      "functionality": "apiendpoints > process",
-      "description": "PATCH /processes/:id — update config and apply",
-      "filePath": "src/api/routes/processes.rs",
-      "lineNumbers": "228-235"
-    },
-    {
       "functionality": "businesslogic",
       "description": "Process manager — spawns, tracks, stops, and restarts all child processes",
       "filePath": "src/process/manager.rs",
@@ -739,6 +607,138 @@
       "lineNumbers": "397"
     },
     {
+      "functionality": "configuration",
+      "description": "Ecosystem and app configuration types",
+      "filePath": "src/config/ecosystem.rs",
+      "lineNumbers": "1-67"
+    },
+    {
+      "functionality": "types",
+      "description": "Serializable snapshot of a managed process (sent over API)",
+      "filePath": "src/models/process_info.rs",
+      "lineNumbers": "1-28"
+    },
+    {
+      "functionality": "businesslogic",
+      "description": "Managed process instance — holds full lifecycle state",
+      "filePath": "src/process/instance.rs",
+      "lineNumbers": "1-10"
+    },
+    {
+      "functionality": "types",
+      "description": "REST API request and response structs",
+      "filePath": "src/models/api_types.rs",
+      "lineNumbers": "1-5"
+    },
+    {
+      "functionality": "types > request",
+      "description": "Start a new process",
+      "filePath": "src/models/api_types.rs",
+      "lineNumbers": "6-23"
+    },
+    {
+      "functionality": "types > request",
+      "description": "Load an ecosystem config file",
+      "filePath": "src/models/api_types.rs",
+      "lineNumbers": "24-29"
+    },
+    {
+      "functionality": "types > response",
+      "description": "Generic operation response",
+      "filePath": "src/models/api_types.rs",
+      "lineNumbers": "30-36"
+    },
+    {
+      "functionality": "types > response",
+      "description": "Daemon health check",
+      "filePath": "src/models/api_types.rs",
+      "lineNumbers": "37-45"
+    },
+    {
+      "functionality": "types > response",
+      "description": "Log lines response",
+      "filePath": "src/models/api_types.rs",
+      "lineNumbers": "46-58"
+    },
+    {
+      "functionality": "apiendpoints",
+      "description": "Process CRUD endpoints",
+      "filePath": "src/api/routes/processes.rs",
+      "lineNumbers": "1-31"
+    },
+    {
+      "functionality": "apiendpoints > process",
+      "description": "GET /processes",
+      "filePath": "src/api/routes/processes.rs",
+      "lineNumbers": "32-37"
+    },
+    {
+      "functionality": "apiendpoints > process",
+      "description": "POST /processes",
+      "filePath": "src/api/routes/processes.rs",
+      "lineNumbers": "38-74"
+    },
+    {
+      "functionality": "apiendpoints > process",
+      "description": "GET /processes/:id",
+      "filePath": "src/api/routes/processes.rs",
+      "lineNumbers": "75-84"
+    },
+    {
+      "functionality": "apiendpoints > process",
+      "description": "DELETE /processes/:id",
+      "filePath": "src/api/routes/processes.rs",
+      "lineNumbers": "85-95"
+    },
+    {
+      "functionality": "apiendpoints > process",
+      "description": "POST /processes/:id/stop",
+      "filePath": "src/api/routes/processes.rs",
+      "lineNumbers": "96-106"
+    },
+    {
+      "functionality": "apiendpoints > process",
+      "description": "POST /processes/:id/start",
+      "filePath": "src/api/routes/processes.rs",
+      "lineNumbers": "107-117"
+    },
+    {
+      "functionality": "apiendpoints > process",
+      "description": "POST /processes/:id/restart",
+      "filePath": "src/api/routes/processes.rs",
+      "lineNumbers": "118-128"
+    },
+    {
+      "functionality": "apiendpoints > process",
+      "description": "POST /processes/:id/reset",
+      "filePath": "src/api/routes/processes.rs",
+      "lineNumbers": "129-138"
+    },
+    {
+      "functionality": "apiendpoints > logs",
+      "description": "GET /processes/:id/logs?lines=N&type=all|stdout|stderr&date=YYYY-MM-DD",
+      "filePath": "src/api/routes/processes.rs",
+      "lineNumbers": "139-169"
+    },
+    {
+      "functionality": "apiendpoints > logs",
+      "description": "GET /processes/:id/logs/dates — list available rotated log dates",
+      "filePath": "src/api/routes/processes.rs",
+      "lineNumbers": "170-185"
+    },
+    {
+      "functionality": "apiendpoints > logs",
+      "description": "GET /processes/:id/logs/stream (SSE)",
+      "filePath": "src/api/routes/processes.rs",
+      "lineNumbers": "186-201"
+    },
+    {
+      "functionality": "apiendpoints > process",
+      "description": "PATCH /processes/:id — update config and apply",
+      "filePath": "src/api/routes/processes.rs",
+      "lineNumbers": "229-236"
+    },
+    {
       "functionality": "databaseoperations",
       "description": "Daemon shared state — process registry with disk persistence",
       "filePath": "src/daemon/state.rs",
@@ -777,136 +777,160 @@
       "lineNumbers": "9-12"
     },
     {
+      "functionality": "businesslogic > namespace",
+      "description": "Track which namespace groups are collapsed",
+      "filePath": "src/web/assets/app.js",
+      "lineNumbers": "13-15"
+    },
+    {
       "functionality": "businesslogic > init",
       "description": "Page load",
       "filePath": "src/web/assets/app.js",
-      "lineNumbers": "13-19"
+      "lineNumbers": "16-22"
     },
     {
       "functionality": "businesslogic > cleanup",
       "description": "Close SSE streams when page hides or unloads",
       "filePath": "src/web/assets/app.js",
-      "lineNumbers": "20-32"
+      "lineNumbers": "23-35"
     },
     {
       "functionality": "businesslogic > data",
       "description": "Fetch and render process list",
       "filePath": "src/web/assets/app.js",
-      "lineNumbers": "33-42"
+      "lineNumbers": "36-45"
     },
     {
       "functionality": "businesslogic > data",
       "description": "Fetch daemon health info",
       "filePath": "src/web/assets/app.js",
-      "lineNumbers": "49-60"
+      "lineNumbers": "52-63"
     },
     {
       "functionality": "businesslogic > render",
-      "description": "Build the process table rows",
+      "description": "Build the process table rows grouped by namespace",
       "filePath": "src/web/assets/app.js",
-      "lineNumbers": "61-90"
+      "lineNumbers": "64-71"
+    },
+    {
+      "functionality": "businesslogic > namespace",
+      "description": "Toggle collapse state of a namespace group",
+      "filePath": "src/web/assets/app.js",
+      "lineNumbers": "134-143"
+    },
+    {
+      "functionality": "businesslogic > namespace",
+      "description": "Start all stopped processes in a namespace",
+      "filePath": "src/web/assets/app.js",
+      "lineNumbers": "144-152"
+    },
+    {
+      "functionality": "businesslogic > namespace",
+      "description": "Stop all running processes in a namespace",
+      "filePath": "src/web/assets/app.js",
+      "lineNumbers": "153-161"
     },
     {
       "functionality": "businesslogic > render",
       "description": "Build sidebar process list",
       "filePath": "src/web/assets/app.js",
-      "lineNumbers": "91-105"
+      "lineNumbers": "162-176"
     },
     {
       "functionality": "businesslogic > navigation",
       "description": "Scroll to and highlight a process row in the table",
       "filePath": "src/web/assets/app.js",
-      "lineNumbers": "117-119"
+      "lineNumbers": "188-190"
     },
     {
       "functionality": "businesslogic > actions",
       "description": "Process control buttons",
       "filePath": "src/web/assets/app.js",
-      "lineNumbers": "133-171"
+      "lineNumbers": "204-242"
     },
     {
       "functionality": "businesslogic > navigation",
       "description": "Switch between sidebar views",
       "filePath": "src/web/assets/app.js",
-      "lineNumbers": "172-176"
+      "lineNumbers": "243-247"
     },
     {
       "functionality": "businesslogic > actions",
       "description": "Open edit view pre-filled with process config",
       "filePath": "src/web/assets/app.js",
-      "lineNumbers": "192-206"
+      "lineNumbers": "263-278"
     },
     {
       "functionality": "businesslogic > actions",
       "description": "Submit edited process config via PATCH",
       "filePath": "src/web/assets/app.js",
-      "lineNumbers": "219-269"
+      "lineNumbers": "291-343"
     },
     {
       "functionality": "businesslogic > actions",
       "description": "Submit start-process form",
       "filePath": "src/web/assets/app.js",
-      "lineNumbers": "272-283"
+      "lineNumbers": "346-358"
     },
     {
       "functionality": "businesslogic > logs",
       "description": "Open log panel and stream logs via SSE",
       "filePath": "src/web/assets/app.js",
-      "lineNumbers": "326-335"
+      "lineNumbers": "402-411"
     },
     {
       "functionality": "businesslogic > datedlogs",
       "description": "Fetch available log dates and render the nav bar",
       "filePath": "src/web/assets/app.js",
-      "lineNumbers": "349-360"
+      "lineNumbers": "425-436"
     },
     {
       "functionality": "businesslogic > datedlogs",
       "description": "Render the ← Today → navigation bar for historical logs",
       "filePath": "src/web/assets/app.js",
-      "lineNumbers": "361-374"
+      "lineNumbers": "437-450"
     },
     {
       "functionality": "businesslogic > datedlogs",
       "description": "Navigate one step older/newer in the rotated log list",
       "filePath": "src/web/assets/app.js",
-      "lineNumbers": "375-382"
+      "lineNumbers": "451-458"
     },
     {
       "functionality": "businesslogic > datedlogs",
       "description": "Fetch historical (or today's) log lines from the API",
       "filePath": "src/web/assets/app.js",
-      "lineNumbers": "396-409"
+      "lineNumbers": "472-485"
     },
     {
       "functionality": "businesslogic > logs",
       "description": "Start live SSE stream and append lines to outputId",
       "filePath": "src/web/assets/app.js",
-      "lineNumbers": "410-445"
+      "lineNumbers": "486-521"
     },
     {
       "functionality": "businesslogic > processdetail",
       "description": "Full-screen process detail view with live logs",
       "filePath": "src/web/assets/app.js",
-      "lineNumbers": "446-447"
+      "lineNumbers": "522-523"
     },
     {
       "functionality": "businesslogic > processdetail",
       "description": "Toolbar action buttons",
       "filePath": "src/web/assets/app.js",
-      "lineNumbers": "504-544"
+      "lineNumbers": "580-620"
     },
     {
       "functionality": "businesslogic > autorefresh",
       "description": "Periodic process list refresh",
       "filePath": "src/web/assets/app.js",
-      "lineNumbers": "545-558"
+      "lineNumbers": "621-634"
     },
     {
       "functionality": "utilities",
       "description": "Helpers",
       "filePath": "src/web/assets/app.js",
-      "lineNumbers": "559-583"
+      "lineNumbers": "635-659"
     }
   ],
   "css": [
@@ -926,13 +950,13 @@
       "functionality": "layout > processdetail",
       "description": "Full-screen process detail view",
       "filePath": "src/web/assets/style.css",
-      "lineNumbers": "347-354"
+      "lineNumbers": "375-382"
     },
     {
       "functionality": "styles > datedlogs",
       "description": "Date navigation bar for historical log browsing",
       "filePath": "src/web/assets/style.css",
-      "lineNumbers": "452-461"
+      "lineNumbers": "480-489"
     }
   ]
 }
