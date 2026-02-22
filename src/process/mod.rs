@@ -4,4 +4,5 @@ pub mod instance;
 pub mod manager;
 pub mod restarter;
 pub mod runner;
+pub mod scheduler;
 pub mod watcher;

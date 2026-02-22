@@ -38,6 +38,8 @@ pub struct ManagedProcess {
     pub log_tx: broadcast::Sender<LogLine>,
     /// Rolling file writer for this process
     pub log_writer: Option<LogWriter>,
+    /// Next scheduled run time for cron processes
+    pub cron_next_run: Option<DateTime<Utc>>,
 }
 
 impl ManagedProcess {
@@ -55,6 +57,7 @@ impl ManagedProcess {
             last_exit_code: None,
             log_tx,
             log_writer: None,
+            cron_next_run: None,
         }
     }
 
@@ -84,6 +87,8 @@ impl ManagedProcess {
             created_at: self.created_at,
             started_at: self.started_at,
             stopped_at: self.stopped_at,
+            cron: self.config.cron.clone(),
+            cron_next_run: self.cron_next_run,
         }
     }
 }
