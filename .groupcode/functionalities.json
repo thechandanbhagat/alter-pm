@@ -1,6 +1,6 @@
 {
   "version": "1.3.0",
-  "totalFunctionalities": 57,
+  "totalFunctionalities": 64,
   "functionalities": {
     "apiendpoints": {
       "level": 1,
@@ -81,23 +81,30 @@
         "businesslogic > logging",
         "businesslogic > logs",
         "businesslogic > namespace",
+        "businesslogic > navbtn",
         "businesslogic > navigation",
         "businesslogic > presets",
         "businesslogic > processdetail",
+        "businesslogic > processrow",
         "businesslogic > query",
         "businesslogic > render",
         "businesslogic > restarter",
         "businesslogic > run",
         "businesslogic > save",
+        "businesslogic > sidebarbtn",
+        "businesslogic > sidebarproc",
         "businesslogic > state",
         "businesslogic > submit",
+        "businesslogic > usedaemonhealth",
+        "businesslogic > useprocesses",
         "businesslogic > utilities",
         "businesslogic > windows"
       ],
-      "groupCount": 29,
+      "groupCount": 35,
       "fileTypes": [
         "js",
         "rs",
+        "ts",
         "tsx"
       ]
     },
@@ -184,7 +191,8 @@
       "children": [
         "utilities > crondescription",
         "utilities > cronparser",
-        "utilities > langlabel"
+        "utilities > langlabel",
+        "utilities > lastrun"
       ],
       "groupCount": 9,
       "fileTypes": [
@@ -493,15 +501,6 @@
       "groupCount": 0,
       "fileTypes": []
     },
-    "businesslogic > layout": {
-      "level": 2,
-      "parent": "businesslogic",
-      "children": [],
-      "groupCount": 1,
-      "fileTypes": [
-        "tsx"
-      ]
-    },
     "businesslogic > presets": {
       "level": 2,
       "parent": "businesslogic",
@@ -524,7 +523,7 @@
       "level": 2,
       "parent": "utilities",
       "children": [],
-      "groupCount": 1,
+      "groupCount": 2,
       "fileTypes": [
         "tsx"
       ]
@@ -572,6 +571,78 @@
       "groupCount": 1,
       "fileTypes": [
         "tsx"
+      ]
+    },
+    "businesslogic > processrow": {
+      "level": 2,
+      "parent": "businesslogic",
+      "children": [],
+      "groupCount": 1,
+      "fileTypes": [
+        "tsx"
+      ]
+    },
+    "utilities > lastrun": {
+      "level": 2,
+      "parent": "utilities",
+      "children": [],
+      "groupCount": 1,
+      "fileTypes": [
+        "tsx"
+      ]
+    },
+    "businesslogic > layout": {
+      "level": 2,
+      "parent": "businesslogic",
+      "children": [],
+      "groupCount": 1,
+      "fileTypes": [
+        "tsx"
+      ]
+    },
+    "businesslogic > navbtn": {
+      "level": 2,
+      "parent": "businesslogic",
+      "children": [],
+      "groupCount": 1,
+      "fileTypes": [
+        "tsx"
+      ]
+    },
+    "businesslogic > sidebarproc": {
+      "level": 2,
+      "parent": "businesslogic",
+      "children": [],
+      "groupCount": 1,
+      "fileTypes": [
+        "tsx"
+      ]
+    },
+    "businesslogic > sidebarbtn": {
+      "level": 2,
+      "parent": "businesslogic",
+      "children": [],
+      "groupCount": 1,
+      "fileTypes": [
+        "tsx"
+      ]
+    },
+    "businesslogic > useprocesses": {
+      "level": 2,
+      "parent": "businesslogic",
+      "children": [],
+      "groupCount": 1,
+      "fileTypes": [
+        "ts"
+      ]
+    },
+    "businesslogic > usedaemonhealth": {
+      "level": 2,
+      "parent": "businesslogic",
+      "children": [],
+      "groupCount": 1,
+      "fileTypes": [
+        "ts"
       ]
     }
   }

@@ -1106,18 +1106,6 @@
   "tsx": [
     {
       "functionality": "businesslogic",
-      "description": "Root app — layout shell + React Router",
-      "filePath": "web-ui/src/App.tsx",
-      "lineNumbers": "1-16"
-    },
-    {
-      "functionality": "businesslogic > layout",
-      "description": "Sidebar + content shell",
-      "filePath": "web-ui/src/App.tsx",
-      "lineNumbers": "17-134"
-    },
-    {
-      "functionality": "businesslogic",
       "description": "Cron expression input with presets + live preview",
       "filePath": "web-ui/src/components/CronExpressionInput.tsx",
       "lineNumbers": "1-4"
@@ -1142,51 +1130,123 @@
     },
     {
       "functionality": "businesslogic",
+      "description": "Start new process form",
+      "filePath": "web-ui/src/pages/StartPage.tsx",
+      "lineNumbers": "1-109"
+    },
+    {
+      "functionality": "businesslogic",
       "description": "Create cron job — split panel with inline code editor + schedule settings",
       "filePath": "web-ui/src/pages/CreateCronJobPage.tsx",
-      "lineNumbers": "1-15"
+      "lineNumbers": "1-17"
     },
     {
       "functionality": "configuration > interpreters",
       "description": "Supported interpreter presets",
       "filePath": "web-ui/src/pages/CreateCronJobPage.tsx",
-      "lineNumbers": "16-17"
+      "lineNumbers": "18-19"
     },
     {
       "functionality": "utilities > langlabel",
       "description": "Human-readable language label from interpreter value",
       "filePath": "web-ui/src/pages/CreateCronJobPage.tsx",
-      "lineNumbers": "77-82"
+      "lineNumbers": "79-84"
     },
     {
       "functionality": "businesslogic > state",
       "description": "Left panel — editor state",
       "filePath": "web-ui/src/pages/CreateCronJobPage.tsx",
-      "lineNumbers": "83-94"
+      "lineNumbers": "85-96"
     },
     {
       "functionality": "businesslogic > state",
       "description": "Right panel — schedule + settings",
       "filePath": "web-ui/src/pages/CreateCronJobPage.tsx",
-      "lineNumbers": "95-108"
+      "lineNumbers": "97-110"
     },
     {
       "functionality": "businesslogic > save",
       "description": "POST /api/v1/scripts to save code to daemon disk",
       "filePath": "web-ui/src/pages/CreateCronJobPage.tsx",
-      "lineNumbers": "109-124"
+      "lineNumbers": "111-126"
     },
     {
       "functionality": "businesslogic > run",
       "description": "Stream script output via SSE",
       "filePath": "web-ui/src/pages/CreateCronJobPage.tsx",
-      "lineNumbers": "125-126"
+      "lineNumbers": "127-128"
     },
     {
       "functionality": "businesslogic > submit",
       "description": "Create the cron job process using saved script path",
       "filePath": "web-ui/src/pages/CreateCronJobPage.tsx",
-      "lineNumbers": "181-189"
+      "lineNumbers": "183-191"
+    },
+    {
+      "functionality": "businesslogic",
+      "description": "Processes list view — namespace-grouped table",
+      "filePath": "web-ui/src/pages/ProcessesPage.tsx",
+      "lineNumbers": "1-22"
+    },
+    {
+      "functionality": "businesslogic > processrow",
+      "description": "Single process table row",
+      "filePath": "web-ui/src/pages/ProcessesPage.tsx",
+      "lineNumbers": "132-215"
+    },
+    {
+      "functionality": "businesslogic",
+      "description": "Process detail view — SSE log stream, date navigation, toolbar",
+      "filePath": "web-ui/src/pages/ProcessDetailPage.tsx",
+      "lineNumbers": "1-27"
+    },
+    {
+      "functionality": "businesslogic",
+      "description": "Cron Jobs list view — filtered processes with run history",
+      "filePath": "web-ui/src/pages/CronJobsPage.tsx",
+      "lineNumbers": "1-16"
+    },
+    {
+      "functionality": "utilities > crondescription",
+      "description": "Human-readable schedule description (duplicated for tree-shaking)",
+      "filePath": "web-ui/src/pages/CronJobsPage.tsx",
+      "lineNumbers": "17-33"
+    },
+    {
+      "functionality": "utilities > lastrun",
+      "description": "Format last cron run entry",
+      "filePath": "web-ui/src/pages/CronJobsPage.tsx",
+      "lineNumbers": "34-63"
+    },
+    {
+      "functionality": "businesslogic",
+      "description": "Root app — layout shell + React Router",
+      "filePath": "web-ui/src/App.tsx",
+      "lineNumbers": "1-19"
+    },
+    {
+      "functionality": "businesslogic > layout",
+      "description": "Sidebar + content shell",
+      "filePath": "web-ui/src/App.tsx",
+      "lineNumbers": "20-144"
+    },
+    {
+      "functionality": "businesslogic > navbtn",
+      "description": "Sidebar navigation link with active highlight",
+      "filePath": "web-ui/src/App.tsx",
+      "lineNumbers": "145-153"
+    },
+    {
+      "functionality": "businesslogic > sidebarproc",
+      "description": "Active process pill in sidebar",
+      "filePath": "web-ui/src/App.tsx",
+      "lineNumbers": "163-170"
+    },
+    {
+      "functionality": "businesslogic > sidebarbtn",
+      "description": "Footer action buttons",
+      "filePath": "web-ui/src/App.tsx",
+      "lineNumbers": "181-188"
     }
   ],
   "ts": [
@@ -1201,6 +1261,30 @@
       "description": "All fetch calls to the alter daemon REST API",
       "filePath": "web-ui/src/lib/api.ts",
       "lineNumbers": "1-16"
+    },
+    {
+      "functionality": "businesslogic",
+      "description": "Poll /api/v1/processes at a configurable interval",
+      "filePath": "web-ui/src/hooks/useProcesses.ts",
+      "lineNumbers": "1-6"
+    },
+    {
+      "functionality": "businesslogic > useprocesses",
+      "description": "Polls the process list; interval and toggle driven by settings",
+      "filePath": "web-ui/src/hooks/useProcesses.ts",
+      "lineNumbers": "7-36"
+    },
+    {
+      "functionality": "businesslogic",
+      "description": "Fetch daemon health info at a configurable interval",
+      "filePath": "web-ui/src/hooks/useDaemonHealth.ts",
+      "lineNumbers": "1-6"
+    },
+    {
+      "functionality": "businesslogic > usedaemonhealth",
+      "description": "Polls /system/health; interval driven by settings",
+      "filePath": "web-ui/src/hooks/useDaemonHealth.ts",
+      "lineNumbers": "7-32"
     }
   ]
 }
