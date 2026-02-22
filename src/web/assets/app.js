@@ -62,7 +62,7 @@ async function loadHealth() {
 function renderTable(processes) {
   const tbody = document.getElementById('process-tbody');
   if (!processes.length) {
-    tbody.innerHTML = '<tr><td colspan="8" class="empty">No processes running.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="9" class="empty">No processes running.</td></tr>';
     return;
   }
   tbody.innerHTML = processes.map(p => `
@@ -74,6 +74,7 @@ function renderTable(processes) {
       <td>${p.uptime_secs != null ? formatUptime(p.uptime_secs) : '-'}</td>
       <td>${p.restart_count}</td>
       <td>${p.watch ? '✓' : '-'}</td>
+      <td class="dim" title="${formatLastRun(p)}">${formatLastRun(p)}</td>
       <td>
         ${p.status === 'running'
           ? `<button class="action-btn" onclick="restartProcess('${p.id}')">Restart</button>
@@ -155,6 +156,17 @@ async function deleteProcess(id, name) {
 async function saveState() {
   await fetch(`${API}/system/save`, { method: 'POST' });
   alert('State saved.');
+}
+
+async function shutdownDaemon() {
+  if (!confirm('Shutdown the alter daemon? All managed processes will keep running but the daemon will stop.')) return;
+  await fetch(`${API}/system/shutdown`, { method: 'POST' }).catch(() => {});
+  const statusEl = document.getElementById('daemon-status');
+  statusEl.textContent = '●  disconnected';
+  statusEl.className = 'badge badge-err';
+  clearInterval(autoRefreshTimer);
+  autoRefreshTimer = null;
+  document.getElementById('auto-refresh').checked = false;
 }
 
 // @group BusinessLogic > Navigation : Switch between sidebar views
@@ -550,6 +562,19 @@ function formatUptime(secs) {
   if (secs < 3600) return `${Math.floor(secs/60)}m ${secs%60}s`;
   if (secs < 86400) return `${Math.floor(secs/3600)}h ${Math.floor((secs%3600)/60)}m`;
   return `${Math.floor(secs/86400)}d ${Math.floor((secs%86400)/3600)}h`;
+}
+
+function formatLastRun(p) {
+  const ts = p.status === 'running' ? p.started_at : (p.stopped_at ?? p.started_at);
+  if (!ts) return '-';
+  const d = new Date(ts);
+  const now = Date.now();
+  const diffMs = now - d.getTime();
+  const diffSecs = Math.floor(diffMs / 1000);
+  if (diffSecs < 60)  return `${diffSecs}s ago`;
+  if (diffSecs < 3600) return `${Math.floor(diffSecs / 60)}m ago`;
+  if (diffSecs < 86400) return `${Math.floor(diffSecs / 3600)}h ago`;
+  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 }
 
 function esc(str) {

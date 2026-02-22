@@ -34,6 +34,7 @@
         <div id="uptime-label" class="dim sidebar-uptime"></div>
         <div class="sidebar-actions">
           <button class="sidebar-btn" onclick="saveState()" title="Save state">💾 Save</button>
+          <button class="sidebar-btn sidebar-btn-danger" onclick="shutdownDaemon()" title="Shutdown daemon">⏻ Shutdown</button>
           <label class="sidebar-btn check-label" title="Auto-refresh every 3s">
             <input type="checkbox" id="auto-refresh" checked onchange="toggleAutoRefresh()"/>
             Auto-refresh
@@ -63,6 +64,7 @@
                 <th>Uptime</th>
                 <th>Restarts</th>
                 <th>Watch</th>
+                <th>Last Run</th>
                 <th>Actions</th>
               </tr>
             </thead>
