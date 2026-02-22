@@ -6,6 +6,10 @@ let activeLogStream = null;
 let activeLogProcessId = null;
 let activeDetailProcess = null; // { id, name, cwd, status }
 
+// @group BusinessLogic > DatedLogs : State for browsing historical daily log files
+let logDates      = [];   // sorted newest-first list of available date strings
+let logDateIndex  = -1;   // -1 = today (live), 0..N = index into logDates[]
+
 // @group BusinessLogic > Init : Page load
 window.addEventListener('DOMContentLoaded', () => {
   loadProcesses();
@@ -301,62 +305,132 @@ async function startProcess(event) {
 }
 
 // @group BusinessLogic > Logs : Open log panel and stream logs via SSE
-function openLogs(id, name) {
+async function openLogs(id, name) {
   const section = document.getElementById('log-section');
-  const output = document.getElementById('log-output');
-  const title = document.getElementById('log-title');
+  const output  = document.getElementById('log-output');
+  const title   = document.getElementById('log-title');
 
   title.textContent = `Logs — ${name}`;
-  output.innerHTML = '';
+  output.innerHTML  = '';
   section.style.display = 'block';
 
   // Close any existing stream
-  if (activeLogStream) activeLogStream.close();
-
+  if (activeLogStream) { activeLogStream.close(); activeLogStream = null; }
   activeLogProcessId = id;
+  logDateIndex = -1;
 
-  // Load last 100 lines first
-  fetch(`${API}/processes/${id}/logs?lines=100`)
+  // Fetch available rotated dates and render the date-nav bar
+  await loadLogDates(id, 'log-date-nav', 'log-date-label');
+
+  // Load today's last 100 lines + start live SSE
+  loadHistoricalLogs(id, null, 'log-output');
+  startLiveStream(id, 'log-output');
+}
+
+// @group BusinessLogic > DatedLogs : Fetch available log dates and render the nav bar
+async function loadLogDates(id, navId, labelId) {
+  try {
+    const res = await fetch(`${API}/processes/${id}/logs/dates`);
+    const data = await res.json();
+    logDates = data.dates || [];
+  } catch {
+    logDates = [];
+  }
+  renderLogDateNav(navId, labelId, id, 'log-output');
+}
+
+// @group BusinessLogic > DatedLogs : Render the ← Today → navigation bar for historical logs
+function renderLogDateNav(navId, labelId, id, outputId) {
+  const nav = document.getElementById(navId);
+  if (!nav) return;
+  const isToday = (logDateIndex === -1);
+  const label   = isToday ? 'Today (live)' : logDates[logDateIndex];
+
+  nav.innerHTML = `
+    <button class="log-nav-btn" onclick="stepLogDate(-1,'${id}','${outputId}')" ${logDateIndex >= logDates.length - 1 ? 'disabled' : ''}>&#8592; Older</button>
+    <span class="log-nav-label" id="${labelId}">${label}</span>
+    <button class="log-nav-btn" onclick="stepLogDate(1,'${id}','${outputId}')"  ${isToday ? 'disabled' : ''}>Newer &#8594;</button>
+  `;
+}
+
+// @group BusinessLogic > DatedLogs : Navigate one step older/newer in the rotated log list
+function stepLogDate(direction, id, outputId) {
+  const newIndex = logDateIndex - direction; // -1=today, 0=logDates[0] (newest dated)
+  if (newIndex < -1 || newIndex >= logDates.length) return;
+  logDateIndex = newIndex;
+
+  const isToday = (logDateIndex === -1);
+
+  // Stop live stream when browsing history; re-start when back to today
+  if (activeLogStream) { activeLogStream.close(); activeLogStream = null; }
+
+  // Re-render nav
+  renderLogDateNav('log-date-nav', 'log-date-label', id, outputId);
+
+  // Clear output and load
+  document.getElementById(outputId).innerHTML = '';
+  const dateParam = isToday ? null : logDates[logDateIndex];
+  loadHistoricalLogs(id, dateParam, outputId);
+  if (isToday) startLiveStream(id, outputId);
+}
+
+// @group BusinessLogic > DatedLogs : Fetch historical (or today's) log lines from the API
+function loadHistoricalLogs(id, date, outputId) {
+  const qs = date ? `?lines=500&date=${date}` : '?lines=200';
+  fetch(`${API}/processes/${id}/logs${qs}`)
     .then(r => r.json())
     .then(data => {
-      (data.lines || []).forEach(entry => appendLogLine(entry.stream, entry.content));
+      const output = document.getElementById(outputId);
+      if (!output) return;
+      (data.lines || []).forEach(entry => appendLineToEl(output, entry.stream, entry.content));
       output.scrollTop = output.scrollHeight;
-    });
+    })
+    .catch(() => {});
+}
 
-  // Start SSE stream for live lines
+// @group BusinessLogic > Logs : Start live SSE stream and append lines to outputId
+function startLiveStream(id, outputId) {
+  if (activeLogStream) { activeLogStream.close(); activeLogStream = null; }
   activeLogStream = new EventSource(`${API}/processes/${id}/logs/stream`);
   activeLogStream.onmessage = (e) => {
     try {
-      const line = JSON.parse(e.data);
-      appendLogLine(line.stream, line.content);
+      const line   = JSON.parse(e.data);
+      const output = document.getElementById(outputId);
+      if (!output) return;
+      appendLineToEl(output, line.stream, line.content);
       output.scrollTop = output.scrollHeight;
     } catch {}
   };
-  // Close (don't auto-reconnect) when process stops or connection drops
   activeLogStream.onerror = () => {
     if (activeLogStream) { activeLogStream.close(); activeLogStream = null; }
   };
 }
 
 function appendLogLine(stream, content) {
-  const output = document.getElementById('log-output');
+  appendLineToEl(document.getElementById('log-output'), stream, content);
+}
+
+function appendLineToEl(el, stream, content) {
+  if (!el) return;
   const div = document.createElement('div');
   div.className = `log-line ${stream === 'stderr' ? 'log-err' : 'log-out'}`;
   div.textContent = content;
-  output.appendChild(div);
+  el.appendChild(div);
 }
 
 function closeLogs() {
   if (activeLogStream) { activeLogStream.close(); activeLogStream = null; }
   document.getElementById('log-section').style.display = 'none';
+  logDates = []; logDateIndex = -1;
 }
 
 // @group BusinessLogic > ProcessDetail : Full-screen process detail view with live logs
-function openProcessDetail(id, name, cwd, status) {
+async function openProcessDetail(id, name, cwd, status) {
   // Close old stream if switching processes
   closeDetailStream();
 
   activeDetailProcess = { id, name, cwd: cwd || '', status };
+  logDateIndex = -1;
 
   // Switch to detail view
   ['processes', 'start', 'edit', 'process-detail'].forEach(v => {
@@ -372,28 +446,16 @@ function openProcessDetail(id, name, cwd, status) {
   updateDetailHeader();
 
   // Clear and load logs
-  const output = document.getElementById('detail-log-output');
-  output.innerHTML = '';
+  document.getElementById('detail-log-output').innerHTML = '';
 
-  fetch(`${API}/processes/${id}/logs?lines=200`)
-    .then(r => r.json())
-    .then(data => {
-      (data.lines || []).forEach(entry => appendDetailLogLine(entry.stream, entry.content));
-      output.scrollTop = output.scrollHeight;
-    });
+  // Fetch available dates and render the date nav bar for the detail view
+  await loadLogDates(id, 'detail-log-date-nav', 'detail-log-date-label');
 
-  // SSE live stream
-  activeLogStream = new EventSource(`${API}/processes/${id}/logs/stream`);
-  activeLogStream.onmessage = (e) => {
-    try {
-      const line = JSON.parse(e.data);
-      appendDetailLogLine(line.stream, line.content);
-      output.scrollTop = output.scrollHeight;
-    } catch {}
-  };
-  activeLogStream.onerror = () => {
-    if (activeLogStream) { activeLogStream.close(); activeLogStream = null; }
-  };
+  // Override renderLogDateNav so its buttons target the detail output
+  renderLogDateNav('detail-log-date-nav', 'detail-log-date-label', id, 'detail-log-output');
+
+  loadHistoricalLogs(id, null, 'detail-log-output');
+  startLiveStream(id, 'detail-log-output');
 }
 
 function updateDetailHeader() {
@@ -408,11 +470,7 @@ function updateDetailHeader() {
 }
 
 function appendDetailLogLine(stream, content) {
-  const output = document.getElementById('detail-log-output');
-  const div = document.createElement('div');
-  div.className = `log-line ${stream === 'stderr' ? 'log-err' : 'log-out'}`;
-  div.textContent = content;
-  output.appendChild(div);
+  appendLineToEl(document.getElementById('detail-log-output'), stream, content);
 }
 
 function closeDetailStream() {
