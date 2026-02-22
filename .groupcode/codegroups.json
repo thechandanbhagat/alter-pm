@@ -1228,25 +1228,55 @@
       "functionality": "businesslogic > layout",
       "description": "Sidebar + content shell",
       "filePath": "web-ui/src/App.tsx",
-      "lineNumbers": "20-144"
+      "lineNumbers": "20-146"
     },
     {
       "functionality": "businesslogic > navbtn",
       "description": "Sidebar navigation link with active highlight",
       "filePath": "web-ui/src/App.tsx",
-      "lineNumbers": "145-153"
+      "lineNumbers": "147-155"
     },
     {
       "functionality": "businesslogic > sidebarproc",
       "description": "Active process pill in sidebar",
       "filePath": "web-ui/src/App.tsx",
-      "lineNumbers": "163-170"
+      "lineNumbers": "165-172"
     },
     {
       "functionality": "businesslogic > sidebarbtn",
       "description": "Footer action buttons",
       "filePath": "web-ui/src/App.tsx",
-      "lineNumbers": "181-188"
+      "lineNumbers": "183-190"
+    },
+    {
+      "functionality": "businesslogic",
+      "description": "Settings page — all user-configurable preferences",
+      "filePath": "web-ui/src/pages/SettingsPage.tsx",
+      "lineNumbers": "1-12"
+    },
+    {
+      "functionality": "utilities > styles",
+      "description": "Shared style tokens",
+      "filePath": "web-ui/src/pages/SettingsPage.tsx",
+      "lineNumbers": "13-49"
+    },
+    {
+      "functionality": "businesslogic > toggle",
+      "description": "iOS-style toggle switch",
+      "filePath": "web-ui/src/pages/SettingsPage.tsx",
+      "lineNumbers": "50-79"
+    },
+    {
+      "functionality": "businesslogic > settingrow",
+      "description": "A single setting row with label, description, and control",
+      "filePath": "web-ui/src/pages/SettingsPage.tsx",
+      "lineNumbers": "82-101"
+    },
+    {
+      "functionality": "businesslogic > settingspage",
+      "description": "Main settings page component",
+      "filePath": "web-ui/src/pages/SettingsPage.tsx",
+      "lineNumbers": "102-281"
     }
   ],
   "ts": [

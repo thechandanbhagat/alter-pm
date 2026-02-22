@@ -1,6 +1,6 @@
 {
   "version": "1.3.0",
-  "totalFunctionalities": 64,
+  "totalFunctionalities": 68,
   "functionalities": {
     "apiendpoints": {
       "level": 1,
@@ -91,16 +91,19 @@
         "businesslogic > restarter",
         "businesslogic > run",
         "businesslogic > save",
+        "businesslogic > settingrow",
+        "businesslogic > settingspage",
         "businesslogic > sidebarbtn",
         "businesslogic > sidebarproc",
         "businesslogic > state",
         "businesslogic > submit",
+        "businesslogic > toggle",
         "businesslogic > usedaemonhealth",
         "businesslogic > useprocesses",
         "businesslogic > utilities",
         "businesslogic > windows"
       ],
-      "groupCount": 35,
+      "groupCount": 36,
       "fileTypes": [
         "js",
         "rs",
@@ -192,7 +195,8 @@
         "utilities > crondescription",
         "utilities > cronparser",
         "utilities > langlabel",
-        "utilities > lastrun"
+        "utilities > lastrun",
+        "utilities > styles"
       ],
       "groupCount": 9,
       "fileTypes": [
@@ -619,6 +623,42 @@
       ]
     },
     "businesslogic > sidebarbtn": {
+      "level": 2,
+      "parent": "businesslogic",
+      "children": [],
+      "groupCount": 1,
+      "fileTypes": [
+        "tsx"
+      ]
+    },
+    "utilities > styles": {
+      "level": 2,
+      "parent": "utilities",
+      "children": [],
+      "groupCount": 1,
+      "fileTypes": [
+        "tsx"
+      ]
+    },
+    "businesslogic > toggle": {
+      "level": 2,
+      "parent": "businesslogic",
+      "children": [],
+      "groupCount": 1,
+      "fileTypes": [
+        "tsx"
+      ]
+    },
+    "businesslogic > settingrow": {
+      "level": 2,
+      "parent": "businesslogic",
+      "children": [],
+      "groupCount": 1,
+      "fileTypes": [
+        "tsx"
+      ]
+    },
+    "businesslogic > settingspage": {
       "level": 2,
       "parent": "businesslogic",
       "children": [],
