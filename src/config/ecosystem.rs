@@ -2,6 +2,7 @@
 
 use crate::config::daemon_config::DaemonConfig;
 use anyhow::{Context, Result};
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::Path;
@@ -41,6 +42,10 @@ pub struct AppConfig {
     pub error_file: Option<String>,
     #[serde(default = "default_max_log_size_mb")]
     pub max_log_size_mb: u64,
+    /// Cron expression for scheduled execution (e.g. "0 * * * *")
+    pub cron: Option<String>,
+    pub cron_last_run: Option<DateTime<Utc>>,
+    pub cron_next_run: Option<DateTime<Utc>>,
 }
 
 fn default_namespace() -> String { "default".to_string() }

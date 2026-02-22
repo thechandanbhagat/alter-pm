@@ -19,6 +19,8 @@ pub struct StartRequest {
     pub watch_paths: Option<Vec<String>>,
     pub watch_ignore: Option<Vec<String>>,
     pub max_log_size_mb: Option<u64>,
+    /// Cron expression for scheduled execution (e.g. "0 * * * *")
+    pub cron: Option<String>,
 }
 
 // @group Types > Request : Load an ecosystem config file

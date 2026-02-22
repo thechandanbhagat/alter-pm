@@ -14,6 +14,7 @@ pub enum ProcessStatus {
     Crashed,
     Errored,
     Watching,
+    Sleeping,  // cron job waiting for next scheduled run
 }
 
 impl fmt::Display for ProcessStatus {
@@ -26,6 +27,7 @@ impl fmt::Display for ProcessStatus {
             ProcessStatus::Crashed  => write!(f, "crashed"),
             ProcessStatus::Errored  => write!(f, "errored"),
             ProcessStatus::Watching => write!(f, "watching"),
+            ProcessStatus::Sleeping => write!(f, "sleeping"),
         }
     }
 }
