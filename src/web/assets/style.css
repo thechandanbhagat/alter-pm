@@ -433,6 +433,14 @@ tbody td { padding: 10px 14px; vertical-align: middle; }
   flex-wrap: wrap;
 }
 
+.action-btn-terminal {
+  color: var(--green);
+  border-color: rgba(61,220,132,.3);
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.action-btn-terminal:hover { background: rgba(61,220,132,.1); }
 .action-btn-vscode {
   color: #4fc3f7;
   border-color: rgba(79,195,247,.3);

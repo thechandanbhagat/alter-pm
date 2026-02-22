@@ -612,6 +612,12 @@ async function detailDelete() {
   loadProcesses();
 }
 
+// @group BusinessLogic > ProcessDetail : Open a terminal window in the process cwd
+async function detailOpenTerminal() {
+  if (!activeDetailProcess) return;
+  await fetch(`/api/v1/processes/${activeDetailProcess.id}/terminal`, { method: 'POST' });
+}
+
 function detailOpenVSCode() {
   if (!activeDetailProcess) return;
   const cwd = activeDetailProcess.cwd;

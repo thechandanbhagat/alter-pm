@@ -23,6 +23,7 @@ pub fn router(state: Arc<DaemonState>) -> Router {
         .route("/{id}/start", post(start_stopped_process))
         .route("/{id}/restart", post(restart_process))
         .route("/{id}/reset", post(reset_process))
+        .route("/{id}/terminal", post(open_terminal))
         .route("/{id}/logs", get(get_logs))
         .route("/{id}/logs/dates", get(get_log_dates))
         .route("/{id}/logs/stream", get(stream_logs))
@@ -261,6 +262,44 @@ async fn update_process(
     let info = state.manager.update(id, config).await.map_err(ApiError::from)?;
     let s = state.clone(); tokio::spawn(async move { if let Err(e) = s.save_to_disk().await { tracing::warn!("auto-save failed: {e}"); } });
     Ok(Json(json!(info)))
+}
+
+// @group APIEndpoints > Process : POST /processes/:id/terminal
+// Opens a new visible terminal window in the process's working directory.
+// On Windows: spawns Windows Terminal (wt) falling back to cmd.exe.
+// On Unix: spawns xterm as a fallback.
+async fn open_terminal(
+    State(state): State<Arc<DaemonState>>,
+    Path(id_str): Path<String>,
+) -> Result<Json<Value>, ApiError> {
+    let id = resolve(&state, &id_str).await?;
+    let info = state.manager.get(id).await.map_err(ApiError::from)?;
+    let cwd = info.cwd.unwrap_or_else(|| ".".to_string());
+
+    #[cfg(target_os = "windows")]
+    {
+        // Try Windows Terminal first, fall back to cmd.exe
+        let launched = std::process::Command::new("wt")
+            .args(["--startingDirectory", &cwd])
+            .spawn()
+            .is_ok();
+        if !launched {
+            std::process::Command::new("cmd")
+                .args(["/C", "start", "cmd.exe"])
+                .current_dir(&cwd)
+                .spawn()
+                .map_err(|e| ApiError::internal(format!("failed to open terminal: {e}")))?;
+        }
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        std::process::Command::new("xterm")
+            .current_dir(&cwd)
+            .spawn()
+            .map_err(|e| ApiError::internal(format!("failed to open terminal: {e}")))?;
+    }
+
+    Ok(Json(json!({ "success": true, "message": "terminal opened" })))
 }
 
 async fn resolve(state: &DaemonState, id_str: &str) -> Result<Uuid, ApiError> {
