@@ -7,13 +7,15 @@ use crate::models::process_status::ProcessStatus;
 use crate::process::instance::{LogLine, ManagedProcess};
 use crate::process::restarter::{watch_and_restart, RestartEvent};
 use crate::process::runner::{spawn_process, wait_for_exit};
+use crate::process::scheduler::{next_run, CronScheduler};
 use crate::process::watcher::FileWatcher;
 use anyhow::{anyhow, Result};
 use chrono::Utc;
 use dashmap::DashMap;
+use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::mpsc;
-use tokio::sync::{broadcast, RwLock};
+use tokio::sync::{broadcast, Mutex, RwLock};
 use uuid::Uuid;
 
 pub type ProcessRegistry = DashMap<Uuid, Arc<RwLock<ManagedProcess>>>;
@@ -21,12 +23,19 @@ pub type ProcessRegistry = DashMap<Uuid, Arc<RwLock<ManagedProcess>>>;
 pub struct ProcessManager {
     pub registry: Arc<ProcessRegistry>,
     restart_tx: mpsc::Sender<RestartEvent>,
+    /// Cron trigger channel — scheduler sends process_id when the next tick fires
+    cron_trigger_tx: mpsc::Sender<Uuid>,
+    /// Active CronScheduler handles, keyed by process_id
+    cron_schedulers: Arc<Mutex<HashMap<Uuid, CronScheduler>>>,
 }
 
 impl ProcessManager {
     pub fn new() -> Self {
         let registry = Arc::new(DashMap::new());
         let (restart_tx, restart_rx) = mpsc::channel::<RestartEvent>(256);
+        let (cron_trigger_tx, cron_trigger_rx) = mpsc::channel::<Uuid>(256);
+        let cron_schedulers: Arc<Mutex<HashMap<Uuid, CronScheduler>>> =
+            Arc::new(Mutex::new(HashMap::new()));
 
         let reg_clone = Arc::clone(&registry);
         let rtx_clone = restart_tx.clone();
@@ -36,7 +45,21 @@ impl ProcessManager {
             Self::restart_loop(reg_clone, restart_rx, rtx_clone).await;
         });
 
-        Self { registry, restart_tx }
+        let reg_cron = Arc::clone(&registry);
+        let cron_sched_clone = Arc::clone(&cron_schedulers);
+        let ctrigger_tx_clone = cron_trigger_tx.clone();
+
+        // @group BusinessLogic > Cron : Background task that handles cron trigger events
+        tokio::spawn(async move {
+            Self::cron_trigger_loop(reg_cron, cron_trigger_rx, cron_sched_clone, ctrigger_tx_clone).await;
+        });
+
+        Self {
+            registry,
+            restart_tx,
+            cron_trigger_tx,
+            cron_schedulers,
+        }
     }
 
     // @group BusinessLogic > Lifecycle : Start a new process from config
@@ -63,13 +86,45 @@ impl ProcessManager {
         info
     }
 
+    // @group BusinessLogic > Lifecycle : Register a cron process as Sleeping without spawning (used on restore)
+    pub async fn register_sleeping(&self, config: AppConfig) -> Result<ProcessInfo> {
+        let mut process = ManagedProcess::new(config.clone());
+        process.status = ProcessStatus::Sleeping;
+        if let Some(expr) = &config.cron {
+            process.cron_next_run = next_run(expr);
+        }
+        let id = process.id;
+        let info = process.to_info();
+        let arc = Arc::new(RwLock::new(process));
+        self.registry.insert(id, Arc::clone(&arc));
+
+        // Start the scheduler so it fires at the right time
+        if let Some(expr) = &config.cron {
+            let scheduler = CronScheduler::start(id, expr, self.cron_trigger_tx.clone())?;
+            self.cron_schedulers.lock().await.insert(id, scheduler);
+        }
+
+        Ok(info)
+    }
+
     // @group BusinessLogic > Lifecycle : Stop a running process
     pub async fn stop(&self, id: Uuid) -> Result<ProcessInfo> {
         let arc = self.get_arc(id)?;
         let mut proc = arc.write().await;
 
-        if proc.status != ProcessStatus::Running && proc.status != ProcessStatus::Watching {
-            return Err(anyhow!("process '{}' is not running", proc.config.name));
+        let stoppable = matches!(
+            proc.status,
+            ProcessStatus::Running | ProcessStatus::Watching | ProcessStatus::Sleeping
+        );
+        if !stoppable {
+            return Err(anyhow!("process '{}' is not running or sleeping", proc.config.name));
+        }
+
+        // Kill the cron scheduler if one exists
+        if proc.config.cron.is_some() {
+            if let Some(sched) = self.cron_schedulers.lock().await.remove(&id) {
+                sched.abort();
+            }
         }
 
         proc.status = ProcessStatus::Stopping;
@@ -81,6 +136,7 @@ impl ProcessManager {
         proc.status = ProcessStatus::Stopped;
         proc.pid = None;
         proc.stopped_at = Some(Utc::now());
+        proc.cron_next_run = None;
 
         Ok(proc.to_info())
     }
@@ -90,7 +146,11 @@ impl ProcessManager {
         {
             let arc = self.get_arc(id)?;
             let proc = arc.read().await;
-            if proc.status == ProcessStatus::Running || proc.status == ProcessStatus::Watching {
+            let is_active = matches!(
+                proc.status,
+                ProcessStatus::Running | ProcessStatus::Watching | ProcessStatus::Sleeping
+            );
+            if is_active {
                 drop(proc);
                 self.stop(id).await?;
             }
@@ -106,10 +166,18 @@ impl ProcessManager {
         {
             let arc = self.get_arc(id)?;
             let proc = arc.read().await;
-            if proc.status == ProcessStatus::Running || proc.status == ProcessStatus::Watching {
+            let is_active = matches!(
+                proc.status,
+                ProcessStatus::Running | ProcessStatus::Watching | ProcessStatus::Sleeping
+            );
+            if is_active {
                 drop(proc);
                 self.stop(id).await?;
             }
+        }
+        // Clean up scheduler if not already removed by stop()
+        if let Some(sched) = self.cron_schedulers.lock().await.remove(&id) {
+            sched.abort();
         }
         self.registry.remove(&id);
         Ok(())
@@ -117,13 +185,16 @@ impl ProcessManager {
 
     // @group BusinessLogic > Lifecycle : Update config for a process (stop → patch config → restart if was running)
     pub async fn update(&self, id: Uuid, patch: AppConfig) -> Result<ProcessInfo> {
-        let was_running = {
+        let was_active = {
             let arc = self.get_arc(id)?;
             let proc = arc.read().await;
-            proc.status == ProcessStatus::Running || proc.status == ProcessStatus::Watching
+            matches!(
+                proc.status,
+                ProcessStatus::Running | ProcessStatus::Watching | ProcessStatus::Sleeping
+            )
         };
 
-        if was_running {
+        if was_active {
             self.stop(id).await?;
         }
 
@@ -133,7 +204,7 @@ impl ProcessManager {
             proc.config = patch;
         }
 
-        if was_running {
+        if was_active {
             self.do_spawn(id).await?;
         }
 
@@ -200,6 +271,7 @@ impl ProcessManager {
             proc.status = ProcessStatus::Starting;
             proc.started_at = Some(Utc::now());
             proc.stopped_at = None;
+            proc.cron_next_run = None;
 
             // Open / rotate log files
             let log_dir = crate::config::paths::process_log_dir(&proc.config.name);
@@ -228,11 +300,23 @@ impl ProcessManager {
         {
             let mut proc = arc.write().await;
             proc.pid = pid;
-            proc.status = if config.watch { ProcessStatus::Watching } else { ProcessStatus::Running };
+            // Cron jobs don't use autorestart — they're driven by the scheduler.
+            // Watch mode and normal mode keep existing behaviour.
+            proc.status = if config.watch {
+                ProcessStatus::Watching
+            } else {
+                ProcessStatus::Running
+            };
         }
 
-        // Spawn background task to wait for process exit
-        let rtx = self.restart_tx.clone();
+        // For cron jobs we force autorestart=false so watch_and_restart just fires Exited.
+        // The cron_trigger_loop handles re-spawning on the next tick.
+        let effective_autorestart = if config.cron.is_some() {
+            false
+        } else {
+            config.autorestart
+        };
+
         let restart_count = {
             let proc = arc.read().await;
             proc.restart_count
@@ -242,9 +326,11 @@ impl ProcessManager {
             wait_for_exit(child, exit_tx).await;
         });
 
+        // @group BusinessLogic > Restarter : Spawn the exit-watcher / auto-restart task
+        let rtx = self.restart_tx.clone();
         tokio::spawn(watch_and_restart(
             id,
-            config.autorestart,
+            effective_autorestart,
             config.max_restarts,
             config.restart_delay_ms,
             restart_count,
@@ -252,7 +338,7 @@ impl ProcessManager {
             rtx,
         ));
 
-        // Start file watcher if enabled
+        // Start file watcher if watch mode is enabled
         if config.watch && !config.watch_paths.is_empty() {
             let watch_restart_tx = {
                 let (tx, mut rx) = mpsc::channel::<Uuid>(8);
@@ -268,6 +354,16 @@ impl ProcessManager {
             };
 
             let _ = FileWatcher::start(id, &config.watch_paths, &config.watch_ignore, watch_restart_tx);
+        }
+
+        // @group BusinessLogic > Cron : Start (or replace) the cron scheduler for this process
+        if let Some(expr) = &config.cron {
+            // Remove old scheduler if we're restarting
+            if let Some(old) = self.cron_schedulers.lock().await.remove(&id) {
+                old.abort();
+            }
+            let scheduler = CronScheduler::start(id, expr, self.cron_trigger_tx.clone())?;
+            self.cron_schedulers.lock().await.insert(id, scheduler);
         }
 
         Ok(())
@@ -361,10 +457,19 @@ impl ProcessManager {
                 RestartEvent::Exited { process_id, exit_code } => {
                     if let Some(arc) = registry.get(&process_id) {
                         let mut proc = arc.write().await;
-                        proc.status = ProcessStatus::Stopped;
+                        // Cron jobs transition to Sleeping instead of Stopped
+                        proc.status = if proc.config.cron.is_some() {
+                            ProcessStatus::Sleeping
+                        } else {
+                            ProcessStatus::Stopped
+                        };
                         proc.pid = None;
                         proc.last_exit_code = exit_code;
                         proc.stopped_at = Some(Utc::now());
+                        // Update next run time for display
+                        if let Some(expr) = &proc.config.cron.clone() {
+                            proc.cron_next_run = next_run(expr);
+                        }
                     }
                 }
 
@@ -382,6 +487,129 @@ impl ProcessManager {
                         );
                     }
                 }
+            }
+        }
+    }
+
+    // @group BusinessLogic > Cron : Background loop that re-spawns cron processes on each tick
+    async fn cron_trigger_loop(
+        registry: Arc<ProcessRegistry>,
+        mut rx: mpsc::Receiver<Uuid>,
+        cron_schedulers: Arc<Mutex<HashMap<Uuid, CronScheduler>>>,
+        cron_trigger_tx: mpsc::Sender<Uuid>,
+    ) {
+        while let Some(process_id) = rx.recv().await {
+            if let Some(arc) = registry.get(&process_id) {
+                let arc = Arc::clone(arc.value());
+                let cron_schedulers = Arc::clone(&cron_schedulers);
+                let trigger_tx = cron_trigger_tx.clone();
+
+                tokio::spawn(async move {
+                    let config = {
+                        let proc = arc.read().await;
+                        // Only fire if still in Sleeping state (not manually stopped)
+                        if proc.status != ProcessStatus::Sleeping {
+                            return;
+                        }
+                        proc.config.clone()
+                    };
+
+                    // Transition to Starting
+                    {
+                        let mut proc = arc.write().await;
+                        proc.status = ProcessStatus::Starting;
+                        proc.started_at = Some(Utc::now());
+                        proc.stopped_at = None;
+                        proc.cron_next_run = None;
+                    }
+
+                    let log_dir = crate::config::paths::process_log_dir(&config.name);
+                    let _ = std::fs::create_dir_all(&log_dir);
+
+                    let log_tx = {
+                        let mut proc = arc.write().await;
+                        if let Ok(writer) = LogWriter::new(&log_dir, proc.log_tx.clone()) {
+                            proc.log_writer = Some(writer);
+                        }
+                        proc.log_tx.clone()
+                    };
+
+                    let (exit_tx, exit_rx) = mpsc::channel::<crate::process::runner::RunResult>(1);
+
+                    // We need a local restart_tx to wire up watch_and_restart.
+                    // Since cron jobs use autorestart=false, watch_and_restart will just send Exited
+                    // which the restart_loop will catch and transition back to Sleeping.
+                    // We create a one-shot dummy channel — the Exited event goes to restart_loop.
+                    // But we don't have access to restart_tx here, so we use a side channel approach:
+                    // Send a RestartEvent::Exited through a local mpsc that immediately updates state.
+                    let (local_restart_tx, mut local_restart_rx) =
+                        mpsc::channel::<crate::process::restarter::RestartEvent>(4);
+                    let arc2 = Arc::clone(&arc);
+
+                    // Handle the exit event inline
+                    tokio::spawn(async move {
+                        if let Some(event) = local_restart_rx.recv().await {
+                            if let crate::process::restarter::RestartEvent::Exited { exit_code, .. } = event {
+                                let mut proc = arc2.write().await;
+                                proc.status = ProcessStatus::Sleeping;
+                                proc.pid = None;
+                                proc.last_exit_code = exit_code;
+                                proc.stopped_at = Some(Utc::now());
+                                if let Some(expr) = &proc.config.cron.clone() {
+                                    proc.cron_next_run = next_run(expr);
+                                }
+                            }
+                        }
+                    });
+
+                    match spawn_process(
+                        process_id,
+                        &config.script,
+                        &config.args,
+                        config.cwd.as_deref(),
+                        &config.env,
+                        log_tx,
+                        exit_tx.clone(),
+                    ).await {
+                        Ok(child) => {
+                            let pid = child.id();
+                            {
+                                let mut proc = arc.write().await;
+                                proc.pid = pid;
+                                proc.status = ProcessStatus::Running;
+                            }
+
+                            let restart_count = { arc.read().await.restart_count };
+                            tokio::spawn(async move {
+                                wait_for_exit(child, exit_tx).await;
+                            });
+                            tokio::spawn(watch_and_restart(
+                                process_id,
+                                false, // cron jobs never auto-restart — scheduler drives re-runs
+                                config.max_restarts,
+                                config.restart_delay_ms,
+                                restart_count,
+                                exit_rx,
+                                local_restart_tx,
+                            ));
+
+                            // Ensure the scheduler is still alive (it may have been dropped on stop)
+                            let has_scheduler = cron_schedulers.lock().await.contains_key(&process_id);
+                            if !has_scheduler {
+                                if let Some(expr) = &config.cron {
+                                    if let Ok(sched) = CronScheduler::start(process_id, expr, trigger_tx) {
+                                        cron_schedulers.lock().await.insert(process_id, sched);
+                                    }
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            tracing::error!("cron: failed to spawn process {process_id}: {e}");
+                            let mut proc = arc.write().await;
+                            proc.status = ProcessStatus::Errored;
+                        }
+                    }
+                });
             }
         }
     }
