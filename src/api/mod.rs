@@ -13,4 +13,5 @@ pub fn router(state: Arc<DaemonState>) -> Router {
         .nest("/processes", routes::processes::router(Arc::clone(&state)))
         .nest("/system", routes::system::router(Arc::clone(&state)))
         .nest("/ecosystem", routes::ecosystem::router(Arc::clone(&state)))
+        .nest("/scripts", routes::scripts::router(Arc::clone(&state)))
 }
