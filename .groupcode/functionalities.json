@@ -1,6 +1,6 @@
 {
   "version": "1.3.0",
-  "totalFunctionalities": 45,
+  "totalFunctionalities": 57,
   "functionalities": {
     "apiendpoints": {
       "level": 1,
@@ -10,21 +10,13 @@
         "apiendpoints > ecosystem",
         "apiendpoints > logs",
         "apiendpoints > process",
+        "apiendpoints > scripts",
         "apiendpoints > system"
       ],
-      "groupCount": 8,
+      "groupCount": 10,
       "fileTypes": [
-        "rs"
-      ]
-    },
-    "configuration": {
-      "level": 1,
-      "parent": null,
-      "children": [],
-      "groupCount": 7,
-      "fileTypes": [
-        "css",
-        "rs"
+        "rs",
+        "ts"
       ]
     },
     "exports": {
@@ -33,6 +25,18 @@
       "children": [],
       "groupCount": 10,
       "fileTypes": [
+        "rs"
+      ]
+    },
+    "configuration": {
+      "level": 1,
+      "parent": null,
+      "children": [
+        "configuration > interpreters"
+      ],
+      "groupCount": 9,
+      "fileTypes": [
+        "css",
         "rs"
       ]
     },
@@ -52,9 +56,10 @@
         "types > request",
         "types > response"
       ],
-      "groupCount": 3,
+      "groupCount": 6,
       "fileTypes": [
-        "rs"
+        "rs",
+        "ts"
       ]
     },
     "businesslogic": {
@@ -64,28 +69,36 @@
         "businesslogic > actions",
         "businesslogic > autorefresh",
         "businesslogic > cleanup",
+        "businesslogic > cron",
         "businesslogic > daemon",
         "businesslogic > dailyrotation",
         "businesslogic > data",
         "businesslogic > datedlogs",
         "businesslogic > init",
         "businesslogic > internal",
+        "businesslogic > layout",
         "businesslogic > lifecycle",
         "businesslogic > logging",
         "businesslogic > logs",
         "businesslogic > namespace",
         "businesslogic > navigation",
+        "businesslogic > presets",
         "businesslogic > processdetail",
         "businesslogic > query",
         "businesslogic > render",
         "businesslogic > restarter",
+        "businesslogic > run",
+        "businesslogic > save",
+        "businesslogic > state",
+        "businesslogic > submit",
         "businesslogic > utilities",
         "businesslogic > windows"
       ],
-      "groupCount": 26,
+      "groupCount": 29,
       "fileTypes": [
         "js",
-        "rs"
+        "rs",
+        "tsx"
       ]
     },
     "businesslogic > daemon": {
@@ -168,8 +181,12 @@
     "utilities": {
       "level": 1,
       "parent": null,
-      "children": [],
-      "groupCount": 7,
+      "children": [
+        "utilities > crondescription",
+        "utilities > cronparser",
+        "utilities > langlabel"
+      ],
+      "groupCount": 9,
       "fileTypes": [
         "js",
         "rs"
@@ -221,11 +238,65 @@
         "rs"
       ]
     },
+    "types > request": {
+      "level": 2,
+      "parent": "types",
+      "children": [],
+      "groupCount": 2,
+      "fileTypes": [
+        "rs"
+      ]
+    },
+    "types > response": {
+      "level": 2,
+      "parent": "types",
+      "children": [],
+      "groupCount": 3,
+      "fileTypes": [
+        "rs"
+      ]
+    },
+    "businesslogic > windows": {
+      "level": 2,
+      "parent": "businesslogic",
+      "children": [],
+      "groupCount": 2,
+      "fileTypes": [
+        "rs"
+      ]
+    },
+    "businesslogic > logging": {
+      "level": 2,
+      "parent": "businesslogic",
+      "children": [],
+      "groupCount": 2,
+      "fileTypes": [
+        "rs"
+      ]
+    },
+    "databaseoperations": {
+      "level": 1,
+      "parent": null,
+      "children": [],
+      "groupCount": 4,
+      "fileTypes": [
+        "rs"
+      ]
+    },
     "businesslogic > restarter": {
       "level": 2,
       "parent": "businesslogic",
       "children": [],
-      "groupCount": 1,
+      "groupCount": 2,
+      "fileTypes": [
+        "rs"
+      ]
+    },
+    "businesslogic > cron": {
+      "level": 2,
+      "parent": "businesslogic",
+      "children": [],
+      "groupCount": 3,
       "fileTypes": [
         "rs"
       ]
@@ -234,7 +305,7 @@
       "level": 2,
       "parent": "businesslogic",
       "children": [],
-      "groupCount": 7,
+      "groupCount": 8,
       "fileTypes": [
         "rs"
       ]
@@ -266,58 +337,32 @@
         "rs"
       ]
     },
-    "types > request": {
-      "level": 2,
-      "parent": "types",
-      "children": [],
-      "groupCount": 2,
-      "fileTypes": [
-        "rs"
-      ]
-    },
-    "types > response": {
-      "level": 2,
-      "parent": "types",
-      "children": [],
-      "groupCount": 3,
-      "fileTypes": [
-        "rs"
-      ]
-    },
-    "databaseoperations": {
-      "level": 1,
-      "parent": null,
-      "children": [],
-      "groupCount": 4,
-      "fileTypes": [
-        "rs"
-      ]
-    },
-    "businesslogic > windows": {
-      "level": 2,
-      "parent": "businesslogic",
-      "children": [],
-      "groupCount": 2,
-      "fileTypes": [
-        "rs"
-      ]
-    },
-    "businesslogic > logging": {
-      "level": 2,
-      "parent": "businesslogic",
-      "children": [],
-      "groupCount": 2,
-      "fileTypes": [
-        "rs"
-      ]
-    },
     "apiendpoints > process": {
       "level": 2,
       "parent": "apiendpoints",
       "children": [],
-      "groupCount": 10,
+      "groupCount": 11,
       "fileTypes": [
         "rs"
+      ]
+    },
+    "apiendpoints > scripts": {
+      "level": 2,
+      "parent": "apiendpoints",
+      "children": [],
+      "groupCount": 5,
+      "fileTypes": [
+        "rs"
+      ]
+    },
+    "businesslogic > run": {
+      "level": 2,
+      "parent": "businesslogic",
+      "children": [],
+      "groupCount": 4,
+      "fileTypes": [
+        "rs",
+        "tsx"
       ]
     },
     "businesslogic > namespace": {
@@ -447,6 +492,87 @@
       ],
       "groupCount": 0,
       "fileTypes": []
+    },
+    "businesslogic > layout": {
+      "level": 2,
+      "parent": "businesslogic",
+      "children": [],
+      "groupCount": 1,
+      "fileTypes": [
+        "tsx"
+      ]
+    },
+    "businesslogic > presets": {
+      "level": 2,
+      "parent": "businesslogic",
+      "children": [],
+      "groupCount": 1,
+      "fileTypes": [
+        "tsx"
+      ]
+    },
+    "utilities > cronparser": {
+      "level": 2,
+      "parent": "utilities",
+      "children": [],
+      "groupCount": 1,
+      "fileTypes": [
+        "tsx"
+      ]
+    },
+    "utilities > crondescription": {
+      "level": 2,
+      "parent": "utilities",
+      "children": [],
+      "groupCount": 1,
+      "fileTypes": [
+        "tsx"
+      ]
+    },
+    "configuration > interpreters": {
+      "level": 2,
+      "parent": "configuration",
+      "children": [],
+      "groupCount": 1,
+      "fileTypes": [
+        "tsx"
+      ]
+    },
+    "utilities > langlabel": {
+      "level": 2,
+      "parent": "utilities",
+      "children": [],
+      "groupCount": 1,
+      "fileTypes": [
+        "tsx"
+      ]
+    },
+    "businesslogic > state": {
+      "level": 2,
+      "parent": "businesslogic",
+      "children": [],
+      "groupCount": 2,
+      "fileTypes": [
+        "tsx"
+      ]
+    },
+    "businesslogic > save": {
+      "level": 2,
+      "parent": "businesslogic",
+      "children": [],
+      "groupCount": 1,
+      "fileTypes": [
+        "tsx"
+      ]
+    },
+    "businesslogic > submit": {
+      "level": 2,
+      "parent": "businesslogic",
+      "children": [],
+      "groupCount": 1,
+      "fileTypes": [
+        "tsx"
+      ]
     }
   }
 }
