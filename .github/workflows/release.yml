@@ -44,6 +44,19 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-cargo-
 
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web-ui/package-lock.json
+
+      - name: Build web UI
+        run: |
+          cd web-ui
+          npm ci
+          npm run build
+
       - name: Build release binary
         run: cargo build --release --target x86_64-pc-windows-msvc
 

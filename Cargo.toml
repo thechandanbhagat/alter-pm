@@ -1,6 +1,6 @@
 [package]
 name    = "alter"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 description = "A PM2-like process manager — run and manage any application"
 
