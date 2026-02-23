@@ -1,6 +1,6 @@
 {
   "version": "1.3.0",
-  "totalFunctionalities": 68,
+  "totalFunctionalities": 78,
   "functionalities": {
     "apiendpoints": {
       "level": 1,
@@ -53,6 +53,7 @@
       "level": 1,
       "parent": null,
       "children": [
+        "types > analytics",
         "types > request",
         "types > response"
       ],
@@ -67,6 +68,8 @@
       "parent": null,
       "children": [
         "businesslogic > actions",
+        "businesslogic > analytics",
+        "businesslogic > analyticspage",
         "businesslogic > autorefresh",
         "businesslogic > cleanup",
         "businesslogic > cron",
@@ -74,12 +77,15 @@
         "businesslogic > dailyrotation",
         "businesslogic > data",
         "businesslogic > datedlogs",
+        "businesslogic > donutchart",
+        "businesslogic > healthrow",
         "businesslogic > init",
         "businesslogic > internal",
         "businesslogic > layout",
         "businesslogic > lifecycle",
         "businesslogic > logging",
         "businesslogic > logs",
+        "businesslogic > metrics",
         "businesslogic > namespace",
         "businesslogic > navbtn",
         "businesslogic > navigation",
@@ -95,6 +101,7 @@
         "businesslogic > settingspage",
         "businesslogic > sidebarbtn",
         "businesslogic > sidebarproc",
+        "businesslogic > statcard",
         "businesslogic > state",
         "businesslogic > submit",
         "businesslogic > toggle",
@@ -103,7 +110,7 @@
         "businesslogic > utilities",
         "businesslogic > windows"
       ],
-      "groupCount": 36,
+      "groupCount": 37,
       "fileTypes": [
         "js",
         "rs",
@@ -194,14 +201,16 @@
       "children": [
         "utilities > crondescription",
         "utilities > cronparser",
+        "utilities > formatting",
         "utilities > langlabel",
         "utilities > lastrun",
         "utilities > styles"
       ],
-      "groupCount": 9,
+      "groupCount": 10,
       "fileTypes": [
         "js",
-        "rs"
+        "rs",
+        "ts"
       ]
     },
     "apiendpoints > system": {
@@ -295,6 +304,34 @@
         "rs"
       ]
     },
+    "apiendpoints > process": {
+      "level": 2,
+      "parent": "apiendpoints",
+      "children": [],
+      "groupCount": 11,
+      "fileTypes": [
+        "rs"
+      ]
+    },
+    "apiendpoints > scripts": {
+      "level": 2,
+      "parent": "apiendpoints",
+      "children": [],
+      "groupCount": 5,
+      "fileTypes": [
+        "rs"
+      ]
+    },
+    "businesslogic > run": {
+      "level": 2,
+      "parent": "businesslogic",
+      "children": [],
+      "groupCount": 4,
+      "fileTypes": [
+        "rs",
+        "tsx"
+      ]
+    },
     "businesslogic > restarter": {
       "level": 2,
       "parent": "businesslogic",
@@ -309,6 +346,15 @@
       "parent": "businesslogic",
       "children": [],
       "groupCount": 3,
+      "fileTypes": [
+        "rs"
+      ]
+    },
+    "businesslogic > metrics": {
+      "level": 2,
+      "parent": "businesslogic",
+      "children": [],
+      "groupCount": 2,
       "fileTypes": [
         "rs"
       ]
@@ -347,34 +393,6 @@
       "groupCount": 2,
       "fileTypes": [
         "rs"
-      ]
-    },
-    "apiendpoints > process": {
-      "level": 2,
-      "parent": "apiendpoints",
-      "children": [],
-      "groupCount": 11,
-      "fileTypes": [
-        "rs"
-      ]
-    },
-    "apiendpoints > scripts": {
-      "level": 2,
-      "parent": "apiendpoints",
-      "children": [],
-      "groupCount": 5,
-      "fileTypes": [
-        "rs"
-      ]
-    },
-    "businesslogic > run": {
-      "level": 2,
-      "parent": "businesslogic",
-      "children": [],
-      "groupCount": 4,
-      "fileTypes": [
-        "rs",
-        "tsx"
       ]
     },
     "businesslogic > namespace": {
@@ -577,7 +595,16 @@
         "tsx"
       ]
     },
-    "businesslogic > processrow": {
+    "utilities > styles": {
+      "level": 2,
+      "parent": "utilities",
+      "children": [],
+      "groupCount": 1,
+      "fileTypes": [
+        "tsx"
+      ]
+    },
+    "businesslogic > toggle": {
       "level": 2,
       "parent": "businesslogic",
       "children": [],
@@ -586,14 +613,104 @@
         "tsx"
       ]
     },
-    "utilities > lastrun": {
+    "businesslogic > settingrow": {
       "level": 2,
-      "parent": "utilities",
+      "parent": "businesslogic",
       "children": [],
       "groupCount": 1,
       "fileTypes": [
         "tsx"
       ]
+    },
+    "businesslogic > settingspage": {
+      "level": 2,
+      "parent": "businesslogic",
+      "children": [],
+      "groupCount": 1,
+      "fileTypes": [
+        "tsx"
+      ]
+    },
+    "types > analytics": {
+      "level": 2,
+      "parent": "types",
+      "children": [],
+      "groupCount": 1,
+      "fileTypes": [
+        "tsx"
+      ]
+    },
+    "businesslogic > analyticspage": {
+      "level": 2,
+      "parent": "businesslogic",
+      "children": [],
+      "groupCount": 1,
+      "fileTypes": [
+        "tsx"
+      ]
+    },
+    "businesslogic > analytics": {
+      "level": 2,
+      "parent": "businesslogic",
+      "children": [],
+      "groupCount": 1,
+      "fileTypes": [
+        "tsx"
+      ]
+    },
+    "businesslogic > statcard": {
+      "level": 2,
+      "parent": "businesslogic",
+      "children": [],
+      "groupCount": 1,
+      "fileTypes": [
+        "tsx"
+      ]
+    },
+    "businesslogic > donutchart": {
+      "level": 2,
+      "parent": "businesslogic",
+      "children": [],
+      "groupCount": 1,
+      "fileTypes": [
+        "tsx"
+      ]
+    },
+    "businesslogic > healthrow": {
+      "level": 2,
+      "parent": "businesslogic",
+      "children": [],
+      "groupCount": 1,
+      "fileTypes": [
+        "tsx"
+      ]
+    },
+    "businesslogic > processrow": {
+      "level": 2,
+      "parent": "businesslogic",
+      "children": [],
+      "groupCount": 2,
+      "fileTypes": [
+        "tsx"
+      ]
+    },
+    "constants > styles": {
+      "level": 2,
+      "parent": "constants",
+      "children": [],
+      "groupCount": 1,
+      "fileTypes": [
+        "tsx"
+      ]
+    },
+    "constants": {
+      "level": 1,
+      "parent": null,
+      "children": [
+        "constants > styles"
+      ],
+      "groupCount": 0,
+      "fileTypes": []
     },
     "businesslogic > layout": {
       "level": 2,
@@ -631,36 +748,9 @@
         "tsx"
       ]
     },
-    "utilities > styles": {
+    "utilities > lastrun": {
       "level": 2,
       "parent": "utilities",
-      "children": [],
-      "groupCount": 1,
-      "fileTypes": [
-        "tsx"
-      ]
-    },
-    "businesslogic > toggle": {
-      "level": 2,
-      "parent": "businesslogic",
-      "children": [],
-      "groupCount": 1,
-      "fileTypes": [
-        "tsx"
-      ]
-    },
-    "businesslogic > settingrow": {
-      "level": 2,
-      "parent": "businesslogic",
-      "children": [],
-      "groupCount": 1,
-      "fileTypes": [
-        "tsx"
-      ]
-    },
-    "businesslogic > settingspage": {
-      "level": 2,
-      "parent": "businesslogic",
       "children": [],
       "groupCount": 1,
       "fileTypes": [
@@ -681,6 +771,15 @@
       "parent": "businesslogic",
       "children": [],
       "groupCount": 1,
+      "fileTypes": [
+        "ts"
+      ]
+    },
+    "utilities > formatting": {
+      "level": 2,
+      "parent": "utilities",
+      "children": [],
+      "groupCount": 2,
       "fileTypes": [
         "ts"
       ]
