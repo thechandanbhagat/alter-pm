@@ -28,4 +28,8 @@ pub struct ProcessInfo {
     pub cron: Option<String>,
     pub cron_next_run: Option<DateTime<Utc>>,
     pub cron_run_history: Vec<CronRun>,
+    /// CPU usage percentage (0–100 per core) — None when process is not running
+    pub cpu_percent: Option<f32>,
+    /// Resident memory in bytes — None when process is not running
+    pub memory_bytes: Option<u64>,
 }

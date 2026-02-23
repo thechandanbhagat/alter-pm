@@ -15,6 +15,7 @@ use chrono::Utc;
 use dashmap::DashMap;
 use std::collections::HashMap;
 use std::sync::Arc;
+use sysinfo::{Pid, ProcessRefreshKind, ProcessesToUpdate, System};
 use tokio::sync::mpsc;
 use tokio::sync::{broadcast, Mutex, RwLock};
 use uuid::Uuid;
@@ -53,6 +54,13 @@ impl ProcessManager {
         // @group BusinessLogic > Cron : Background task that handles cron trigger events
         tokio::spawn(async move {
             Self::cron_trigger_loop(reg_cron, cron_trigger_rx, cron_sched_clone, ctrigger_tx_clone).await;
+        });
+
+        let reg_metrics = Arc::clone(&registry);
+
+        // @group BusinessLogic > Metrics : Background task that polls CPU and memory per process
+        tokio::spawn(async move {
+            Self::metrics_loop(reg_metrics).await;
         });
 
         Self {
@@ -629,6 +637,52 @@ impl ProcessManager {
                         }
                     }
                 });
+            }
+        }
+    }
+
+    // @group BusinessLogic > Metrics : Periodically collects CPU and memory for each running process
+    async fn metrics_loop(registry: Arc<ProcessRegistry>) {
+        let mut sys = System::new();
+        loop {
+            tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
+
+            // Collect process IDs that currently have a PID (i.e. are running)
+            let pid_map: Vec<(Uuid, Pid)> = {
+                let mut result = Vec::new();
+                for entry in registry.iter() {
+                    let proc = entry.value().read().await;
+                    if let Some(pid) = proc.pid {
+                        result.push((*entry.key(), Pid::from_u32(pid)));
+                    }
+                }
+                result
+            };
+
+            if pid_map.is_empty() {
+                continue;
+            }
+
+            // Refresh sysinfo for only the PIDs we care about
+            let pids: Vec<Pid> = pid_map.iter().map(|(_, p)| *p).collect();
+            sys.refresh_processes_specifics(
+                ProcessesToUpdate::Some(&pids),
+                false,
+                ProcessRefreshKind::new().with_cpu().with_memory(),
+            );
+
+            // Write new metrics back into each process entry
+            for (id, sysinfo_pid) in &pid_map {
+                if let Some(arc) = registry.get(id) {
+                    let mut proc = arc.write().await;
+                    if let Some(sp) = sys.process(*sysinfo_pid) {
+                        proc.cpu_percent = Some(sp.cpu_usage());
+                        proc.memory_bytes = Some(sp.memory());
+                    } else {
+                        proc.cpu_percent = None;
+                        proc.memory_bytes = None;
+                    }
+                }
             }
         }
     }

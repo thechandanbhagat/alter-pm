@@ -43,6 +43,10 @@ pub struct ManagedProcess {
     pub cron_next_run: Option<DateTime<Utc>>,
     /// History of the last MAX_CRON_HISTORY cron runs (timestamp, exit code, duration)
     pub cron_run_history: Vec<CronRun>,
+    /// Last measured CPU usage percentage — updated by the metrics loop
+    pub cpu_percent: Option<f32>,
+    /// Last measured resident memory in bytes — updated by the metrics loop
+    pub memory_bytes: Option<u64>,
 }
 
 impl ManagedProcess {
@@ -62,6 +66,8 @@ impl ManagedProcess {
             log_writer: None,
             cron_next_run: None,
             cron_run_history: vec![],
+            cpu_percent: None,
+            memory_bytes: None,
         }
     }
 
@@ -94,6 +100,8 @@ impl ManagedProcess {
             cron: self.config.cron.clone(),
             cron_next_run: self.cron_next_run,
             cron_run_history: self.cron_run_history.clone(),
+            cpu_percent: self.cpu_percent,
+            memory_bytes: self.memory_bytes,
         }
     }
 }
