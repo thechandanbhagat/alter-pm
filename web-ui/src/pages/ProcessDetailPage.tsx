@@ -103,7 +103,7 @@ export default function ProcessDetailPage({ reload, settings }: Props) {
       if (!ok) return
     }
     await api.deleteProcess(process!.id).catch(() => {})
-    navigate('/')
+    navigate('/processes')
     reload()
   }
   async function doTerminal() {
@@ -138,7 +138,7 @@ export default function ProcessDetailPage({ reload, settings }: Props) {
         background: 'var(--color-card)', flexShrink: 0,
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <button onClick={() => navigate('/')} style={ghostBtnStyle}>← Back</button>
+          <button onClick={() => navigate('/processes')} style={ghostBtnStyle}>← Back</button>
           <span style={{ color: statusColor(process.status), fontSize: 12 }}>●</span>
           <span style={{ fontWeight: 600, fontSize: 14 }}>{process.name}</span>
           <span style={{ fontSize: 12, color: statusColor(process.status) }}>{process.status}</span>

@@ -15,6 +15,7 @@ import StartPage from '@/pages/StartPage'
 import EditPage from '@/pages/EditPage'
 import ProcessDetailPage from '@/pages/ProcessDetailPage'
 import SettingsPage from '@/pages/SettingsPage'
+import AnalyticsPage from '@/pages/AnalyticsPage'
 import type { ProcessInfo } from '@/types'
 
 // @group BusinessLogic > Layout : Sidebar + content shell
@@ -75,10 +76,10 @@ function Layout() {
           borderBottom: '1px solid var(--color-border)',
           display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8,
         }}>
-          <div style={{ display: 'flex', alignItems: 'baseline', gap: 2 }}>
+          <Link to="/" style={{ display: 'flex', alignItems: 'baseline', gap: 2, textDecoration: 'none' }}>
             <span style={{ fontWeight: 700, fontSize: 18, letterSpacing: '-0.5px', color: 'var(--color-primary)' }}>alter</span>
             <span style={{ fontSize: 11, color: 'var(--color-muted-foreground)', fontWeight: 500 }}>pm</span>
-          </div>
+          </Link>
           <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'flex-end', gap: 2 }}>
               <span style={{ fontSize: 10, color: 'var(--color-muted-foreground)' }}>
             {health && (
@@ -98,7 +99,7 @@ function Layout() {
 
         {/* Nav */}
         <nav style={{ padding: '8px 0', borderBottom: '1px solid var(--color-border)' }}>
-          <NavBtn to="/" label="▦  Processes" active={location.pathname === '/'} />
+          <NavBtn to="/processes" label="▦  Processes" active={location.pathname === '/processes' || location.pathname.startsWith('/processes/')} />
           <NavBtn to="/start" label="+  Start Process" active={location.pathname === '/start'} />
           <div style={{ height: 4 }} />
           <NavBtn to="/cron-jobs" label="⏱  Cron Jobs" active={location.pathname === '/cron-jobs'} />
@@ -131,9 +132,10 @@ function Layout() {
       {/* Main content */}
       <div style={{ flex: 1, overflow: 'auto', display: 'flex', flexDirection: 'column' }}>
         <Routes>
-          <Route path="/" element={<ProcessesPage processes={processes} reload={reload} settings={settings} />} />
-          <Route path="/start" element={<StartPage onDone={() => { reload(); navigate('/') }} settings={settings} />} />
-          <Route path="/edit/:id" element={<EditPage onDone={() => { reload(); navigate('/') }} />} />
+          <Route path="/" element={<AnalyticsPage processes={processes} settings={settings} />} />
+          <Route path="/processes" element={<ProcessesPage processes={processes} reload={reload} settings={settings} />} />
+          <Route path="/start" element={<StartPage onDone={() => { reload(); navigate('/processes') }} settings={settings} />} />
+          <Route path="/edit/:id" element={<EditPage onDone={() => { reload(); navigate('/processes') }} />} />
           <Route path="/processes/:id" element={<ProcessDetailPage reload={reload} settings={settings} />} />
           <Route path="/cron-jobs" element={<CronJobsPage processes={processes} reload={reload} settings={settings} />} />
           <Route path="/cron-jobs/new" element={<CreateCronJobPage onDone={() => { reload(); navigate('/cron-jobs') }} settings={settings} />} />
