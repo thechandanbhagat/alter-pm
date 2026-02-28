@@ -49,6 +49,28 @@ pub struct AppConfig {
     /// Process-level notification override (takes priority over namespace and global)
     #[serde(default)]
     pub notify: Option<crate::models::notification::NotificationConfig>,
+
+    // @group Configuration > EnvFile : Path to a .env file — vars merged with env (env wins on conflict)
+    #[serde(default)]
+    pub env_file: Option<String>,
+
+    // @group Configuration > HealthCheck : HTTP or TCP probe URL (e.g. "http://localhost:8080/health" or "localhost:8080")
+    #[serde(default)]
+    pub health_check_url: Option<String>,
+    #[serde(default = "default_health_interval")]
+    pub health_check_interval_secs: u64,
+    #[serde(default = "default_health_timeout")]
+    pub health_check_timeout_secs: u64,
+    #[serde(default = "default_health_retries")]
+    pub health_check_retries: u32,
+
+    // @group Configuration > Hooks : Shell commands run at process lifecycle events
+    #[serde(default)]
+    pub pre_start: Option<String>,
+    #[serde(default)]
+    pub post_start: Option<String>,
+    #[serde(default)]
+    pub pre_stop: Option<String>,
 }
 
 fn default_namespace() -> String { "default".to_string() }
@@ -57,6 +79,9 @@ fn default_true() -> bool { true }
 fn default_max_restarts() -> u32 { 10 }
 fn default_restart_delay_ms() -> u64 { 1000 }
 fn default_max_log_size_mb() -> u64 { 10 }
+fn default_health_interval() -> u64 { 30 }
+fn default_health_timeout() -> u64 { 5 }
+fn default_health_retries() -> u32 { 3 }
 
 impl EcosystemConfig {
     pub fn from_file(path: &Path) -> Result<Self> {
