@@ -1,13 +1,13 @@
 // @group BusinessLogic > HealthCheck : HTTP/TCP health check probe loop
 
+use crate::config::notification_store::NotificationsStore;
 use crate::models::process_info::HealthCheckStatus;
 use crate::models::process_status::ProcessStatus;
-use crate::notifications::events::NotificationEvent;
+use crate::notifications::sender::{fire_event, ProcessEvent};
 use crate::process::instance::ManagedProcess;
-use chrono::Utc;
 use std::sync::Arc;
 use std::time::Duration;
-use tokio::sync::{mpsc, RwLock};
+use tokio::sync::RwLock;
 use uuid::Uuid;
 
 // @group BusinessLogic > HealthCheck : Probe a URL via HTTP GET or TCP connect
@@ -39,30 +39,27 @@ async fn probe(url: &str, timeout_secs: u64) -> bool {
 
 // @group BusinessLogic > HealthCheck : Spawn a health check loop for a process
 pub fn start_health_check(
-    process_id: Uuid,
+    _process_id: Uuid,
     arc: Arc<RwLock<ManagedProcess>>,
     url: String,
     interval_secs: u64,
     timeout_secs: u64,
     retries: u32,
-    notification_tx: mpsc::Sender<NotificationEvent>,
+    notifications: Arc<RwLock<NotificationsStore>>,
 ) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
         let mut consecutive_failures: u32 = 0;
 
-        // Wait for the process to start before probing
+        // Wait briefly before the first probe so the process has time to bind its port
         tokio::time::sleep(Duration::from_secs(interval_secs.min(5))).await;
 
         loop {
             tokio::time::sleep(Duration::from_secs(interval_secs)).await;
 
-            // Only check if process is Running or Watching
+            // Only probe when the process is actively running
             let should_check = {
                 let proc = arc.read().await;
-                matches!(
-                    proc.status,
-                    ProcessStatus::Running | ProcessStatus::Watching
-                )
+                matches!(proc.status, ProcessStatus::Running | ProcessStatus::Watching)
             };
             if !should_check {
                 continue;
@@ -70,34 +67,34 @@ pub fn start_health_check(
 
             let healthy = probe(&url, timeout_secs).await;
 
-            let mut proc = arc.write().await;
             if healthy {
                 if consecutive_failures > 0 {
+                    let name = arc.read().await.config.name.clone();
                     tracing::info!(
                         "process '{}' health check recovered after {} failures",
-                        proc.config.name,
+                        name,
                         consecutive_failures
                     );
                 }
                 consecutive_failures = 0;
-                proc.health_status = Some(HealthCheckStatus::Healthy);
+                arc.write().await.health_status = Some(HealthCheckStatus::Healthy);
             } else {
                 consecutive_failures += 1;
+                let name = arc.read().await.config.name.clone();
                 tracing::warn!(
                     "process '{}' health check failed ({}/{})",
-                    proc.config.name,
+                    name,
                     consecutive_failures,
                     retries
                 );
+
                 if consecutive_failures >= retries {
-                    proc.health_status = Some(HealthCheckStatus::Unhealthy);
-                    let _ = notification_tx
-                        .send(NotificationEvent::HealthCheckFailed {
-                            process_name: proc.config.name.clone(),
-                            url: url.clone(),
-                            timestamp: Utc::now(),
-                        })
-                        .await;
+                    arc.write().await.health_status = Some(HealthCheckStatus::Unhealthy);
+
+                    // Fire a Crashed notification — same pattern used in manager.rs
+                    let info = arc.read().await.to_info();
+                    let store = notifications.read().await;
+                    fire_event(&store, &info, ProcessEvent::Crashed).await;
                 }
             }
         }

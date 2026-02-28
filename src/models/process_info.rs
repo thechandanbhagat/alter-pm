@@ -7,6 +7,14 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use uuid::Uuid;
 
+// @group Types > HealthCheck : Health probe result exposed in API responses
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum HealthCheckStatus {
+    Healthy,
+    Unhealthy,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProcessInfo {
     pub id: Uuid,
@@ -37,4 +45,6 @@ pub struct ProcessInfo {
     pub env: HashMap<String, String>,
     /// Process-level notification override
     pub notify: Option<crate::models::notification::NotificationConfig>,
+    /// Health check probe result — None if no health check is configured
+    pub health_status: Option<HealthCheckStatus>,
 }

@@ -3,7 +3,7 @@
 use crate::config::ecosystem::AppConfig;
 use crate::logging::writer::LogWriter;
 use crate::models::cron_run::CronRun;
-use crate::models::process_info::ProcessInfo;
+use crate::models::process_info::{HealthCheckStatus, ProcessInfo};
 use crate::models::process_status::ProcessStatus;
 use chrono::{DateTime, Utc};
 use tokio::sync::broadcast;
@@ -47,6 +47,10 @@ pub struct ManagedProcess {
     pub cpu_percent: Option<f32>,
     /// Last measured resident memory in bytes — updated by the metrics loop
     pub memory_bytes: Option<u64>,
+    /// Current health probe result — None if no health check is configured
+    pub health_status: Option<HealthCheckStatus>,
+    /// Handle to the running health check task — aborted on process stop
+    pub health_check_handle: Option<tokio::task::JoinHandle<()>>,
 }
 
 impl ManagedProcess {
@@ -68,6 +72,8 @@ impl ManagedProcess {
             cron_run_history: vec![],
             cpu_percent: None,
             memory_bytes: None,
+            health_status: None,
+            health_check_handle: None,
         }
     }
 
@@ -104,6 +110,7 @@ impl ManagedProcess {
             memory_bytes: self.memory_bytes,
             env: self.config.env.clone(),
             notify: self.config.notify.clone(),
+            health_status: self.health_status.clone(),
         }
     }
 }
