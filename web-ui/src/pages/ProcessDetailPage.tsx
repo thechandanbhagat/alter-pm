@@ -5,9 +5,10 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { api } from '@/lib/api'
 import { useDialog } from '@/hooks/useDialog'
 import { Dialog } from '@/components/Dialog'
+import { EnvFileModal } from '@/components/EnvFileModal'
 import { statusColor } from '@/lib/utils'
 import type { AppSettings } from '@/lib/settings'
-import type { ProcessInfo } from '@/types'
+import type { LogLine, ProcessInfo } from '@/types'
 
 interface Props {
   reload: () => void
@@ -18,9 +19,12 @@ export default function ProcessDetailPage({ reload, settings }: Props) {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const [process, setProcess] = useState<ProcessInfo | null>(null)
-  const [logLines, setLogLines] = useState<Array<{ stream: string; content: string }>>([])
+  const [logLines, setLogLines] = useState<LogLine[]>([])
   const [logDates, setLogDates] = useState<string[]>([])
   const [dateIndex, setDateIndex] = useState(-1) // -1 = today (live)
+  const [streamFilter, setStreamFilter] = useState<'all' | 'stdout' | 'stderr'>('all')
+  const [textFilter, setTextFilter] = useState('')
+  const [envOpen, setEnvOpen] = useState(false)
   const logEndRef = useRef<HTMLDivElement>(null)
   const esRef = useRef<EventSource | null>(null)
   const { dialogState, confirm, danger, alert, handleConfirm, handleCancel } = useDialog()
@@ -54,7 +58,7 @@ export default function ProcessDetailPage({ reload, settings }: Props) {
 
     // Fetch historical
     api.getLogs(id, { lines: isToday ? settings.logTailLines : Math.max(settings.logTailLines, 500), date: dateParam })
-      .then(d => setLogLines(d.lines.map(l => ({ stream: l.stream, content: l.content }))))
+      .then(d => setLogLines(d.lines.map(l => ({ stream: l.stream, timestamp: l.timestamp ?? '', content: l.content }))))
       .catch(() => {})
 
     // Live SSE for today only
@@ -64,7 +68,7 @@ export default function ProcessDetailPage({ reload, settings }: Props) {
       es.onmessage = (e) => {
         try {
           const line = JSON.parse(e.data)
-          setLogLines(prev => [...prev, { stream: line.stream, content: line.content }])
+          setLogLines(prev => [...prev, { stream: line.stream, timestamp: line.timestamp ?? '', content: line.content }])
         } catch {}
       }
       es.onerror = () => { es.close(); esRef.current = null }
@@ -82,6 +86,13 @@ export default function ProcessDetailPage({ reload, settings }: Props) {
 
   const isActive = process.status === 'running' || process.status === 'sleeping' || process.status === 'watching'
   const isToday = dateIndex === -1
+
+  // @group BusinessLogic > LogFilter : Client-side stream + text filter applied at render time
+  const needle = textFilter.toLowerCase()
+  const visibleLines = logLines.filter(l =>
+    (streamFilter === 'all' || l.stream === streamFilter) &&
+    (needle === '' || l.content.toLowerCase().includes(needle))
+  )
 
   async function doStart() {
     await api.startStopped(process!.id).catch(() => {})
@@ -129,6 +140,14 @@ export default function ProcessDetailPage({ reload, settings }: Props) {
         onConfirm={handleConfirm}
         onCancel={handleCancel}
       />
+      {envOpen && (
+        <EnvFileModal
+          processId={process.id}
+          processName={process.name}
+          onClose={() => setEnvOpen(false)}
+          onRestart={doRestart}
+        />
+      )}
 
       {/* Toolbar */}
       <div style={{
@@ -152,44 +171,120 @@ export default function ProcessDetailPage({ reload, settings }: Props) {
             : <ToolBtn label="▶ Start" onClick={doStart} />
           }
           <ToolBtn label="✎ Edit" onClick={() => navigate(`/edit/${process.id}`)} />
+          <ToolBtn label="🔑 .env" onClick={() => setEnvOpen(true)} />
           <ToolBtn label="✕ Delete" onClick={doDelete} danger />
           <ToolBtn label="⌨ Terminal" onClick={doTerminal} />
           <ToolBtn label="VS Code" onClick={doVSCode} />
         </div>
       </div>
 
-      {/* Date navigation */}
+      {/* Date navigation + stream filter */}
       <div style={{
         padding: '6px 16px', borderBottom: '1px solid var(--color-border)',
-        display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0,
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0,
         background: 'var(--color-muted)', fontSize: 12,
       }}>
-        <button disabled={dateIndex >= logDates.length - 1} onClick={() => setDateIndex(i => i + 1)} style={navBtnStyle}>
-          ← Older
-        </button>
-        <span style={{ color: 'var(--color-muted-foreground)', minWidth: 100, textAlign: 'center' }}>
-          {isToday ? '📡 Today (live)' : logDates[dateIndex]}
-        </span>
-        <button disabled={isToday} onClick={() => setDateIndex(i => i - 1)} style={navBtnStyle}>
-          Newer →
-        </button>
+        {/* Date pager */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <button disabled={dateIndex >= logDates.length - 1} onClick={() => setDateIndex(i => i + 1)} style={navBtnStyle}>
+            ← Older
+          </button>
+          <span style={{ color: 'var(--color-muted-foreground)', minWidth: 100, textAlign: 'center' }}>
+            {isToday ? '📡 Today (live)' : logDates[dateIndex]}
+          </span>
+          <button disabled={isToday} onClick={() => setDateIndex(i => i - 1)} style={navBtnStyle}>
+            Newer →
+          </button>
+        </div>
+
+        {/* Stream filter toggle */}
+        <div style={{ display: 'flex', gap: 2, background: 'var(--color-background)', borderRadius: 6, padding: 2, border: '1px solid var(--color-border)' }}>
+          {(['all', 'stdout', 'stderr'] as const).map(f => (
+            <button key={f} onClick={() => setStreamFilter(f)} style={{
+              padding: '2px 10px', fontSize: 11, fontWeight: 500, borderRadius: 4,
+              border: 'none', cursor: 'pointer', transition: 'background 0.15s',
+              background: streamFilter === f ? 'var(--color-primary)' : 'transparent',
+              color: streamFilter === f ? 'var(--color-primary-foreground)' : 'var(--color-muted-foreground)',
+            }}>
+              {f === 'all' ? 'All' : f === 'stdout' ? 'Out' : 'Err'}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Text search bar */}
+      <div style={{
+        padding: '5px 16px', borderBottom: '1px solid var(--color-border)',
+        display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0,
+        background: 'var(--color-card)',
+      }}>
+        <span style={{ fontSize: 12, color: 'var(--color-muted-foreground)', userSelect: 'none' }}>🔍</span>
+        <input
+          type="text"
+          placeholder="Filter logs…"
+          value={textFilter}
+          onChange={e => setTextFilter(e.target.value)}
+          style={{
+            flex: 1, fontSize: 12, padding: '3px 6px',
+            background: 'var(--color-background)', color: 'var(--color-foreground)',
+            border: '1px solid var(--color-border)', borderRadius: 4, outline: 'none',
+          }}
+        />
+        {textFilter && (
+          <>
+            <span style={{ fontSize: 11, color: 'var(--color-muted-foreground)', whiteSpace: 'nowrap' }}>
+              {visibleLines.length} match{visibleLines.length !== 1 ? 'es' : ''}
+            </span>
+            <button
+              onClick={() => setTextFilter('')}
+              style={{ fontSize: 11, padding: '1px 6px', cursor: 'pointer', border: '1px solid var(--color-border)', borderRadius: 4, background: 'var(--color-secondary)', color: 'var(--color-foreground)' }}
+            >
+              ✕
+            </button>
+          </>
+        )}
       </div>
 
       {/* Log output */}
       <div style={{ flex: 1, overflow: 'auto', padding: '10px 16px', background: 'var(--color-background)' }}>
         <div className="log-output">
-          {logLines.map((line, i) => (
+          {visibleLines.map((line, i) => (
             <div key={i} className={line.stream === 'stderr' ? 'log-line-err' : 'log-line-out'}>
-              {line.content}
+              {line.timestamp && (
+                <span style={{ opacity: 0.45, marginRight: 8, fontSize: 11, fontVariantNumeric: 'tabular-nums' }}>
+                  {line.timestamp.slice(11, 19)}
+                </span>
+              )}
+              {needle ? <HighlightedText content={line.content} needle={needle} /> : line.content}
             </div>
           ))}
-          {logLines.length === 0 && (
-            <div style={{ color: 'var(--color-muted-foreground)' }}>No log output yet.</div>
+          {visibleLines.length === 0 && (
+            <div style={{ color: 'var(--color-muted-foreground)' }}>
+              {logLines.length === 0
+                ? 'No log output yet.'
+                : textFilter
+                  ? `No lines match "${textFilter}".`
+                  : `No ${streamFilter === 'stderr' ? 'error' : 'stdout'} lines found.`}
+            </div>
           )}
         </div>
         <div ref={logEndRef} />
       </div>
     </div>
+  )
+}
+
+// @group Utilities : Highlight matched search text within a log line
+function HighlightedText({ content, needle }: { content: string; needle: string }) {
+  const parts = content.split(new RegExp(`(${needle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi'))
+  return (
+    <>
+      {parts.map((part, i) =>
+        part.toLowerCase() === needle.toLowerCase()
+          ? <mark key={i} style={{ background: 'rgba(255,200,0,0.35)', color: 'inherit', borderRadius: 2, padding: '0 1px' }}>{part}</mark>
+          : <span key={i}>{part}</span>
+      )}
+    </>
   )
 }
 
