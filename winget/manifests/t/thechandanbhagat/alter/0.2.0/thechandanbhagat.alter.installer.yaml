@@ -1,0 +1,30 @@
+# yaml-language-server: $schema=https://aka.ms/winget-manifest.installer.1.10.0.schema.json
+# alter WinGet Manifest — Installer
+# PackageIdentifier: thechandanbhagat.alter
+#
+# This file belongs in the winget-pkgs repository at:
+#   manifests/t/thechandanbhagat/alter/0.2.0/thechandanbhagat.alter.installer.yaml
+
+PackageIdentifier: thechandanbhagat.alter
+PackageVersion: 0.2.0
+MinimumOSVersion: 10.0.17763.0
+InstallerType: inno
+
+Installers:
+  - Architecture: x64
+    InstallerUrl: https://github.com/thechandanbhagat/alter-pm/releases/download/v0.2.0/alter-0.2.0-windows-x64-setup.exe
+    InstallerSha256: 3d56bed4e5fe4a68677e0bdd0f4d6a50edc418e9846043a277383209b0104c06
+    InstallerSwitches:
+      Silent: /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP-
+      SilentWithProgress: /SILENT /SUPPRESSMSGBOXES /NORESTART /SP-
+
+InstallModes:
+  - interactive
+  - silent
+  - silentWithProgress
+
+Commands:
+  - alter
+
+ManifestType: installer
+ManifestVersion: 1.10.0

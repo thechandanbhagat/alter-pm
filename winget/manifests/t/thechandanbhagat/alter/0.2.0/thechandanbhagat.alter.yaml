@@ -1,0 +1,13 @@
+# yaml-language-server: $schema=https://aka.ms/winget-manifest.version.1.10.0.schema.json
+# alter WinGet Manifest — Version
+# PackageIdentifier: thechandanbhagat.alter
+# 
+# This file belongs in the winget-pkgs repository at:
+#   manifests/t/thechandanbhagat/alter/0.2.0/thechandanbhagat.alter.yaml
+# Submit via: https://github.com/microsoft/winget-pkgs
+
+PackageIdentifier: thechandanbhagat.alter
+PackageVersion: 0.2.0
+DefaultLocale: en-US
+ManifestType: version
+ManifestVersion: 1.10.0
