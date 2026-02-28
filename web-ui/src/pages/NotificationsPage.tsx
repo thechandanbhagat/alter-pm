@@ -70,7 +70,7 @@ const sectionTitleStyle: React.CSSProperties = {
 // @group Utilities > DefaultConfig : Returns a blank NotificationConfig
 function defaultConfig(): NotificationConfig {
   return {
-    events: { on_crash: true, on_restart: false, on_start: false, on_stop: false },
+    events: { on_crash: true, on_restart: false, on_start: false, on_stop: false, on_cron_run: false, on_cron_fail: true },
   }
 }
 
@@ -106,6 +106,21 @@ function NotifCard({
   const setTeams = (patch: Partial<NonNullable<NotificationConfig['teams']>>) =>
     onChange({ ...config, teams: { webhook_url: '', enabled: false, ...config.teams, ...patch } })
 
+  // @group Utilities > EventCheckbox : Single event toggle checkbox
+  function EventCheckbox({ eventKey, label }: { eventKey: keyof NotificationEvents; label: string }) {
+    return (
+      <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer' }}>
+        <input
+          type="checkbox"
+          checked={!!config.events[eventKey]}
+          onChange={e => setEvents({ [eventKey]: e.target.checked })}
+          style={{ accentColor: 'var(--color-primary)', width: 14, height: 14 }}
+        />
+        {label}
+      </label>
+    )
+  }
+
   return (
     <div style={cardStyle}>
       {/* Card header */}
@@ -129,22 +144,54 @@ function NotifCard({
 
       {open && (
         <div style={{ marginTop: 16, display: 'flex', flexDirection: 'column', gap: 14 }}>
-          {/* Event toggles */}
-          <div style={fieldsetStyle}>
-            <span style={legendStyle}>Trigger Events</span>
-            <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap', marginTop: 8 }}>
-              {(['on_crash', 'on_restart', 'on_start', 'on_stop'] as const).map(key => (
-                <label key={key} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer' }}>
-                  <input
-                    type="checkbox"
-                    checked={config.events[key]}
-                    onChange={e => setEvents({ [key]: e.target.checked })}
-                    style={{ accentColor: 'var(--color-primary)', width: 14, height: 14 }}
-                  />
-                  {key.replace('on_', '')}
-                </label>
-              ))}
+
+          {/* @group BusinessLogic > EventToggles : Separated process vs cron event panels */}
+          <div style={{ display: 'flex', gap: 10 }}>
+
+            {/* Process events panel */}
+            <div style={{
+              flex: 1,
+              borderRadius: 7,
+              border: '1px solid rgba(99,102,241,0.35)',
+              background: 'rgba(99,102,241,0.06)',
+              padding: '10px 14px',
+            }}>
+              <div style={{
+                fontSize: 10, fontWeight: 700, letterSpacing: '0.1em',
+                color: '#818cf8', textTransform: 'uppercase', marginBottom: 10,
+                display: 'flex', alignItems: 'center', gap: 5,
+              }}>
+                <span style={{ fontSize: 13 }}>⚙</span> Process Events
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+                <EventCheckbox eventKey="on_crash"   label="Crash" />
+                <EventCheckbox eventKey="on_restart" label="Restart" />
+                <EventCheckbox eventKey="on_start"   label="Start" />
+                <EventCheckbox eventKey="on_stop"    label="Stop" />
+              </div>
             </div>
+
+            {/* Cron job events panel */}
+            <div style={{
+              flex: 1,
+              borderRadius: 7,
+              border: '1px solid rgba(251,191,36,0.35)',
+              background: 'rgba(251,191,36,0.06)',
+              padding: '10px 14px',
+            }}>
+              <div style={{
+                fontSize: 10, fontWeight: 700, letterSpacing: '0.1em',
+                color: '#fbbf24', textTransform: 'uppercase', marginBottom: 10,
+                display: 'flex', alignItems: 'center', gap: 5,
+              }}>
+                <span style={{ fontSize: 13 }}>⏰</span> Cron Events
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+                <EventCheckbox eventKey="on_cron_run"  label="Run" />
+                <EventCheckbox eventKey="on_cron_fail" label="Fail" />
+              </div>
+            </div>
+
           </div>
 
           {/* Webhook */}
@@ -388,7 +435,7 @@ export default function NotificationsPage() {
         <h1 style={{ fontSize: 18, fontWeight: 600 }}>Notifications</h1>
       </div>
       <p style={{ color: 'var(--color-muted-foreground)', marginBottom: 28, fontSize: 13 }}>
-        Configure webhook, Slack, and Teams alerts for process lifecycle events.
+        Configure webhook, Slack, and Teams alerts for process and cron lifecycle events.
         Settings cascade: <strong>process override → namespace → global</strong>.
       </p>
 

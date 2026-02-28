@@ -40,10 +40,12 @@ function Layout() {
   const openTray = () => { setTrayOpen(true); markAllRead() }
   const closeTray = () => setTrayOpen(false)
 
-  const active = processes.filter(p =>
-    p.status === 'running' || p.status === 'sleeping' || p.status === 'watching'
-  )
   const connected = error === null
+
+  // @group BusinessLogic > SidebarList : Active processes only (running/watching/sleeping/starting)
+  const activeProcesses = processes.filter(p =>
+    p.status === 'running' || p.status === 'watching' || p.status === 'sleeping' || p.status === 'starting'
+  ).sort((a, b) => a.name.localeCompare(b.name))
 
   async function handleSave() {
     await api.saveState().catch(() => {})
@@ -60,6 +62,9 @@ function Layout() {
     }
     await api.shutdownDaemon().catch(() => {})
   }
+
+  const isProcessActive = location.pathname === '/processes' || location.pathname.startsWith('/processes/')
+  const isCronActive    = location.pathname === '/cron-jobs' || location.pathname === '/cron-jobs/new'
 
   return (
     <div style={{ display: 'flex', height: '100vh', overflow: 'hidden' }}>
@@ -119,11 +124,26 @@ function Layout() {
 
         {/* Nav */}
         <nav style={{ padding: '8px 0', borderBottom: '1px solid var(--color-border)' }}>
-          <NavBtn to="/processes" icon={LayoutGrid} label="Processes" active={location.pathname === '/processes' || location.pathname.startsWith('/processes/')} />
-          <NavBtn to="/start" icon={Plus} label="Start Process" active={location.pathname === '/start'} />
-          <div style={{ height: 4 }} />
-          <NavBtn to="/cron-jobs" icon={Clock} label="Cron Jobs" active={location.pathname === '/cron-jobs'} />
-          <NavBtn to="/cron-jobs/new" icon={Plus} label="New Cron Job" active={location.pathname === '/cron-jobs/new'} />
+          {/* Processes row with inline + button */}
+          <NavRowWithAdd
+            to="/processes"
+            icon={LayoutGrid}
+            label="Processes"
+            active={isProcessActive}
+            onAdd={() => navigate('/start')}
+            addTitle="Start new process"
+          />
+
+          {/* Cron Jobs row with inline + button */}
+          <NavRowWithAdd
+            to="/cron-jobs"
+            icon={Clock}
+            label="Cron Jobs"
+            active={isCronActive}
+            onAdd={() => navigate('/cron-jobs/new')}
+            addTitle="New cron job"
+          />
+
           <div style={{ height: 4 }} />
           <NavBtn to="/logs" icon={ScrollText} label="Log Library" active={location.pathname === '/logs'} />
 
@@ -131,14 +151,14 @@ function Layout() {
           <BellBtn unreadCount={unreadCount} onClick={openTray} />
         </nav>
 
-        {/* Running processes list */}
+        {/* Active processes list */}
         <div style={{ flex: 1, overflow: 'auto', padding: '8px 0' }}>
           <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--color-muted-foreground)', padding: '4px 16px 6px', letterSpacing: '0.08em' }}>
-            ACTIVE
+            ACTIVE {activeProcesses.length > 0 && <span style={{ fontWeight: 400, opacity: 0.7 }}>({activeProcesses.length})</span>}
           </div>
-          {active.length === 0
+          {activeProcesses.length === 0
             ? <div style={{ fontSize: 12, color: 'var(--color-muted-foreground)', padding: '4px 16px' }}>No active processes</div>
-            : active.map(p => <SidebarProc key={p.id} p={p} onNavigate={() => navigate(`/processes/${p.id}`)} />)
+            : activeProcesses.map(p => <SidebarProc key={p.id} p={p} onNavigate={() => navigate(`/processes/${p.id}`)} />)
           }
         </div>
 
@@ -167,6 +187,48 @@ function Layout() {
           <Route path="/settings" element={<SettingsPage settings={settings} onUpdate={updateSettings} onReset={resetToDefaults} />} />
         </Routes>
       </div>
+    </div>
+  )
+}
+
+// @group BusinessLogic > NavRowWithAdd : Sidebar nav link with inline + button on the right
+function NavRowWithAdd({
+  to, icon: Icon, label, active, onAdd, addTitle,
+}: { to: string; icon: LucideIcon; label: string; active: boolean; onAdd: () => void; addTitle: string }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center' }}>
+      <Link to={to} style={{
+        flex: 1, display: 'flex', alignItems: 'center', gap: 9,
+        padding: '7px 16px', fontSize: 13,
+        color: active ? 'var(--color-primary)' : 'var(--color-foreground)',
+        textDecoration: 'none', fontWeight: active ? 600 : 500,
+        background: active ? 'var(--color-accent)' : 'transparent',
+        borderLeft: active ? '2px solid var(--color-primary)' : '2px solid transparent',
+      }}
+        onMouseEnter={e => { if (!active) e.currentTarget.style.background = 'var(--color-accent)' }}
+        onMouseLeave={e => { if (!active) e.currentTarget.style.background = 'transparent' }}
+      >
+        <Icon size={14} />
+        {label}
+      </Link>
+      {/* Inline + button */}
+      <button
+        onClick={onAdd}
+        title={addTitle}
+        style={{
+          width: 28, flexShrink: 0, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center',
+          background: 'transparent', border: 'none', cursor: 'pointer',
+          color: 'var(--color-muted-foreground)', paddingRight: 8,
+        }}
+        onMouseEnter={e => {
+          e.currentTarget.style.color = 'var(--color-primary)'
+        }}
+        onMouseLeave={e => {
+          e.currentTarget.style.color = 'var(--color-muted-foreground)'
+        }}
+      >
+        <Plus size={13} strokeWidth={2} />
+      </button>
     </div>
   )
 }
@@ -234,20 +296,36 @@ function BellBtn({ unreadCount, onClick }: { unreadCount: number; onClick: () =>
   )
 }
 
-// @group BusinessLogic > SidebarProc : Active process pill in sidebar
+// @group BusinessLogic > SidebarProc : Process pill in sidebar — all processes, status-colored
 function SidebarProc({ p, onNavigate }: { p: ProcessInfo; onNavigate: () => void }) {
+  const isActive = p.status === 'running' || p.status === 'watching' || p.status === 'sleeping'
+  const isCron   = !!p.cron
   return (
-    <button onClick={onNavigate} style={{
-      display: 'flex', alignItems: 'center', gap: 8,
-      width: '100%', padding: '5px 16px', background: 'transparent',
-      border: 'none', cursor: 'pointer', color: 'var(--color-foreground)',
-      fontSize: 12, textAlign: 'left',
-    }}
+    <button
+      onClick={onNavigate}
+      title={`${p.name} — ${p.status}${isCron ? ' (cron)' : ''}`}
+      style={{
+        display: 'flex', alignItems: 'center', gap: 7,
+        width: '100%', padding: '4px 16px', background: 'transparent',
+        border: 'none', cursor: 'pointer',
+        color: isActive ? 'var(--color-foreground)' : 'var(--color-muted-foreground)',
+        fontSize: 12, textAlign: 'left',
+      }}
       onMouseEnter={e => (e.currentTarget.style.background = 'var(--color-accent)')}
       onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
     >
-      <span style={{ color: statusColor(p.status), fontSize: 10 }}>●</span>
-      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name}</span>
+      <span style={{ color: statusColor(p.status), fontSize: 9, flexShrink: 0 }}>●</span>
+      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
+        {p.name}
+      </span>
+      {isCron && (
+        <span style={{ fontSize: 9, color: 'var(--color-status-sleeping)', flexShrink: 0, opacity: 0.7 }}>⏰</span>
+      )}
+      {!isActive && (
+        <span style={{ fontSize: 9, color: 'var(--color-muted-foreground)', flexShrink: 0, opacity: 0.6 }}>
+          {p.status === 'crashed' ? '!' : p.status === 'stopped' ? '■' : ''}
+        </span>
+      )}
     </button>
   )
 }
