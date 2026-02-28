@@ -123,6 +123,7 @@ TZ = "UTC"
 | `instances` | integer | no | `1` | Reserved — parsed but not yet active |
 | `log_file` | string | no | auto | Custom path for stdout log. Defaults to `%APPDATA%\alter-pm2\logs\<name>\out.log` |
 | `error_file` | string | no | auto | Custom path for stderr log. Defaults to `%APPDATA%\alter-pm2\logs\<name>\err.log` |
+| `notify` | object | no | null | Per-process notification config override (see [Notifications](#notifications)) |
 
 ---
 
@@ -292,6 +293,44 @@ alter start ./alter.config.json
 > alter detects config files by their extension (`.toml` or `.json`). Any other value is treated as a script to run directly.
 
 After loading, each app appears as a separate process in `alter list` and the web dashboard, with its own logs, restart counter, and controls.
+
+---
+
+## Notifications
+
+Use the `notify` field to override notification settings for a specific process. It takes priority over namespace-level and global notification configs.
+
+```toml
+[[apps]]
+name   = "api"
+script = "python"
+args   = ["-m", "uvicorn", "main:app"]
+namespace = "web"
+
+[apps.notify.slack]
+webhook_url = "https://hooks.slack.com/services/..."
+enabled     = true
+channel     = "#api-alerts"
+
+[apps.notify.events]
+on_crash   = true
+on_restart = true
+on_start   = false
+on_stop    = false
+```
+
+You can also use a generic webhook:
+
+```toml
+[apps.notify.webhook]
+url     = "https://your-service.example.com/alter-hook"
+enabled = true
+
+[apps.notify.events]
+on_crash = true
+```
+
+> **Note:** If `notify` is omitted on a process, the namespace config applies. If the namespace has no config, the global config applies. Configure global and namespace defaults via the REST API — see [Notification Endpoints](./API.md#notification-endpoints).
 
 ---
 

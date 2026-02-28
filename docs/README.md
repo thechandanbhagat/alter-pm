@@ -2,7 +2,7 @@
 
 > A fast, lightweight process manager for Windows (and cross-platform). Manage any runtime — Python, Node.js, Go, Rust, .NET, PHP, Ruby — from a single tool with a built-in web dashboard.
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](../LICENSE)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](../../LICENSE)
 [![Built with Rust](https://img.shields.io/badge/Built%20with-Rust-orange.svg)](https://www.rust-lang.org/)
 [![Platform: Windows](https://img.shields.io/badge/Platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey.svg)]()
 
@@ -32,7 +32,8 @@ Managing background processes on Windows has always been awkward. `alter` gives 
 - **Auto-restart** on crash with exponential backoff
 - **Watch mode** — automatically restart when source files change
 - **Structured logging** with rotation and historical browsing
-- **Web dashboard** — manage everything from your browser
+- **Web dashboard** — manage everything from your browser, with keyboard shortcuts
+- **Notifications** — get alerted on crashes, restarts, or stops via Slack, Teams, Discord, or webhook
 - **Single binary** — no runtime dependencies, no Node.js, no Python required
 
 ---
@@ -47,7 +48,9 @@ Managing background processes on Windows has always been awkward. `alter` gives 
 | **Watch Mode** | Restart on file changes — great for development workflows |
 | **Namespaces** | Group processes logically (e.g. `web`, `workers`, `default`) |
 | **Log Rotation** | Size-based + date-based rotation, historical browsing |
-| **Web Dashboard** | Real-time process monitor with live log streaming |
+| **Web Dashboard** | Real-time process monitor with live log streaming and keyboard shortcuts |
+| **Notifications** | Webhook, Slack, Teams, and Discord alerts on process events |
+| **Resource Monitoring** | Live CPU % and memory usage per process |
 | **State Persistence** | Save and restore your process list across reboots |
 | **Ecosystem Config** | Define multiple apps in a single TOML or JSON file |
 | **REST API** | Full HTTP API — automate anything |
@@ -210,6 +213,58 @@ Processes saved with `alter save` will be available after reboot. Processes that
 
 ---
 
+## Notifications
+
+Get alerted when processes crash, restart, stop, or start. Notifications are configured via the REST API and stored in `%APPDATA%\alter-pm2\notifications.json`.
+
+**Supported channels:**
+- **Webhook** — generic HTTP POST with a JSON payload
+- **Slack** — incoming webhook with color-coded attachments
+- **Microsoft Teams** — MessageCard via incoming webhook
+- **Discord** — rich embed via Discord webhook URL
+
+**Event triggers:** `on_crash`, `on_restart`, `on_start`, `on_stop`
+
+**Config scope cascade:** process-level → namespace-level → global (most specific wins per channel)
+
+```bash
+# Configure global Slack notifications for crashes and restarts
+curl -X PUT http://localhost:2999/api/v1/notifications/global \
+  -H "Content-Type: application/json" \
+  -d '{
+    "slack": { "webhook_url": "https://hooks.slack.com/...", "enabled": true },
+    "events": { "on_crash": true, "on_restart": true }
+  }'
+
+# Test your notification config
+curl -X POST http://localhost:2999/api/v1/notifications/test \
+  -H "Content-Type: application/json" \
+  -d '{ "slack": { "webhook_url": "https://hooks.slack.com/...", "enabled": true }, "events": { "on_start": true } }'
+```
+
+See [API Reference](./API.md#notification-endpoints) for the full endpoint reference.
+
+---
+
+## Keyboard Shortcuts
+
+The web dashboard supports global keyboard shortcuts (active when not typing in a form):
+
+| Key | Action |
+|-----|--------|
+| `r` | Reload / refresh process list |
+| `n` | Go to Start New Process |
+| `?` | Show keyboard shortcut help |
+| `g` → `p` | Navigate to Processes |
+| `g` → `h` | Navigate to Home / Analytics |
+| `g` → `s` | Navigate to Settings |
+| `g` → `n` | Navigate to Start New Process |
+| `g` → `c` | Navigate to Cron Jobs |
+
+`g` chords: press `g`, then the second key within 1 second.
+
+---
+
 ## Documentation
 
 | Document | Description |
@@ -255,12 +310,12 @@ src/
 tests/
 ├── unit/         # Unit tests
 └── integration/  # Integration tests
-docs/
-└── ...           # This documentation
+excluded/
+└── docs/         # This documentation
 ```
 
 ---
 
 ## License
 
-MIT License — see [LICENSE](../LICENSE) for details.
+MIT License — see [LICENSE](../../LICENSE) for details.

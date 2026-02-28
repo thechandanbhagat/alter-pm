@@ -50,11 +50,17 @@ No authentication by default. The API binds to `127.0.0.1` (loopback only) and i
   "max_restarts": 10,
   "watch": false,
   "namespace": "web",
+  "cpu_percent": 1.4,
+  "memory_bytes": 52428800,
+  "env": { "PORT": "8000" },
+  "notify": null,
   "created_at": "2026-02-22T09:00:00Z",
   "started_at": "2026-02-22T09:00:00Z",
   "stopped_at": null
 }
 ```
+
+> `cpu_percent` and `memory_bytes` are `null` when the process is not running. `notify` holds a per-process notification config override (see [Notification Endpoints](#notification-endpoints)).
 
 ---
 
@@ -329,7 +335,7 @@ GET /api/v1/system/health
 ```json
 {
   "status": "ok",
-  "version": "0.1.0",
+  "version": "0.3.0",
   "uptime_secs": 3600,
   "process_count": 5
 }
@@ -401,6 +407,109 @@ POST /api/v1/ecosystem
 ```json
 { "success": true, "message": "loaded 3 apps" }
 ```
+
+---
+
+## Notification Endpoints
+
+Notification settings are stored at `%APPDATA%\alter-pm2\notifications.json` and survive daemon restarts.
+
+**NotificationConfig object:**
+```json
+{
+  "webhook": { "url": "https://example.com/hook", "enabled": true },
+  "slack":   { "webhook_url": "https://hooks.slack.com/...", "enabled": true, "channel": "#alerts" },
+  "teams":   { "webhook_url": "https://outlook.office.com/...", "enabled": false },
+  "events":  { "on_crash": true, "on_restart": true, "on_start": false, "on_stop": false }
+}
+```
+
+> All channel fields are optional — omit any you don't need. `channel` on Slack overrides the webhook's default channel.
+
+---
+
+### `GET /notifications`
+
+Return the full notifications store (global config + all namespace overrides).
+
+```
+GET /api/v1/notifications
+```
+
+**Response:**
+```json
+{
+  "global": { /* NotificationConfig */ },
+  "namespaces": {
+    "web": { /* NotificationConfig */ }
+  }
+}
+```
+
+---
+
+### `PUT /notifications/global`
+
+Update the global notification config. Applies to all processes not overridden at namespace or process level.
+
+```
+PUT /api/v1/notifications/global
+{ /* NotificationConfig */ }
+```
+
+**Response:**
+```json
+{ "success": true, "message": "global notifications updated" }
+```
+
+---
+
+### `PUT /notifications/namespace/{ns}`
+
+Set a notification config override for a specific namespace. Takes priority over global for all processes in that namespace.
+
+```
+PUT /api/v1/notifications/namespace/web
+{ /* NotificationConfig */ }
+```
+
+**Response:**
+```json
+{ "success": true, "message": "namespace 'web' notifications updated" }
+```
+
+---
+
+### `DELETE /notifications/namespace/{ns}`
+
+Remove the namespace notification override (falls back to global config).
+
+```
+DELETE /api/v1/notifications/namespace/web
+```
+
+**Response:**
+```json
+{ "success": true, "message": "namespace 'web' removed" }
+```
+
+---
+
+### `POST /notifications/test`
+
+Fire a test notification using the provided config without affecting any real process. Useful for verifying webhook URLs and credentials.
+
+```
+POST /api/v1/notifications/test
+{ /* NotificationConfig */ }
+```
+
+**Response:**
+```json
+{ "success": true, "message": "test notification dispatched" }
+```
+
+**Config cascade priority:** process-level `notify` → namespace config → global config. The first non-null value per channel wins.
 
 ---
 

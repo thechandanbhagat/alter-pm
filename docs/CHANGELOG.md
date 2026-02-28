@@ -6,6 +6,62 @@ Format: `[version] — YYYY-MM-DD` with sections: **Added**, **Changed**, **Fixe
 
 ---
 
+## [0.3.0] — 2026-02-28
+
+### Added
+
+**Notifications**
+- Webhook, Slack, and Microsoft Teams notification channels
+- Per-process, per-namespace, and global notification scopes (process → namespace → global cascade)
+- Configurable event triggers: `on_start`, `on_stop`, `on_crash`, `on_restart`
+- Discord rich-embed notification channel
+- Test endpoint to fire a notification without a real process event
+- Notifications config persisted to `%APPDATA%\alter-pm2\notifications.json`
+- REST API: `GET /notifications`, `PUT /notifications/global`, `PUT/DELETE /notifications/namespace/{ns}`, `POST /notifications/test`
+
+**Web Dashboard**
+- Global keyboard shortcuts (fire only when not focused in a form field):
+  - `r` — reload / refresh process list
+  - `n` — navigate to Start New Process
+  - `?` — open keyboard shortcut help
+  - `g` chord: press `g` then a second key within 1s to navigate: `g p` → Processes, `g h` → Home, `g s` → Settings, `g n` → Start, `g c` → Cron Jobs
+- In-app activity tray for live notification event feed
+
+**Coming in a future release** *(code committed, not yet active in the binary)*
+- Health checks: HTTP and TCP probes per process with configurable interval, timeout, and retry count
+- Lifecycle hooks: `pre_start`, `post_start`, `pre_stop` shell commands per process
+- Dependency resolution: `depends_on` — wait for upstream processes to be running/healthy before starting
+- Rolling restart: zero-downtime restart for multi-instance processes
+- `.env` file support: `env_file` field in ecosystem config loads `.env` files per process
+- Prometheus metrics: `GET /metrics` in Prometheus text exposition format
+
+### Changed
+
+- Version bumped `0.2.0` → `0.3.0`
+- Package description updated to "A process manager for your developers"
+
+---
+
+## [0.2.0] — 2026-02-24
+
+### Added
+
+**Analytics & resource monitoring**
+- Real-time CPU and memory tracking per process via `sysinfo`
+- `cpu_percent` and `memory_bytes` fields added to process API response object
+- Analytics page is now the root (`/`) — process list moved to `/processes`
+- Process and cron tables show live CPU % and memory usage columns
+
+**Cron jobs**
+- Dedicated Cron Jobs page at `/cron-jobs`
+- Cron schedule display with next-run time and run history per job
+
+**Web dashboard polish**
+- Sidebar header status indicator and settings page layout improvements
+- Navigation and auto-refresh refinements
+
+---
+
 ## [0.1.0] — 2026-02-22
 
 Initial public release.
