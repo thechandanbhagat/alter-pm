@@ -76,6 +76,14 @@ async fn start_process(
         cron_last_run: None,
         cron_next_run: None,
         notify: req.notify,
+        env_file: None,
+        health_check_url: None,
+        health_check_interval_secs: 30,
+        health_check_timeout_secs: 5,
+        health_check_retries: 3,
+        pre_start: None,
+        post_start: None,
+        pre_stop: None,
     };
 
     let info = state.manager.start(config).await.map_err(ApiError::from)?;
@@ -171,8 +179,8 @@ async fn get_logs(
 
     let filtered: Vec<_> = merged
         .into_iter()
-        .filter(|(s, _)| stream_filter == "all" || s == stream_filter)
-        .map(|(stream, line)| json!({ "stream": stream, "content": line }))
+        .filter(|(s, _, _)| stream_filter == "all" || s == stream_filter)
+        .map(|(stream, ts, content)| json!({ "stream": stream, "timestamp": ts, "content": content }))
         .collect();
 
     Ok(Json(json!({ "lines": filtered })))
@@ -275,6 +283,14 @@ async fn update_process(
         cron_last_run: None,
         cron_next_run: None,
         notify: req.notify,
+        env_file: None,
+        health_check_url: None,
+        health_check_interval_secs: 30,
+        health_check_timeout_secs: 5,
+        health_check_retries: 3,
+        pre_start: None,
+        post_start: None,
+        pre_stop: None,
     };
 
     let info = state.manager.update(id, config).await.map_err(ApiError::from)?;
