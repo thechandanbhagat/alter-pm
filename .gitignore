@@ -10,3 +10,7 @@ excluded/
 # Web UI build artifacts
 web-ui/dist/
 web-ui/node_modules/
+
+*-cwd
+no/
+nul
