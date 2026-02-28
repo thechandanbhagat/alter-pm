@@ -7,10 +7,33 @@ import { parseArgs, parseEnvString } from '@/lib/utils'
 import { FormCard, FormField, FormRow } from '@/components/FormLayout'
 import { FolderBrowser } from '@/components/FolderBrowser'
 import type { AppSettings } from '@/lib/settings'
+import type { EnvFileEntry } from '@/types'
 
 interface Props {
   onDone: () => void
   settings: AppSettings
+}
+
+// @group Utilities > EnvColor : Color tokens for env file tabs (same as EnvFilePanel)
+function envFileColor(name: string): string {
+  if (name === '.env') return '#4ade80'
+  if (name === '.env.example') return '#fbbf24'
+  if (name === '.env.local') return '#60a5fa'
+  if (name === '.env.production' || name === '.env.prod') return '#f87171'
+  if (name === '.env.development' || name === '.env.dev') return '#34d399'
+  if (name === '.env.test') return '#a78bfa'
+  if (name === '.env.staging') return '#fb923c'
+  return '#94a3b8'
+}
+function envFileBg(name: string): string {
+  if (name === '.env') return 'rgba(74,222,128,0.13)'
+  if (name === '.env.example') return 'rgba(251,191,36,0.13)'
+  if (name === '.env.local') return 'rgba(96,165,250,0.13)'
+  if (name === '.env.production' || name === '.env.prod') return 'rgba(248,113,113,0.13)'
+  if (name === '.env.development' || name === '.env.dev') return 'rgba(52,211,153,0.13)'
+  if (name === '.env.test') return 'rgba(167,139,250,0.13)'
+  if (name === '.env.staging') return 'rgba(251,146,60,0.13)'
+  return 'rgba(148,163,184,0.1)'
 }
 
 export default function StartPage({ onDone, settings }: Props) {
@@ -26,21 +49,77 @@ export default function StartPage({ onDone, settings }: Props) {
   const [error, setError]           = useState('')
   const [loading, setLoading]       = useState(false)
   const [envStatus, setEnvStatus]   = useState<{ exists: boolean } | null>(null)
+  const [envFiles, setEnvFiles]     = useState<EnvFileEntry[]>([])
   const [browseOpen, setBrowseOpen] = useState(false)
-  const envCheckTimer               = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  // @group BusinessLogic > EnvCheck : Debounced .env existence check when cwd changes
+  // @group BusinessLogic > EnvSidebar : Env file viewer state
+  const [activeEnvTab, setActiveEnvTab]   = useState<string>('.env')
+  const [envContent, setEnvContent]       = useState<string>('')
+  const [envDirty, setEnvDirty]           = useState(false)
+  const [envSaved, setEnvSaved]           = useState(false)
+  const [envSaving, setEnvSaving]         = useState(false)
+  const [envLoadingFile, setEnvLoadingFile] = useState(false)
+
+  const envCheckTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // @group BusinessLogic > EnvCheck : Debounced env file list check when cwd changes
   function handleCwdChange(val: string) {
     setCwd(val)
     setEnvStatus(null)
+    setEnvFiles([])
+    setEnvContent('')
+    setEnvDirty(false)
     if (envCheckTimer.current) clearTimeout(envCheckTimer.current)
     const trimmed = val.trim()
     if (!trimmed) return
     envCheckTimer.current = setTimeout(() => {
-      api.checkEnvPath(trimmed)
-        .then(r => setEnvStatus({ exists: r.exists }))
-        .catch(() => {})
+      api.listEnvPath(trimmed)
+        .then(r => {
+          setEnvFiles(r.files)
+          setEnvStatus({ exists: r.files.some(f => f.name === '.env') })
+          if (r.files.length > 0) {
+            const first = r.files[0].name
+            setActiveEnvTab(first)
+            loadEnvFile(first, r.files)
+          }
+        })
+        .catch(() => {
+          api.checkEnvPath(trimmed)
+            .then(r => setEnvStatus({ exists: r.exists }))
+            .catch(() => {})
+        })
     }, 500)
+  }
+
+  function loadEnvFile(filename: string, fileList?: EnvFileEntry[]) {
+    const files = fileList ?? envFiles
+    const entry = files.find(f => f.name === filename)
+    if (!entry?.path) return
+    setEnvLoadingFile(true)
+    setEnvContent('')
+    setEnvDirty(false)
+    api.readEnvFile(entry.path)
+      .then(r => { setEnvContent(r.content); setEnvLoadingFile(false) })
+      .catch(() => setEnvLoadingFile(false))
+  }
+
+  function switchEnvTab(name: string) {
+    if (envDirty && !window.confirm('Unsaved changes. Discard and switch?')) return
+    setActiveEnvTab(name)
+    loadEnvFile(name)
+  }
+
+  async function saveEnvFile() {
+    const entry = envFiles.find(f => f.name === activeEnvTab)
+    if (!entry?.path) return
+    setEnvSaving(true)
+    try {
+      await api.writeEnvFile(entry.path, envContent)
+      setEnvDirty(false)
+      setEnvSaved(true)
+      setTimeout(() => setEnvSaved(false), 2500)
+    } catch { /* silent */ }
+    finally { setEnvSaving(false) }
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -68,87 +147,192 @@ export default function StartPage({ onDone, settings }: Props) {
     }
   }
 
+  const activeColor = envFileColor(activeEnvTab)
+  const showEnvSidebar = envFiles.length > 0
+
   return (
-    <div style={{ padding: '20px 24px' }}>
-      {browseOpen && (
-        <FolderBrowser
-          initialPath={cwd.trim()}
-          onSelect={path => handleCwdChange(path)}
-          onClose={() => setBrowseOpen(false)}
-        />
-      )}
-      <div style={{ marginBottom: 20 }}>
-        <h2 style={{ fontSize: 16, fontWeight: 600 }}>Start New Process</h2>
+    <div style={{ display: 'flex', height: '100%', overflow: 'hidden' }}>
+      {/* Main form area */}
+      <div style={{ flex: 1, overflowY: 'auto', padding: '20px 24px' }}>
+        {browseOpen && (
+          <FolderBrowser
+            initialPath={cwd.trim()}
+            onSelect={path => handleCwdChange(path)}
+            onClose={() => setBrowseOpen(false)}
+          />
+        )}
+        <div style={{ marginBottom: 20 }}>
+          <h2 style={{ fontSize: 16, fontWeight: 600 }}>Start New Process</h2>
+        </div>
+
+        <FormCard onSubmit={handleSubmit}>
+          <FormRow>
+            <FormField label="Command *">
+              <input style={inputStyle} value={script} onChange={e => setScript(e.target.value)}
+                placeholder="node app.js" required />
+            </FormField>
+            <FormField label="Name">
+              <input style={inputStyle} value={name} onChange={e => setName(e.target.value)}
+                placeholder="my-app" />
+            </FormField>
+          </FormRow>
+          <FormRow>
+            <FormField label={
+              <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                Working Directory
+                {envStatus !== null && (
+                  <span style={{
+                    fontSize: 10, padding: '1px 6px', borderRadius: 4, fontWeight: 500,
+                    background: envStatus.exists ? 'rgba(100,200,100,0.15)' : 'rgba(128,128,128,0.1)',
+                    color: envStatus.exists ? 'var(--color-status-running, #4ade80)' : 'var(--color-muted-foreground)',
+                  }}>
+                    {envStatus.exists ? `● .env found` : '○ no .env'}
+                  </span>
+                )}
+                {envFiles.length > 1 && (
+                  <span style={{ fontSize: 10, padding: '1px 6px', borderRadius: 4, background: 'rgba(96,165,250,0.13)', color: '#60a5fa', fontWeight: 500 }}>
+                    {envFiles.length} env files
+                  </span>
+                )}
+              </span>
+            }>
+              <div style={{ display: 'flex', gap: 6 }}>
+                <input style={{ ...inputStyle, flex: 1 }} value={cwd} onChange={e => handleCwdChange(e.target.value)}
+                  placeholder="C:\Users\me\app" />
+                <button type="button" onClick={() => setBrowseOpen(true)} title="Browse folders" style={browseBtnStyle}>
+                  <FolderOpen size={14} strokeWidth={1.75} />
+                </button>
+              </div>
+            </FormField>
+            <FormField label="Namespace">
+              <input style={inputStyle} value={namespace} onChange={e => setNamespace(e.target.value)}
+                placeholder="default" />
+            </FormField>
+          </FormRow>
+          <FormRow>
+            <FormField label="Args (space-separated)">
+              <input style={inputStyle} value={args} onChange={e => setArgs(e.target.value)}
+                placeholder="--port 3000 --env prod" />
+            </FormField>
+            <FormField label="Env Vars (KEY=VAL, comma-separated)">
+              <input style={inputStyle} value={env} onChange={e => setEnv(e.target.value)}
+                placeholder="NODE_ENV=production,PORT=3000" />
+            </FormField>
+          </FormRow>
+          <FormRow>
+            <FormField label="">
+              <div style={{ display: 'flex', gap: 20, marginTop: 4 }}>
+                <CheckboxField label="Auto-restart on crash" checked={autorestart} onChange={setAutorestart} />
+                <CheckboxField label="Watch mode" checked={watch} onChange={setWatch} />
+              </div>
+            </FormField>
+            <FormField label={<>Cron Schedule <span style={{ color: 'var(--color-muted-foreground)', fontSize: 11 }}>(e.g. "0 * * * *" — leave blank for normal)</span></>}>
+              <input style={inputStyle} value={cron} onChange={e => setCron(e.target.value)}
+                placeholder="0 * * * *" />
+            </FormField>
+          </FormRow>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 8 }}>
+            <button type="submit" disabled={loading} style={primaryBtnStyle}>
+              {loading ? 'Starting…' : '▶ Start'}
+            </button>
+            {error && <span style={{ fontSize: 12, color: 'var(--color-destructive)' }}>{error}</span>}
+          </div>
+        </FormCard>
       </div>
 
-      <FormCard onSubmit={handleSubmit}>
-        <FormRow>
-          <FormField label="Command *">
-            <input style={inputStyle} value={script} onChange={e => setScript(e.target.value)}
-              placeholder="node app.js" required />
-          </FormField>
-          <FormField label="Name">
-            <input style={inputStyle} value={name} onChange={e => setName(e.target.value)}
-              placeholder="my-app" />
-          </FormField>
-        </FormRow>
-        <FormRow>
-          <FormField label={
-            <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              Working Directory
-              {envStatus !== null && (
-                <span style={{
-                  fontSize: 10, padding: '1px 6px', borderRadius: 4, fontWeight: 500,
-                  background: envStatus.exists ? 'rgba(100,200,100,0.15)' : 'rgba(128,128,128,0.1)',
-                  color: envStatus.exists ? 'var(--color-status-running, #4ade80)' : 'var(--color-muted-foreground)',
+      {/* @group BusinessLogic > EnvSidebar : Right sidebar showing env files when cwd has them */}
+      {showEnvSidebar && (
+        <div style={{
+          width: 360, flexShrink: 0,
+          borderLeft: '1px solid var(--color-border)',
+          display: 'flex', flexDirection: 'column',
+          background: 'var(--color-card)',
+        }}>
+          {/* Sidebar header */}
+          <div style={{ padding: '10px 14px 0', borderBottom: '1px solid var(--color-border)', flexShrink: 0 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, paddingBottom: 8 }}>
+              <span style={{ fontSize: 13 }}>🔑</span>
+              <span style={{ fontWeight: 600, fontSize: 12, flex: 1 }}>Env Files</span>
+              <span style={{ fontSize: 11, color: 'var(--color-muted-foreground)' }}>preview only</span>
+            </div>
+
+            {/* Tabs */}
+            <div style={{ display: 'flex', gap: 2, overflowX: 'auto' }}>
+              {envFiles.map(f => {
+                const isActive = f.name === activeEnvTab
+                const color    = envFileColor(f.name)
+                const bg       = envFileBg(f.name)
+                return (
+                  <button key={f.name} onClick={() => switchEnvTab(f.name)} style={{
+                    padding: '4px 10px', fontSize: 11, fontWeight: isActive ? 700 : 500,
+                    background: isActive ? bg : 'transparent',
+                    border: 'none', borderBottom: isActive ? `2px solid ${color}` : '2px solid transparent',
+                    borderRadius: '3px 3px 0 0',
+                    cursor: 'pointer', color: isActive ? color : 'var(--color-muted-foreground)',
+                    whiteSpace: 'nowrap', flexShrink: 0,
+                  }}>
+                    {f.name}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+
+          {/* Editor area */}
+          <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column', padding: '8px 12px', gap: 6 }}>
+            {envLoadingFile ? (
+              <div style={{ color: 'var(--color-muted-foreground)', fontSize: 13, padding: 20, textAlign: 'center' }}>Loading…</div>
+            ) : (
+              <>
+                <div style={{
+                  flex: 1, display: 'flex', gap: 0, overflow: 'hidden',
+                  border: `1px solid ${envDirty ? activeColor : 'var(--color-border)'}`,
+                  borderRadius: 4, background: 'var(--color-background)',
                 }}>
-                  {envStatus.exists ? '● .env found' : '○ no .env'}
-                </span>
-              )}
+                  {/* Line numbers */}
+                  <div style={{
+                    padding: '8px 6px', textAlign: 'right', userSelect: 'none',
+                    fontFamily: 'monospace', fontSize: 11, lineHeight: '1.6',
+                    color: 'var(--color-muted-foreground)', background: 'var(--color-muted)',
+                    borderRight: '1px solid var(--color-border)', minWidth: 28, overflowY: 'hidden',
+                  }}>
+                    {envContent.split('\n').map((_, i) => <div key={i}>{i + 1}</div>)}
+                  </div>
+                  <textarea
+                    value={envContent}
+                    onChange={e => { setEnvContent(e.target.value); setEnvDirty(true); setEnvSaved(false) }}
+                    spellCheck={false}
+                    placeholder="KEY=value"
+                    style={{
+                      flex: 1, padding: '8px 10px', fontFamily: 'monospace', fontSize: 11, lineHeight: '1.6',
+                      background: 'transparent', color: 'var(--color-foreground)',
+                      border: 'none', outline: 'none', resize: 'none', minHeight: 0,
+                    }}
+                  />
+                </div>
+              </>
+            )}
+          </div>
+
+          {/* Footer */}
+          <div style={{ padding: '8px 12px', borderTop: '1px solid var(--color-border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
+            <span style={{ fontSize: 11, color: 'var(--color-muted-foreground)' }}>
+              {envDirty ? <span style={{ color: activeColor }}>● Unsaved</span> : envSaved ? '✓ Saved' : `${activeEnvTab}`}
             </span>
-          }>
-            <div style={{ display: 'flex', gap: 6 }}>
-              <input style={{ ...inputStyle, flex: 1 }} value={cwd} onChange={e => handleCwdChange(e.target.value)}
-                placeholder="C:\Users\me\app" />
-              <button type="button" onClick={() => setBrowseOpen(true)} title="Browse folders" style={browseBtnStyle}>
-                <FolderOpen size={14} strokeWidth={1.75} />
-              </button>
-            </div>
-          </FormField>
-          <FormField label="Namespace">
-            <input style={inputStyle} value={namespace} onChange={e => setNamespace(e.target.value)}
-              placeholder="default" />
-          </FormField>
-        </FormRow>
-        <FormRow>
-          <FormField label="Args (space-separated)">
-            <input style={inputStyle} value={args} onChange={e => setArgs(e.target.value)}
-              placeholder="--port 3000 --env prod" />
-          </FormField>
-          <FormField label="Env Vars (KEY=VAL, comma-separated)">
-            <input style={inputStyle} value={env} onChange={e => setEnv(e.target.value)}
-              placeholder="NODE_ENV=production,PORT=3000" />
-          </FormField>
-        </FormRow>
-        <FormRow>
-          <FormField label="">
-            <div style={{ display: 'flex', gap: 20, marginTop: 4 }}>
-              <CheckboxField label="Auto-restart on crash" checked={autorestart} onChange={setAutorestart} />
-              <CheckboxField label="Watch mode" checked={watch} onChange={setWatch} />
-            </div>
-          </FormField>
-          <FormField label={<>Cron Schedule <span style={{ color: 'var(--color-muted-foreground)', fontSize: 11 }}>(e.g. "0 * * * *" — leave blank for normal)</span></>}>
-            <input style={inputStyle} value={cron} onChange={e => setCron(e.target.value)}
-              placeholder="0 * * * *" />
-          </FormField>
-        </FormRow>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 8 }}>
-          <button type="submit" disabled={loading} style={primaryBtnStyle}>
-            {loading ? 'Starting…' : '▶ Start'}
-          </button>
-          {error && <span style={{ fontSize: 12, color: 'var(--color-destructive)' }}>{error}</span>}
+            <button
+              disabled={envSaving || envLoadingFile || !envDirty}
+              onClick={saveEnvFile}
+              style={{
+                padding: '4px 12px', fontSize: 11, fontWeight: 600, cursor: 'pointer',
+                background: activeColor, border: 'none', borderRadius: 5, color: '#000',
+                opacity: envSaving || envLoadingFile || !envDirty ? 0.5 : 1,
+              }}
+            >
+              {envSaving ? 'Saving…' : 'Save'}
+            </button>
+          </div>
         </div>
-      </FormCard>
+      )}
     </div>
   )
 }
