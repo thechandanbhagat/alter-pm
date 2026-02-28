@@ -1,0 +1,4 @@
+# Suppress MSVC PDB generation on Windows dev builds to avoid LNK1318 stream-count limit
+# on large Rust binaries. Release builds use strip=true which already removes debug info.
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-C", "link-arg=/DEBUG:NONE"]
