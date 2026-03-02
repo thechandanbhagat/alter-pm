@@ -13,7 +13,7 @@ InstallerType: inno
 Installers:
   - Architecture: x64
     InstallerUrl: https://github.com/thechandanbhagat/alter-pm/releases/download/v0.4.0/alter-0.4.0-windows-x64-setup.exe
-    InstallerSha256: PLACEHOLDER_UPDATE_AFTER_BUILD
+    InstallerSha256: 3fa0250167903c8a7d96873bbfaa49b24d32530a657a231a8c474c296ee1c7bb
     InstallerSwitches:
       Silent: /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP-
       SilentWithProgress: /SILENT /SUPPRESSMSGBOXES /NORESTART /SP-
