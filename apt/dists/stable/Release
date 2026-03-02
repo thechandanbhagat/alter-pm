@@ -1,0 +1,32 @@
+Architectures: amd64 arm64
+Codename: stable
+Components: main
+Date: Mon, 02 Mar 2026 02:22:01 +0000
+Description: alter process manager APT repository
+Label: alter
+Origin: alter
+Suite: stable
+MD5Sum:
+ fdd93cb95fec12ca18eb8c0135fce134              190 Release
+ 03de63d62c423d1e10d28378888748d1              767 main/binary-amd64/Packages
+ 026a033880158e41dcf4d708fb7c88b0              564 main/binary-amd64/Packages.gz
+ 66ea0726e11278410ffdec66f0e3390b              767 main/binary-arm64/Packages
+ b79945a5d5f06048bd8f94c019120308              562 main/binary-arm64/Packages.gz
+SHA1:
+ 176e43f2581e413be09e1568625eac829a9831ee              190 Release
+ b694eb27b2dee2d301940f0a4f67da9984398b47              767 main/binary-amd64/Packages
+ 86e7497dc5ff5dae4f6f9237a5a593a19c67fe1d              564 main/binary-amd64/Packages.gz
+ 973d7c8e795e4403f6cb33c0111b566136d275aa              767 main/binary-arm64/Packages
+ dc217833b71eb15cd60b3f08e06071dfb064198c              562 main/binary-arm64/Packages.gz
+SHA256:
+ 234491e6821de2557849bef358bdd92a0a64b2eae8a164d83031a05b376e9a30              190 Release
+ 724b7150734b2ef9a168af1bcf9e4f383c1045dbb8f3b72c78427ab7d4742025              767 main/binary-amd64/Packages
+ b86038b457e79ea721c11cc7391719ce5ae12e82da6b6ee387de762ba0073495              564 main/binary-amd64/Packages.gz
+ e0f553a03af9c5efc0b1d278b8246b8ce5f296566fba06b4c24cd2cf8d18ca85              767 main/binary-arm64/Packages
+ 2f72d251a2c9eeadbd5a31b5995dc089a8d1d74ed3ff187592f0bc0a05809bf9              562 main/binary-arm64/Packages.gz
+SHA512:
+ dd46c1b696c666653892518ea2190b2291e4cb116b81f6c4f595603d040855eaaba2e8c2f48296c90504001237948cceff660c7108d8701ad673af00c972f396              190 Release
+ 40202ee029bfbea4ac1e51d793f2a87a3628aca48aa4cfc6dc7a43517f7305ee50577418fd968c90f8fd690630f634669ffff523fbe11a61d235cbefa02bb986              767 main/binary-amd64/Packages
+ 5c39ab6dd3d70c98c2ff1d6642aae373029eeefb763366872215a850c31ecd3fdba7c38bbc67abf88539f01cc01d80a8dbd1e3a8113c5b16a50042862b3b891f              564 main/binary-amd64/Packages.gz
+ a63e5b05348caa784b1edc7557423ef71ac18e671c319d340dd2a966031aacb9838b03095c293096831977cedd6e4c252db5c93fbeeb1418cc0b3e715f90dcb3              767 main/binary-arm64/Packages
+ eaa7458d4be3a2c7ccb63f6bd7a9f3312cdf42cd28f7c479010bb305fad0b9e82855da2fab7cb5f7abc7a0eea73f02b088c6cabb7ed2c668499dd5370d9f9ad6              562 main/binary-arm64/Packages.gz

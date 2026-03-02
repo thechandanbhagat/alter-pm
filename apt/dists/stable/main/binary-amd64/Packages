@@ -1,0 +1,21 @@
+Package: alter
+Version: 0.4.0
+Architecture: amd64
+Maintainer: thechandanbhagat <thechandanbhagat@gmail.com>
+Installed-Size: 7556
+Depends: libc6 (>= 2.17)
+Filename: pool/main/alter_0.4.0_amd64.deb
+Size: 2754070
+MD5sum: 91e4bbb5909f7f71626c4c16926f28b8
+SHA1: ca4ca78873f0271e9d9bcb42e05388c2b7ed96c5
+SHA256: 6fcacbfb16232e235996024ea2e7936bdd4b746df59a9d12ba2030e34163a56b
+Section: utils
+Priority: optional
+Homepage: https://github.com/thechandanbhagat/alter-pm
+Description: A process manager for your developers
+ Run and manage any application — Python, Node.js, Go, Rust, .NET, PHP —
+ from a single binary with a built-in web dashboard.
+ .
+ Features: auto-restart, watch mode, namespaces, live log streaming,
+ state persistence, ecosystem config, full REST API.
+
