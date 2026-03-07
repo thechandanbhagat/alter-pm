@@ -48,6 +48,8 @@ pub struct DaemonState {
     pub config: DaemonConfig,
     pub started_at: DateTime<Utc>,
     pub notifications: Arc<RwLock<NotificationsStore>>,
+    /// Ephemeral GitHub Device Flow auth state — cleared after successful login or expiry
+    pub ai_device_auth: Arc<tokio::sync::Mutex<Option<crate::models::ai::DeviceAuthState>>>,
 }
 
 impl DaemonState {
@@ -58,6 +60,7 @@ impl DaemonState {
             config,
             started_at: Utc::now(),
             notifications,
+            ai_device_auth: Arc::new(tokio::sync::Mutex::new(None)),
         }
     }
 
@@ -86,10 +89,23 @@ impl DaemonState {
         };
 
         let path = crate::config::paths::state_file();
-        let tmp = path.with_extension("json.tmp");
         let content = serde_json::to_string_pretty(&saved)?;
-        std::fs::write(&tmp, content)?;
-        std::fs::rename(tmp, path)?;
+
+        // Run blocking I/O on a dedicated thread to avoid stalling the async runtime.
+        // Uses atomic tmp-then-rename pattern; falls back to a direct write on Windows
+        // if MoveFileExW fails (e.g. due to antivirus locks on the destination).
+        tokio::task::spawn_blocking(move || -> Result<()> {
+            let tmp = path.with_extension("json.tmp");
+            std::fs::write(&tmp, &content)?;
+            if std::fs::rename(&tmp, &path).is_err() {
+                // Rename failed (Windows sharing violation etc.) — fall back to direct write.
+                // Slightly less atomic, but the file contents will always be valid JSON.
+                let _ = std::fs::remove_file(&tmp);
+                std::fs::write(&path, &content)?;
+            }
+            Ok(())
+        })
+        .await??;
         Ok(())
     }
 

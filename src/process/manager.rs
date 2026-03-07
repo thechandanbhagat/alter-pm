@@ -748,7 +748,15 @@ impl ProcessManager {
                                 };
                                 let info_for_fail = {
                                     let mut proc = arc2.write().await;
-                                    proc.status = ProcessStatus::Sleeping;
+                                    // Only transition back to Sleeping if the job wasn't manually stopped.
+                                    // If status is Stopped, the user explicitly stopped it while it was
+                                    // running — don't override that decision.
+                                    if proc.status != ProcessStatus::Stopped {
+                                        proc.status = ProcessStatus::Sleeping;
+                                        if let Some(expr) = &proc.config.cron.clone() {
+                                            proc.cron_next_run = next_run(expr);
+                                        }
+                                    }
                                     proc.pid = None;
                                     proc.last_exit_code = exit_code;
                                     proc.stopped_at = Some(finished_at);
@@ -756,9 +764,6 @@ impl ProcessManager {
                                     proc.cron_run_history.push(run);
                                     if proc.cron_run_history.len() > MAX_CRON_HISTORY {
                                         proc.cron_run_history.remove(0);
-                                    }
-                                    if let Some(expr) = &proc.config.cron.clone() {
-                                        proc.cron_next_run = next_run(expr);
                                     }
                                     // Capture info for notification (only needed if failed)
                                     exit_code.map(|_| proc.to_info())
