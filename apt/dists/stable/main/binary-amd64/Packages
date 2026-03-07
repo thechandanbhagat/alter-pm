@@ -1,14 +1,14 @@
 Package: alter
-Version: 0.4.0
+Version: 0.5.0
 Architecture: amd64
 Maintainer: thechandanbhagat <thechandanbhagat@gmail.com>
-Installed-Size: 7556
+Installed-Size: 7796
 Depends: libc6 (>= 2.17)
-Filename: pool/main/alter_0.4.0_amd64.deb
-Size: 2754070
-MD5sum: 91e4bbb5909f7f71626c4c16926f28b8
-SHA1: ca4ca78873f0271e9d9bcb42e05388c2b7ed96c5
-SHA256: 6fcacbfb16232e235996024ea2e7936bdd4b746df59a9d12ba2030e34163a56b
+Filename: pool/main/alter_0.5.0_amd64.deb
+Size: 2840920
+MD5sum: 392bac24eac0fcaaae16e4619ad670d7
+SHA1: 226e224d78bb271e577aa8841c7822eba18d3518
+SHA256: fe04f27ae29e9f3099f003e5ca8adfbcc844eb85c7a10d3cef15ee88464d5b5d
 Section: utils
 Priority: optional
 Homepage: https://github.com/thechandanbhagat/alter-pm
