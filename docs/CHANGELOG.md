@@ -6,6 +6,59 @@ Format: `[version] — YYYY-MM-DD` with sections: **Added**, **Changed**, **Fixe
 
 ---
 
+## [0.5.0] — 2026-03-07
+
+### Added
+
+**AI Assistant**
+- Built-in AI chat panel powered by [GitHub Models](https://github.com/marketplace/models) — slide-in panel accessible from the sidebar
+- GitHub OAuth Device Flow sign-in — no API keys needed; authenticate with your GitHub account from the Settings page
+- Dynamic model catalog fetched from GitHub Models API; fallback list when unauthenticated
+- Streaming SSE responses (token-by-token) for low-latency chat
+- Process-aware context: when opened from a process detail view, the AI receives the last 200 log lines and process metadata
+- Global context: when no process is selected, a summary of all running / stopped processes is injected
+- AI settings section in Settings page: toggle enable/disable, pick model, configure OAuth App Client ID, GitHub sign-in/disconnect
+- New REST API: `GET/PUT /api/v1/ai/settings`, `POST /api/v1/ai/chat`, `POST /api/v1/ai/auth/start`, `GET /api/v1/ai/auth/status`, `DELETE /api/v1/ai/auth`, `GET /api/v1/ai/models`
+- Settings stored in `%APPDATA%\alter-pm2\ai-settings.json`
+
+**Port Finder**
+- New **Port Finder** page listing all open TCP/UDP ports with owning process names, PIDs, connection state, and addresses
+- Search/filter by port, process name, or address; toggle by protocol (TCP/UDP) and state (Listening/Established)
+- Kill any process by PID directly from the page (inline confirmation)
+- Deep process-tree resolution: ports owned by grandchild processes are traced back to their managed root via ancestor PID chains
+- Process table now shows active listening ports inline under each process PID
+- New REST API: `GET /api/v1/ports`, `POST /api/v1/ports/kill/{pid}`
+
+**Shared Notification Modals**
+- `NotifModal.tsx` extracted as a shared component — `ProcessNotifModal` and `NsNotifModal` are reusable from both `ProcessesPage` and `CronJobsPage`
+
+### Changed
+
+- Cron Jobs table uses namespace-grouped layout matching the Processes page; compact icon-only action buttons
+- Status column moved before Next Run in the Cron Jobs table
+- `vite.config.ts` dev-proxy target corrected from `:3999` → `:2999`
+
+---
+
+## [0.4.0] — 2026-03-02
+
+### Added
+
+- Multi-file `.env` editor in the web dashboard — view, create, and edit env files per process without leaving the UI
+- Cron event notifications — `CronRun` and `CronFailed` events flow through the Slack/Discord/Teams/Webhook notification system
+- Stable process UUIDs derived from process name — IDs persist across daemon restarts
+- Log viewer: `--out` (stdout/stderr filter) and `--grep` CLI flags; per-stream dropdown, full-text search, and timestamp toggle in the web UI
+- Per-process and per-namespace notification modals accessible via the bell icon in the process table
+- Restart All button on the Processes page header
+- Linux `.deb` packages for `amd64` and `arm64`; APT repository on GitHub Pages
+- New REST API: `GET/PUT /api/v1/processes/:id/env-files/:name`, `GET /api/v1/system/browse`, `GET /api/v1/system/check-env`
+
+### Changed
+
+- Version bumped `0.3.0` → `0.4.0`
+
+---
+
 ## [0.3.0] — 2026-02-28
 
 ### Added
