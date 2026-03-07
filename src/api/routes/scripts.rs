@@ -105,6 +105,21 @@ async fn save_script(
     let filename = format!("{safe_name}.{ext}");
     let path = dir.join(&filename);
 
+    // Delete any existing file with the same stem but a different extension.
+    // This prevents stale files from causing get_script to return the wrong path
+    // when the user changes the interpreter and re-saves under the same name.
+    if let Ok(entries) = std::fs::read_dir(&dir) {
+        for entry in entries.flatten() {
+            let p = entry.path();
+            if p.is_file()
+                && p.file_stem().and_then(|s| s.to_str()) == Some(safe_name.as_str())
+                && p.extension().and_then(|e| e.to_str()) != Some(ext)
+            {
+                let _ = std::fs::remove_file(&p);
+            }
+        }
+    }
+
     std::fs::write(&path, &req.content)
         .map_err(|e| ApiError::internal(format!("failed to write script: {e}")))?;
 
