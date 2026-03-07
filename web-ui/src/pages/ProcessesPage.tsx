@@ -1,15 +1,16 @@
 // @group BusinessLogic : Processes list view — namespace-grouped table
 
-import { useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Play, Square, RotateCcw, ScrollText, Pencil, Trash2, FileKey, Bell, Save, Send } from 'lucide-react'
+import { Play, Square, RotateCcw, ScrollText, Pencil, Trash2, FileKey, Bell } from 'lucide-react'
 import { api } from '@/lib/api'
 import { useDialog } from '@/hooks/useDialog'
 import { Dialog } from '@/components/Dialog'
 import { EnvFilePanel } from '@/components/EnvFilePanel'
+import { ProcessNotifModal, NsNotifModal } from '@/components/NotifModal'
 import { formatLastRun, formatNextRun, formatUptime, formatBytes, formatCpu, statusColor } from '@/lib/utils'
 import type { AppSettings } from '@/lib/settings'
-import type { NotificationConfig, ProcessInfo } from '@/types'
+import type { ProcessInfo } from '@/types'
 
 interface Props {
   processes: ProcessInfo[]
@@ -17,366 +18,6 @@ interface Props {
   settings: AppSettings
 }
 
-// @group Utilities > NotifDefaults
-function defaultNotifConfig(): NotificationConfig {
-  return { events: { on_crash: true, on_restart: false, on_start: false, on_stop: false } }
-}
-
-// @group BusinessLogic > ProcessNotifModal : Quick per-process notification config modal
-function ProcessNotifModal({ process, onClose }: { process: ProcessInfo; onClose: () => void }) {
-  const [config, setConfig] = useState<NotificationConfig>(process.notify ?? defaultNotifConfig())
-  const [saving, setSaving] = useState(false)
-  const [testing, setTesting] = useState(false)
-  const [saved, setSaved]   = useState(false)
-  const [error, setError]   = useState('')
-
-  const setEvents  = (patch: Partial<NotificationConfig['events']>) =>
-    setConfig(c => ({ ...c, events: { ...c.events, ...patch } }))
-  const setWebhook = (patch: Partial<NonNullable<NotificationConfig['webhook']>>) =>
-    setConfig(c => ({ ...c, webhook: { url: '', enabled: false, ...c.webhook, ...patch } }))
-  const setSlack   = (patch: Partial<NonNullable<NotificationConfig['slack']>>) =>
-    setConfig(c => ({ ...c, slack: { webhook_url: '', enabled: false, ...c.slack, ...patch } }))
-  const setTeams   = (patch: Partial<NonNullable<NotificationConfig['teams']>>) =>
-    setConfig(c => ({ ...c, teams: { webhook_url: '', enabled: false, ...c.teams, ...patch } }))
-
-  async function handleSave() {
-    setSaving(true); setError('')
-    try {
-      await api.getProcess(process.id).then(info =>
-        api.updateProcess(process.id, {
-          script: info.script, cwd: info.cwd ?? undefined,
-          namespace: info.namespace, args: info.args, env: info.env,
-          autorestart: info.autorestart, watch: info.watch,
-          max_restarts: info.max_restarts, cron: info.cron ?? undefined,
-          notify: config,
-        })
-      )
-      setSaved(true)
-      setTimeout(() => { setSaved(false); onClose() }, 1200)
-    } catch (e: any) {
-      setError(String(e.message ?? e))
-    } finally { setSaving(false) }
-  }
-
-  async function handleTest() {
-    setTesting(true); setError('')
-    try { await api.testNotification(config) }
-    catch (e: any) { setError(String(e.message ?? e)) }
-    finally { setTesting(false) }
-  }
-
-  const processEventKeys = ['on_crash', 'on_restart', 'on_start', 'on_stop'] as const
-  const cronEventKeys    = ['on_cron_run', 'on_cron_fail'] as const
-
-  return (
-    <div onClick={e => { if (e.target === e.currentTarget) onClose() }}
-      style={{ position: 'fixed', inset: 0, zIndex: 1100, background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      <div style={{ background: 'var(--color-card)', border: '1px solid var(--color-border)', borderRadius: 8, width: 460, maxWidth: '94vw', boxShadow: '0 8px 32px rgba(0,0,0,0.3)', display: 'flex', flexDirection: 'column' }}>
-        {/* Header */}
-        <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--color-border)', display: 'flex', alignItems: 'center', gap: 8 }}>
-          <Bell size={14} style={{ color: '#a78bfa' }} />
-          <strong style={{ flex: 1, fontSize: 13 }}>Notify — {process.name}</strong>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 16, color: 'var(--color-muted-foreground)' }}>×</button>
-        </div>
-
-        {/* Body */}
-        <div style={{ padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 12 }}>
-          {/* Separated event panels */}
-          <div style={{ display: 'flex', gap: 8 }}>
-
-            {/* Process events */}
-            <div style={{
-              flex: 1, borderRadius: 6,
-              border: '1px solid rgba(99,102,241,0.35)',
-              background: 'rgba(99,102,241,0.06)',
-              padding: '8px 12px',
-            }}>
-              <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.1em', color: '#818cf8', textTransform: 'uppercase', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 4 }}>
-                <span>⚙</span> Process
-              </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                {processEventKeys.map(key => (
-                  <label key={key} style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, cursor: 'pointer' }}>
-                    <input type="checkbox" checked={!!config.events[key]} onChange={e => setEvents({ [key]: e.target.checked })}
-                      style={{ accentColor: '#818cf8', width: 13, height: 13 }} />
-                    {key.replace('on_', '')}
-                  </label>
-                ))}
-              </div>
-            </div>
-
-            {/* Cron events — only shown for cron processes */}
-            {process.cron && (
-              <div style={{
-                flex: 1, borderRadius: 6,
-                border: '1px solid rgba(251,191,36,0.35)',
-                background: 'rgba(251,191,36,0.06)',
-                padding: '8px 12px',
-              }}>
-                <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.1em', color: '#fbbf24', textTransform: 'uppercase', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 4 }}>
-                  <span>⏰</span> Cron
-                </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                  {cronEventKeys.map(key => (
-                    <label key={key} style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, cursor: 'pointer' }}>
-                      <input type="checkbox" checked={!!config.events[key]} onChange={e => setEvents({ [key]: e.target.checked })}
-                        style={{ accentColor: '#fbbf24', width: 13, height: 13 }} />
-                      {key.replace('on_cron_', '')}
-                    </label>
-                  ))}
-                </div>
-              </div>
-            )}
-
-          </div>
-
-          {/* Channel fields */}
-          {(
-            [
-              {
-                label: 'Webhook',
-                enabled: config.webhook?.enabled ?? false,
-                onToggle: (v: boolean) => setWebhook({ enabled: v }),
-                fields: [
-                  { label: 'URL', type: 'url', placeholder: 'https://hooks.example.com/…',
-                    value: config.webhook?.url ?? '',
-                    onChange: (v: string) => setWebhook({ url: v }) },
-                ],
-              },
-              {
-                label: 'Slack',
-                enabled: config.slack?.enabled ?? false,
-                onToggle: (v: boolean) => setSlack({ enabled: v }),
-                fields: [
-                  { label: 'Webhook URL', type: 'url', placeholder: 'https://hooks.slack.com/services/…',
-                    value: config.slack?.webhook_url ?? '',
-                    onChange: (v: string) => setSlack({ webhook_url: v }) },
-                  { label: 'Channel (optional)', type: 'text', placeholder: '#alerts',
-                    value: config.slack?.channel ?? '',
-                    onChange: (v: string) => setSlack({ channel: v }) },
-                ],
-              },
-              {
-                label: 'Microsoft Teams',
-                enabled: config.teams?.enabled ?? false,
-                onToggle: (v: boolean) => setTeams({ enabled: v }),
-                fields: [
-                  { label: 'Webhook URL', type: 'url', placeholder: 'https://outlook.office.com/webhook/…',
-                    value: config.teams?.webhook_url ?? '',
-                    onChange: (v: string) => setTeams({ webhook_url: v }) },
-                ],
-              },
-            ] as const
-          ).map(ch => (
-            <div key={ch.label} style={{ border: '1px solid var(--color-border)', borderRadius: 6, padding: '8px 12px' }}>
-              <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, fontWeight: 600, cursor: 'pointer', color: ch.enabled ? 'var(--color-foreground)' : 'var(--color-muted-foreground)' }}>
-                <input type="checkbox" checked={ch.enabled} onChange={e => ch.onToggle(e.target.checked)}
-                  style={{ accentColor: 'var(--color-primary)', width: 13, height: 13 }} />
-                {ch.label}
-              </label>
-              {ch.enabled && (
-                <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 6 }}>
-                  {ch.fields.map(f => (
-                    <div key={f.label}>
-                      <div style={{ fontSize: 11, color: 'var(--color-muted-foreground)', marginBottom: 3 }}>{f.label}</div>
-                      <input style={{ width: '100%', boxSizing: 'border-box', padding: '5px 8px', fontSize: 12, background: 'var(--color-secondary)', border: '1px solid var(--color-border)', borderRadius: 4, color: 'var(--color-foreground)', outline: 'none' }}
-                        type={f.type} placeholder={f.placeholder} value={f.value}
-                        onChange={e => f.onChange(e.target.value)} />
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          ))}
-
-          {error && <div style={{ fontSize: 12, color: 'var(--color-destructive)' }}>{error}</div>}
-        </div>
-
-        {/* Footer */}
-        <div style={{ padding: '10px 16px', borderTop: '1px solid var(--color-border)', display: 'flex', gap: 8, alignItems: 'center' }}>
-          <button onClick={handleSave} disabled={saving} style={modalPrimaryBtn}>
-            <Save size={12} />{saving ? 'Saving…' : 'Save'}
-          </button>
-          <button onClick={handleTest} disabled={testing} style={modalSecBtn}>
-            <Send size={12} />{testing ? '…' : 'Test'}
-          </button>
-          <button onClick={onClose} style={modalSecBtn}>Cancel</button>
-          {saved && <span style={{ fontSize: 12, color: 'var(--color-status-running)' }}>✓ Saved</span>}
-        </div>
-      </div>
-    </div>
-  )
-}
-
-// @group BusinessLogic > NsNotifModal : Quick namespace notification config modal
-function NsNotifModal({ ns, onClose }: { ns: string; onClose: () => void }) {
-  const [config, setConfig] = useState<NotificationConfig>(defaultNotifConfig())
-  const [loading, setLoading] = useState(true)
-  const [saving, setSaving] = useState(false)
-  const [testing, setTesting] = useState(false)
-  const [saved, setSaved]   = useState(false)
-  const [error, setError]   = useState('')
-
-  useState(() => {
-    api.getNotifications().then(store => {
-      if (store.namespaces[ns]) setConfig(store.namespaces[ns])
-      setLoading(false)
-    }).catch(() => setLoading(false))
-  })
-
-  const setEvents  = (patch: Partial<NotificationConfig['events']>) =>
-    setConfig(c => ({ ...c, events: { ...c.events, ...patch } }))
-  const setWebhook = (patch: Partial<NonNullable<NotificationConfig['webhook']>>) =>
-    setConfig(c => ({ ...c, webhook: { url: '', enabled: false, ...c.webhook, ...patch } }))
-  const setSlack   = (patch: Partial<NonNullable<NotificationConfig['slack']>>) =>
-    setConfig(c => ({ ...c, slack: { webhook_url: '', enabled: false, ...c.slack, ...patch } }))
-  const setTeams   = (patch: Partial<NonNullable<NotificationConfig['teams']>>) =>
-    setConfig(c => ({ ...c, teams: { webhook_url: '', enabled: false, ...c.teams, ...patch } }))
-
-  async function handleSave() {
-    setSaving(true); setError('')
-    try {
-      await api.updateNamespaceNotifications(ns, config)
-      setSaved(true)
-      setTimeout(() => { setSaved(false); onClose() }, 1200)
-    } catch (e: any) { setError(String(e.message ?? e)) }
-    finally { setSaving(false) }
-  }
-
-  async function handleTest() {
-    setTesting(true); setError('')
-    try { await api.testNotification(config) }
-    catch (e: any) { setError(String(e.message ?? e)) }
-    finally { setTesting(false) }
-  }
-
-  const processEventKeys = ['on_crash', 'on_restart', 'on_start', 'on_stop'] as const
-  const cronEventKeys    = ['on_cron_run', 'on_cron_fail'] as const
-
-  return (
-    <div onClick={e => { if (e.target === e.currentTarget) onClose() }}
-      style={{ position: 'fixed', inset: 0, zIndex: 1100, background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      <div style={{ background: 'var(--color-card)', border: '1px solid var(--color-border)', borderRadius: 8, width: 460, maxWidth: '94vw', boxShadow: '0 8px 32px rgba(0,0,0,0.3)' }}>
-        <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--color-border)', display: 'flex', alignItems: 'center', gap: 8 }}>
-          <Bell size={14} style={{ color: '#a78bfa' }} />
-          <strong style={{ flex: 1, fontSize: 13 }}>Namespace Notify — {ns}</strong>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 16, color: 'var(--color-muted-foreground)' }}>×</button>
-        </div>
-        {loading ? (
-          <div style={{ padding: 24, textAlign: 'center', color: 'var(--color-muted-foreground)', fontSize: 13 }}>Loading…</div>
-        ) : (
-          <>
-            <div style={{ padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 12 }}>
-              {/* Separated event panels */}
-              <div style={{ display: 'flex', gap: 8 }}>
-                {/* Process events */}
-                <div style={{ flex: 1, borderRadius: 6, border: '1px solid rgba(99,102,241,0.35)', background: 'rgba(99,102,241,0.06)', padding: '8px 12px' }}>
-                  <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.1em', color: '#818cf8', textTransform: 'uppercase', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 4 }}>
-                    <span>⚙</span> Process
-                  </div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                    {processEventKeys.map(key => (
-                      <label key={key} style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, cursor: 'pointer' }}>
-                        <input type="checkbox" checked={!!config.events[key]} onChange={e => setEvents({ [key]: e.target.checked })}
-                          style={{ accentColor: '#818cf8', width: 13, height: 13 }} />
-                        {key.replace('on_', '')}
-                      </label>
-                    ))}
-                  </div>
-                </div>
-                {/* Cron events */}
-                <div style={{ flex: 1, borderRadius: 6, border: '1px solid rgba(251,191,36,0.35)', background: 'rgba(251,191,36,0.06)', padding: '8px 12px' }}>
-                  <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.1em', color: '#fbbf24', textTransform: 'uppercase', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 4 }}>
-                    <span>⏰</span> Cron
-                  </div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                    {cronEventKeys.map(key => (
-                      <label key={key} style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, cursor: 'pointer' }}>
-                        <input type="checkbox" checked={!!config.events[key]} onChange={e => setEvents({ [key]: e.target.checked })}
-                          style={{ accentColor: '#fbbf24', width: 13, height: 13 }} />
-                        {key.replace('on_cron_', '')}
-                      </label>
-                    ))}
-                  </div>
-                </div>
-              </div>
-              {/* Channel fields — Webhook / Slack / Teams */}
-              {(
-                [
-                  {
-                    label: 'Webhook',
-                    enabled: config.webhook?.enabled ?? false,
-                    onToggle: (v: boolean) => setWebhook({ enabled: v }),
-                    fields: [
-                      { label: 'URL', type: 'url', placeholder: 'https://hooks.example.com/…',
-                        value: config.webhook?.url ?? '',
-                        onChange: (v: string) => setWebhook({ url: v }) },
-                    ],
-                  },
-                  {
-                    label: 'Slack',
-                    enabled: config.slack?.enabled ?? false,
-                    onToggle: (v: boolean) => setSlack({ enabled: v }),
-                    fields: [
-                      { label: 'Webhook URL', type: 'url', placeholder: 'https://hooks.slack.com/services/…',
-                        value: config.slack?.webhook_url ?? '',
-                        onChange: (v: string) => setSlack({ webhook_url: v }) },
-                      { label: 'Channel (optional)', type: 'text', placeholder: '#alerts',
-                        value: config.slack?.channel ?? '',
-                        onChange: (v: string) => setSlack({ channel: v }) },
-                    ],
-                  },
-                  {
-                    label: 'Microsoft Teams',
-                    enabled: config.teams?.enabled ?? false,
-                    onToggle: (v: boolean) => setTeams({ enabled: v }),
-                    fields: [
-                      { label: 'Webhook URL', type: 'url', placeholder: 'https://outlook.office.com/webhook/…',
-                        value: config.teams?.webhook_url ?? '',
-                        onChange: (v: string) => setTeams({ webhook_url: v }) },
-                    ],
-                  },
-                ] as const
-              ).map(ch => (
-                <div key={ch.label} style={{ border: '1px solid var(--color-border)', borderRadius: 6, padding: '8px 12px' }}>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, fontWeight: 600, cursor: 'pointer', color: ch.enabled ? 'var(--color-foreground)' : 'var(--color-muted-foreground)' }}>
-                    <input type="checkbox" checked={ch.enabled} onChange={e => ch.onToggle(e.target.checked)}
-                      style={{ accentColor: 'var(--color-primary)', width: 13, height: 13 }} />
-                    {ch.label}
-                  </label>
-                  {ch.enabled && (
-                    <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 6 }}>
-                      {ch.fields.map(f => (
-                        <div key={f.label}>
-                          <div style={{ fontSize: 11, color: 'var(--color-muted-foreground)', marginBottom: 3 }}>{f.label}</div>
-                          <input style={{ width: '100%', boxSizing: 'border-box', padding: '5px 8px', fontSize: 12, background: 'var(--color-secondary)', border: '1px solid var(--color-border)', borderRadius: 4, color: 'var(--color-foreground)', outline: 'none' }}
-                            type={f.type} placeholder={f.placeholder} value={f.value}
-                            onChange={e => f.onChange(e.target.value)} />
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              ))}
-
-              {error && <div style={{ fontSize: 12, color: 'var(--color-destructive)' }}>{error}</div>}
-            </div>
-            <div style={{ padding: '10px 16px', borderTop: '1px solid var(--color-border)', display: 'flex', gap: 8, alignItems: 'center' }}>
-              <button onClick={handleSave} disabled={saving} style={modalPrimaryBtn}>
-                <Save size={12} />{saving ? 'Saving…' : 'Save'}
-              </button>
-              <button onClick={handleTest} disabled={testing} style={modalSecBtn}>
-                <Send size={12} />{testing ? '…' : 'Test'}
-              </button>
-              <button onClick={onClose} style={modalSecBtn}>Cancel</button>
-              {saved && <span style={{ fontSize: 12, color: 'var(--color-status-running)' }}>✓ Saved</span>}
-            </div>
-          </>
-        )}
-      </div>
-    </div>
-  )
-}
 
 export default function ProcessesPage({ processes, reload, settings }: Props) {
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
@@ -385,6 +26,48 @@ export default function ProcessesPage({ processes, reload, settings }: Props) {
   const [notifNs, setNotifNs]                 = useState<string | null>(null)
   const navigate = useNavigate()
   const { dialogState, confirm, danger, handleConfirm, handleCancel } = useDialog()
+
+  // @group BusinessLogic > Ports : Raw port data from API — each entry includes ancestor_pids
+  // so we can walk the process tree to match grandchild sockets back to their managed root PID.
+  interface RawPortEntry {
+    pid: number | null
+    port: number
+    state: string
+    ancestor_pids?: number[]
+  }
+  const [portData, setPortData] = useState<RawPortEntry[]>([])
+
+  const loadPorts = useCallback(async () => {
+    try {
+      const res  = await fetch('/api/v1/ports')
+      const data = await res.json()
+      setPortData(data.ports ?? [])
+    } catch { /* port fetch is best-effort */ }
+  }, [])
+
+  useEffect(() => { loadPorts() }, [loadPorts])
+
+  // @group BusinessLogic > Ports : Derive pid → sorted port numbers map.
+  // For each LISTENING/UDP port, walk the ancestor_pids chain to find the managed root PID.
+  // This handles deep npm/node spawn trees where the actual socket lives 3-4 levels deep.
+  const portMap = useMemo(() => {
+    const managedPids = new Set(
+      processes.map(p => p.pid).filter((pid): pid is number => pid != null)
+    )
+    const map = new Map<number, number[]>()
+    for (const entry of portData) {
+      if (!entry.pid || entry.pid <= 0) continue
+      if (entry.state !== 'LISTENING' && entry.state !== '') continue
+      // Walk: socket owner → parent → grandparent → ... until we hit a managed PID
+      const allPids = [entry.pid, ...(entry.ancestor_pids ?? [])]
+      const rootPid = allPids.find(pid => managedPids.has(pid)) ?? entry.pid
+      const arr = map.get(rootPid) ?? []
+      if (!arr.includes(entry.port)) arr.push(entry.port)
+      map.set(rootPid, arr)
+    }
+    map.forEach((v, k) => map.set(k, v.sort((a, b) => a - b)))
+    return map
+  }, [portData, processes])
 
   // Group by namespace
   const groups = new Map<string, ProcessInfo[]>()
@@ -461,7 +144,7 @@ export default function ProcessesPage({ processes, reload, settings }: Props) {
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, overflow: 'hidden' }}>
           <div style={{ padding: '16px 20px 10px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid var(--color-border)', flexShrink: 0 }}>
             <h2 style={{ fontSize: 16, fontWeight: 600 }}>Processes</h2>
-            <button onClick={reload} style={smallBtnStyle}>↻ Refresh</button>
+            <button onClick={() => { reload(); loadPorts() }} style={smallBtnStyle}>↻ Refresh</button>
           </div>
 
           <div style={{ flex: 1, overflow: 'auto' }}>
@@ -516,6 +199,7 @@ export default function ProcessesPage({ processes, reload, settings }: Props) {
                         onEdit={() => navigate(`/edit/${p.id}`)}
                         onOpenEnv={() => setEnvModalProcess(p)}
                         onOpenNotif={() => setNotifProcess(p)}
+                        ports={p.pid != null ? (portMap.get(p.pid) ?? []) : []}
                       />
                     )) : []),
                   ]
@@ -547,7 +231,7 @@ export default function ProcessesPage({ processes, reload, settings }: Props) {
 }
 
 // @group BusinessLogic > ProcessRow : Single process table row
-function ProcessRow({ p, reload, confirmDelete, onConfirm, onDanger, onOpenDetail, onEdit, onOpenEnv, onOpenNotif }: {
+function ProcessRow({ p, reload, confirmDelete, onConfirm, onDanger, onOpenDetail, onEdit, onOpenEnv, onOpenNotif, ports }: {
   p: ProcessInfo
   reload: () => void
   confirmDelete: boolean
@@ -557,6 +241,7 @@ function ProcessRow({ p, reload, confirmDelete, onConfirm, onDanger, onOpenDetai
   onEdit: () => void
   onOpenEnv: () => void
   onOpenNotif: () => void
+  ports: number[]
 }) {
   const navigate = useNavigate()
   const isActive = p.status === 'running' || p.status === 'sleeping' || p.status === 'watching'
@@ -610,7 +295,35 @@ function ProcessRow({ p, reload, confirmDelete, onConfirm, onDanger, onOpenDetai
           ● {p.status}
         </span>
       </Td>
-      <Td>{p.pid ?? '-'}</Td>
+      <Td style={{ whiteSpace: 'normal', verticalAlign: 'top' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+          <span style={{ fontFamily: 'monospace', fontSize: 12 }}>{p.pid ?? '-'}</span>
+          {ports.length > 0 ? (
+            <div style={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
+              {ports.slice(0, 5).map(port => (
+                <span key={port} title={`Port ${port}`} style={{
+                  fontSize: 9, fontWeight: 700, lineHeight: '14px',
+                  padding: '1px 4px', borderRadius: 3,
+                  background: 'color-mix(in srgb, var(--color-primary) 18%, transparent)',
+                  color: 'var(--color-primary)',
+                  cursor: 'default',
+                }}>:{port}</span>
+              ))}
+              {ports.length > 5 && (
+                <span title={ports.slice(5).map(port => `:${port}`).join(' ')} style={{
+                  fontSize: 9, lineHeight: '14px', color: 'var(--color-muted-foreground)',
+                  cursor: 'default',
+                }}>+{ports.length - 5}</span>
+              )}
+            </div>
+          ) : (isActive && p.pid != null) ? (
+            <span title="No listening TCP/UDP ports found for this process" style={{
+              fontSize: 9, color: 'var(--color-muted-foreground)', opacity: 0.5,
+              cursor: 'default', fontStyle: 'italic',
+            }}>no ports</span>
+          ) : null}
+        </div>
+      </Td>
       <Td>{p.uptime_secs != null ? formatUptime(p.uptime_secs) : '-'}</Td>
       <Td style={{ color: 'var(--color-muted-foreground)' }}>
         {p.cpu_percent != null ? formatCpu(p.cpu_percent) : '-'}
@@ -712,16 +425,3 @@ const smallBtnStyle: React.CSSProperties = {
   color: 'var(--color-foreground)',
 }
 
-const modalPrimaryBtn: React.CSSProperties = {
-  display: 'inline-flex', alignItems: 'center', gap: 5,
-  padding: '5px 12px', fontSize: 12, fontWeight: 500,
-  background: 'var(--color-primary)', border: 'none',
-  borderRadius: 5, cursor: 'pointer', color: 'var(--color-primary-foreground)',
-}
-
-const modalSecBtn: React.CSSProperties = {
-  display: 'inline-flex', alignItems: 'center', gap: 5,
-  padding: '5px 12px', fontSize: 12,
-  background: 'var(--color-secondary)', border: '1px solid var(--color-border)',
-  borderRadius: 5, cursor: 'pointer', color: 'var(--color-foreground)',
-}
