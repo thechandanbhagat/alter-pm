@@ -151,8 +151,10 @@ pub enum DaemonAction {
         #[arg(long, default_value = "2999", env = "ALTER_PORT")]
         port: u16,
     },
-    /// Stop the running daemon
+    /// Stop the running daemon (managed processes keep running)
     Stop,
+    /// Restart the daemon without stopping managed processes
+    Restart,
     /// Check daemon status
     Status,
     /// Tail daemon's own log

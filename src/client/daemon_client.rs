@@ -12,9 +12,17 @@ pub struct DaemonClient {
 
 impl DaemonClient {
     pub fn new(host: &str, port: u16) -> Self {
+        // @group Authentication : Inject master token so the CLI authenticates with the daemon
+        let token = crate::config::auth_config::load().master_token;
+        let mut headers = reqwest::header::HeaderMap::new();
+        if let Ok(val) = reqwest::header::HeaderValue::from_str(&format!("Bearer {token}")) {
+            headers.insert(reqwest::header::AUTHORIZATION, val);
+        }
+
         Self {
             base_url: format!("http://{host}:{port}"),
             client: Client::builder()
+                .default_headers(headers)
                 .timeout(std::time::Duration::from_secs(10))
                 .build()
                 .expect("failed to build HTTP client"),

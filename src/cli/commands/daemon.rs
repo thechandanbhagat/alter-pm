@@ -4,10 +4,11 @@ use crate::cli::args::DaemonAction;
 use crate::client::daemon_client::DaemonClient;
 use anyhow::Result;
 
-pub async fn run(client: &DaemonClient, action: DaemonAction, _port: u16) -> Result<()> {
+pub async fn run(client: &DaemonClient, action: DaemonAction, port: u16) -> Result<()> {
     match action {
         DaemonAction::Start { port: p } => start_daemon(p),
         DaemonAction::Stop => stop_daemon(client).await,
+        DaemonAction::Restart => restart_daemon(client, port).await,
         DaemonAction::Status => status(client).await,
         DaemonAction::Logs => show_logs(),
     }
@@ -73,6 +74,25 @@ async fn stop_daemon(client: &DaemonClient) -> Result<()> {
     }
     let _ = client.post("/api/v1/system/shutdown", serde_json::json!({})).await;
     println!("[alter] daemon stopped");
+    Ok(())
+}
+
+// @group BusinessLogic > Daemon : Stop daemon then start it again; managed processes survive
+// because runner.rs uses CREATE_BREAKAWAY_FROM_JOB on Windows.
+async fn restart_daemon(client: &DaemonClient, port: u16) -> Result<()> {
+    if client.is_alive().await {
+        let _ = client.post("/api/v1/system/shutdown", serde_json::json!({})).await;
+        // Wait for the daemon to release the port (up to 3 s)
+        for _ in 0..30 {
+            std::thread::sleep(std::time::Duration::from_millis(100));
+            if !is_daemon_alive(port) {
+                break;
+            }
+        }
+        println!("[alter] daemon stopped");
+    }
+    start_daemon(port)?;
+    println!("[alter] daemon restarted");
     Ok(())
 }
 

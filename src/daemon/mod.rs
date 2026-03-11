@@ -45,6 +45,14 @@ pub async fn run(config: DaemonConfig) -> Result<()> {
     // Register OS signal handlers
     signals::register_shutdown_handler(Arc::clone(&state)).await;
 
+    // @group BusinessLogic > Telegram : Start Telegram bot polling loop (non-blocking background task)
+    {
+        let tg_state = Arc::clone(&state);
+        tokio::spawn(async move {
+            crate::telegram::bot::run(tg_state).await;
+        });
+    }
+
     // Start HTTP server (blocks until shutdown)
     server::run(state, config).await?;
 

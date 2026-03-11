@@ -1,7 +1,7 @@
 // @group BusinessLogic : Settings page — all user-configurable preferences
 
 import { useEffect, useRef, useState } from 'react'
-import { Copy, Check, Github, Loader, LogOut, RefreshCw } from 'lucide-react'
+import { Copy, Check, Eye, EyeOff, Github, Loader, Lock, LogOut, RefreshCw, RotateCcw, Shield } from 'lucide-react'
 import type { AiModelInfo } from '@/lib/api'
 import type { AppSettings } from '@/lib/settings'
 import { DEFAULT_SETTINGS, LOG_TAIL_OPTIONS, REFRESH_INTERVAL_OPTIONS } from '@/lib/settings'
@@ -137,6 +137,7 @@ function CopyPath({ value }: { value: string }) {
 export default function SettingsPage({ settings, onUpdate, onReset }: Props) {
   const isDefault = JSON.stringify(settings) === JSON.stringify(DEFAULT_SETTINGS)
   const [sysPaths, setSysPaths] = useState<{ data_dir: string; log_dir: string } | null>(null)
+  const [activeTab, setActiveTab] = useState<'general' | 'security' | 'ai' | 'telegram'>('general')
 
   // @group BusinessLogic > AI : Core settings state
   const [aiEnabled, setAiEnabled] = useState(false)
@@ -158,6 +159,52 @@ export default function SettingsPage({ settings, onUpdate, onReset }: Props) {
   // @group BusinessLogic > AI : Dynamic model list from GitHub catalog
   const [modelOptions, setModelOptions] = useState<AiModelInfo[]>([])
   const [modelsLoading, setModelsLoading] = useState(false)
+
+  // @group BusinessLogic > Security : Change password state
+  const [currentPassword, setCurrentPassword] = useState('')
+  const [newPassword, setNewPassword] = useState('')
+  const [confirmNewPassword, setConfirmNewPassword] = useState('')
+  const [pwChangeError, setPwChangeError] = useState<string | null>(null)
+  const [pwChangeSaved, setPwChangeSaved] = useState(false)
+  const [pwChangeSaving, setPwChangeSaving] = useState(false)
+  const [showCurrentPw, setShowCurrentPw] = useState(false)
+  const [showNewPw, setShowNewPw] = useState(false)
+  const [showConfirmPw, setShowConfirmPw] = useState(false)
+
+  // @group BusinessLogic > Security : PIN state
+  const [pinConfigured, setPinConfigured] = useState(false)
+  const [pinInput, setPinInput] = useState('')
+  const [pinError, setPinError] = useState<string | null>(null)
+  const [pinSaved, setPinSaved] = useState(false)
+  const [pinSaving, setPinSaving] = useState(false)
+
+  // @group BusinessLogic > Security : Lock timeout state
+  const [lockTimeoutMins, setLockTimeoutMins] = useState<string>('0')
+  const [lockSaving, setLockSaving] = useState(false)
+  const [lockSaved, setLockSaved] = useState(false)
+
+  // @group BusinessLogic > Daemon : Restart state
+  const [restarting, setRestarting] = useState(false)
+  const [restartStatus, setRestartStatus] = useState<'idle' | 'restarting' | 'done' | 'error'>('idle')
+
+  // @group BusinessLogic > Telegram : Bot config state
+  const [tgEnabled, setTgEnabled] = useState(false)
+  const [tgToken, setTgToken] = useState('')
+  const [tgTokenHint, setTgTokenHint] = useState<string | null>(null)
+  const [tgTokenSet, setTgTokenSet] = useState(false)
+  const [tgChatIds, setTgChatIds] = useState<string>('')
+  const [tgNotifyCrash, setTgNotifyCrash] = useState(true)
+  const [tgNotifyStart, setTgNotifyStart] = useState(false)
+  const [tgNotifyStop, setTgNotifyStop] = useState(false)
+  const [tgNotifyRestart, setTgNotifyRestart] = useState(true)
+  const [tgSaving, setTgSaving] = useState(false)
+  const [tgSaved, setTgSaved] = useState(false)
+  const [tgError, setTgError] = useState<string | null>(null)
+  const [tgBotInfo, setTgBotInfo] = useState<{ ok: boolean; username: string | null; first_name: string | null; error: string | null } | null>(null)
+  const [tgValidating, setTgValidating] = useState(false)
+  const [tgTesting, setTgTesting] = useState(false)
+  const [tgTestResult, setTgTestResult] = useState<string | null>(null)
+  const [tgChangingToken, setTgChangingToken] = useState(false)
 
   // @group BusinessLogic > AI : Load initial settings + models on mount
   useEffect(() => {
@@ -213,6 +260,28 @@ export default function SettingsPage({ settings, onUpdate, onReset }: Props) {
     return () => { if (pollTimerRef.current) clearInterval(pollTimerRef.current) }
   }, [authPhase, pollInterval])
 
+  // @group BusinessLogic > Security : Load security config on mount
+  useEffect(() => {
+    api.authStatus().then(s => {
+      setPinConfigured(s.pin_configured ?? false)
+      setLockTimeoutMins(String(s.lock_timeout_mins ?? 0))
+    }).catch(() => {})
+  }, [])
+
+  // @group BusinessLogic > Telegram : Load Telegram config on mount
+  useEffect(() => {
+    api.getTelegramConfig().then(cfg => {
+      setTgEnabled(cfg.enabled)
+      setTgTokenHint(cfg.bot_token_hint)
+      setTgTokenSet(cfg.bot_token_set)
+      setTgChatIds(cfg.allowed_chat_ids.join('\n'))
+      setTgNotifyCrash(cfg.notify_on_crash)
+      setTgNotifyStart(cfg.notify_on_start)
+      setTgNotifyStop(cfg.notify_on_stop)
+      setTgNotifyRestart(cfg.notify_on_restart)
+    }).catch(() => {})
+  }, [])
+
   async function loadModels() {
     setModelsLoading(true)
     try {
@@ -220,6 +289,102 @@ export default function SettingsPage({ settings, onUpdate, onReset }: Props) {
       if (data.models.length > 0) setModelOptions(data.models)
     } catch { /* use fallback hardcoded list */ } finally {
       setModelsLoading(false)
+    }
+  }
+
+  // @group BusinessLogic > Security : Change password handler
+  async function handleChangePassword(e: React.FormEvent) {
+    e.preventDefault()
+    setPwChangeError(null)
+    if (newPassword !== confirmNewPassword) { setPwChangeError('New passwords do not match'); return }
+    if (newPassword.length < 8) { setPwChangeError('Password must be at least 8 characters'); return }
+    setPwChangeSaving(true)
+    try {
+      await api.authChangePassword(currentPassword, newPassword)
+      setPwChangeSaved(true)
+      setCurrentPassword(''); setNewPassword(''); setConfirmNewPassword('')
+      setTimeout(() => setPwChangeSaved(false), 2000)
+    } catch (err: unknown) {
+      setPwChangeError((err as Error)?.message ?? 'Failed to change password')
+    } finally {
+      setPwChangeSaving(false)
+    }
+  }
+
+  // @group BusinessLogic > Security : Set PIN handler
+  async function handleSetPin(e: React.FormEvent) {
+    e.preventDefault()
+    setPinError(null)
+    if (pinInput.length !== 4 && pinInput.length !== 6) {
+      setPinError('PIN must be exactly 4 or 6 digits'); return
+    }
+    if (!/^\d+$/.test(pinInput)) { setPinError('PIN must contain only digits'); return }
+    setPinSaving(true)
+    try {
+      await api.authSetPin(pinInput)
+      setPinConfigured(true)
+      setPinSaved(true)
+      setPinInput('')
+      setTimeout(() => setPinSaved(false), 2000)
+    } catch (err: unknown) {
+      setPinError((err as Error)?.message ?? 'Failed to set PIN')
+    } finally {
+      setPinSaving(false)
+    }
+  }
+
+  // @group BusinessLogic > Security : Remove PIN handler
+  async function handleRemovePin() {
+    setPinError(null)
+    setPinSaving(true)
+    try {
+      await api.authRemovePin()
+      setPinConfigured(false)
+      setPinInput('')
+    } catch (err: unknown) {
+      setPinError((err as Error)?.message ?? 'Failed to remove PIN')
+    } finally {
+      setPinSaving(false)
+    }
+  }
+
+  // @group BusinessLogic > Security : Save lock timeout handler
+  async function handleSaveLockTimeout() {
+    setLockSaving(true)
+    try {
+      const mins = lockTimeoutMins === '0' ? null : Number(lockTimeoutMins)
+      await api.authUpdateLockSettings(mins)
+      setLockSaved(true)
+      setTimeout(() => setLockSaved(false), 2000)
+      // Notify AuthGuard to re-fetch lock config
+      window.dispatchEvent(new CustomEvent('lock-config-updated'))
+    } catch { /* ignore */ } finally {
+      setLockSaving(false)
+    }
+  }
+
+  // @group BusinessLogic > Daemon : Restart daemon and poll until it comes back
+  async function handleRestartDaemon() {
+    setRestarting(true)
+    setRestartStatus('restarting')
+    try {
+      await api.restartDaemon().catch(() => {}) // fire and forget — daemon will exit
+      // Poll every 600ms until daemon responds (up to ~15 s)
+      let ok = false
+      for (let i = 0; i < 25; i++) {
+        await new Promise(r => setTimeout(r, 600))
+        try {
+          await api.getHealth()
+          ok = true
+          break
+        } catch { /* not up yet */ }
+      }
+      setRestartStatus(ok ? 'done' : 'error')
+    } catch {
+      setRestartStatus('error')
+    } finally {
+      setRestarting(false)
+      setTimeout(() => setRestartStatus('idle'), 3000)
     }
   }
 
@@ -278,6 +443,84 @@ export default function SettingsPage({ settings, onUpdate, onReset }: Props) {
     }).catch(() => {})
   }
 
+  // @group BusinessLogic > Telegram : Parse chat IDs from textarea (one per line)
+  function parseChatIds(): number[] {
+    return tgChatIds
+      .split('\n')
+      .map(s => s.trim())
+      .filter(Boolean)
+      .map(Number)
+      .filter(n => !isNaN(n) && n !== 0)
+  }
+
+  // @group BusinessLogic > Telegram : Save config handler
+  async function handleSaveTelegram(e: React.FormEvent) {
+    e.preventDefault()
+    setTgError(null)
+    setTgSaving(true)
+    try {
+      const payload: Parameters<typeof api.updateTelegramConfig>[0] = {
+        enabled: tgEnabled,
+        allowed_chat_ids: parseChatIds(),
+        notify_on_crash: tgNotifyCrash,
+        notify_on_start: tgNotifyStart,
+        notify_on_stop: tgNotifyStop,
+        notify_on_restart: tgNotifyRestart,
+      }
+      if (tgToken) payload.bot_token = tgToken
+      await api.updateTelegramConfig(payload)
+      setTgSaved(true)
+      setTgToken('')
+      if (tgToken) {
+        setTgTokenSet(true)
+        setTgBotInfo(null)
+      }
+      setTimeout(() => setTgSaved(false), 2000)
+    } catch (err: unknown) {
+      setTgError((err as Error)?.message ?? 'Failed to save Telegram config')
+    } finally {
+      setTgSaving(false)
+    }
+  }
+
+  // @group BusinessLogic > Telegram : Validate bot token
+  async function handleValidateToken() {
+    setTgValidating(true)
+    setTgBotInfo(null)
+    // Save token first if one is entered
+    if (tgToken) {
+      try { await api.updateTelegramConfig({ bot_token: tgToken }) } catch { /* ignore */ }
+    }
+    try {
+      const info = await api.getTelegramBotInfo()
+      setTgBotInfo(info)
+      if (info.ok) {
+        setTgTokenSet(true)
+        setTgToken('')
+        setTgChangingToken(false)
+      }
+    } catch (err: unknown) {
+      setTgBotInfo({ ok: false, username: null, first_name: null, error: (err as Error)?.message ?? 'Request failed' })
+    } finally {
+      setTgValidating(false)
+    }
+  }
+
+  // @group BusinessLogic > Telegram : Send test message
+  async function handleTestTelegram() {
+    setTgTesting(true)
+    setTgTestResult(null)
+    try {
+      await api.testTelegram()
+      setTgTestResult('✅ Test message sent!')
+    } catch (err: unknown) {
+      setTgTestResult(`❌ ${(err as Error)?.message ?? 'Failed to send test message'}`)
+    } finally {
+      setTgTesting(false)
+      setTimeout(() => setTgTestResult(null), 4000)
+    }
+  }
+
   const selectStyle: React.CSSProperties = {
     ...inputStyle,
     width: 'auto',
@@ -287,18 +530,38 @@ export default function SettingsPage({ settings, onUpdate, onReset }: Props) {
     cursor: 'pointer',
   }
 
+  // @group Utilities > Styles : Tab bar styles
+  const tabBarStyle: React.CSSProperties = {
+    display: 'flex',
+    gap: 2,
+    borderBottom: '1px solid var(--color-border)',
+    marginBottom: 24,
+  }
+
+  function tabStyle(active: boolean): React.CSSProperties {
+    return {
+      padding: '8px 18px',
+      fontSize: 13,
+      fontWeight: active ? 600 : 400,
+      color: active ? 'var(--color-primary)' : 'var(--color-muted-foreground)',
+      background: 'transparent',
+      border: 'none',
+      borderBottom: active ? '2px solid var(--color-primary)' : '2px solid transparent',
+      cursor: 'pointer',
+      marginBottom: -1,
+      transition: 'color 0.15s',
+    }
+  }
+
   return (
     <div style={{ padding: '20px 28px' }}>
 
       {/* Header */}
-      <div style={{ marginBottom: 24, display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
+      <div style={{ marginBottom: 20, display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
         <div>
           <h2 style={{ fontSize: 18, fontWeight: 700, margin: 0 }}>Settings</h2>
-          <p style={{ fontSize: 13, color: 'var(--color-muted-foreground)', marginTop: 4 }}>
-            Preferences saved locally in your browser.
-          </p>
         </div>
-        {!isDefault && (
+        {activeTab === 'general' && !isDefault && (
           <button
             type="button"
             onClick={onReset}
@@ -315,385 +578,863 @@ export default function SettingsPage({ settings, onUpdate, onReset }: Props) {
         )}
       </div>
 
-      {/* ── Section: Polling ── */}
-      <p style={sectionTitle}>Polling &amp; Refresh</p>
-      <div style={card}>
-        <SettingRow
-          label="Auto-refresh"
-          description="Automatically poll the daemon for process updates."
-          control={
-            <Toggle
-              checked={settings.autoRefresh}
-              onChange={v => onUpdate({ autoRefresh: v })}
+      {/* Tab bar */}
+      <div style={tabBarStyle}>
+        <button style={tabStyle(activeTab === 'general')} onClick={() => setActiveTab('general')}>General</button>
+        <button style={tabStyle(activeTab === 'security')} onClick={() => setActiveTab('security')}>Security</button>
+        <button style={tabStyle(activeTab === 'ai')} onClick={() => setActiveTab('ai')}>AI</button>
+        <button style={tabStyle(activeTab === 'telegram')} onClick={() => setActiveTab('telegram')}>Telegram</button>
+      </div>
+
+      {/* ── Tab: General ── */}
+      {activeTab === 'general' && (
+        <>
+          <p style={sectionTitle}>Polling &amp; Refresh</p>
+          <div style={card}>
+            <SettingRow
+              label="Auto-refresh"
+              description="Automatically poll the daemon for process updates."
+              control={
+                <Toggle
+                  checked={settings.autoRefresh}
+                  onChange={v => onUpdate({ autoRefresh: v })}
+                />
+              }
             />
-          }
-        />
-        <SettingRow
-          label="Process refresh interval"
-          description="How often the process list is refreshed."
-          control={
-            <select
-              value={settings.processRefreshInterval}
-              onChange={e => onUpdate({ processRefreshInterval: Number(e.target.value) })}
-              disabled={!settings.autoRefresh}
-              style={{ ...selectStyle, opacity: settings.autoRefresh ? 1 : 0.4 }}
-            >
-              {REFRESH_INTERVAL_OPTIONS.map(o => (
-                <option key={o.value} value={o.value}>{o.label}</option>
-              ))}
-            </select>
-          }
-        />
-        <SettingRow
-          label="Health check interval"
-          description="How often the daemon status in the sidebar is polled."
-          isLast
-          control={
-            <select
-              value={settings.healthRefreshInterval}
-              onChange={e => onUpdate({ healthRefreshInterval: Number(e.target.value) })}
-              style={selectStyle}
-            >
-              {REFRESH_INTERVAL_OPTIONS.map(o => (
-                <option key={o.value} value={o.value}>{o.label}</option>
-              ))}
-            </select>
-          }
-        />
-      </div>
-
-      {/* ── Section: Behaviour ── */}
-      <p style={sectionTitle}>Behaviour</p>
-      <div style={card}>
-        <SettingRow
-          label="Confirm before delete"
-          description="Show a confirmation dialog when deleting a process."
-          control={
-            <Toggle
-              checked={settings.confirmBeforeDelete}
-              onChange={v => onUpdate({ confirmBeforeDelete: v })}
+            <SettingRow
+              label="Process refresh interval"
+              description="How often the process list is refreshed."
+              control={
+                <select
+                  value={settings.processRefreshInterval}
+                  onChange={e => onUpdate({ processRefreshInterval: Number(e.target.value) })}
+                  disabled={!settings.autoRefresh}
+                  style={{ ...selectStyle, opacity: settings.autoRefresh ? 1 : 0.4 }}
+                >
+                  {REFRESH_INTERVAL_OPTIONS.map(o => (
+                    <option key={o.value} value={o.value}>{o.label}</option>
+                  ))}
+                </select>
+              }
             />
-          }
-        />
-        <SettingRow
-          label="Confirm before shutdown"
-          description="Show a confirmation dialog when shutting down the daemon."
-          isLast
-          control={
-            <Toggle
-              checked={settings.confirmBeforeShutdown}
-              onChange={v => onUpdate({ confirmBeforeShutdown: v })}
+            <SettingRow
+              label="Health check interval"
+              description="How often the daemon status in the sidebar is polled."
+              isLast
+              control={
+                <select
+                  value={settings.healthRefreshInterval}
+                  onChange={e => onUpdate({ healthRefreshInterval: Number(e.target.value) })}
+                  style={selectStyle}
+                >
+                  {REFRESH_INTERVAL_OPTIONS.map(o => (
+                    <option key={o.value} value={o.value}>{o.label}</option>
+                  ))}
+                </select>
+              }
             />
-          }
-        />
-      </div>
+          </div>
 
-      {/* ── Section: Logs ── */}
-      <p style={sectionTitle}>Log Viewer</p>
-      <div style={card}>
-        <SettingRow
-          label="Default tail lines"
-          description="Number of log lines to fetch when opening a process log view."
-          isLast
-          control={
-            <select
-              value={settings.logTailLines}
-              onChange={e => onUpdate({ logTailLines: Number(e.target.value) })}
-              style={selectStyle}
-            >
-              {LOG_TAIL_OPTIONS.map(o => (
-                <option key={o.value} value={o.value}>{o.label}</option>
-              ))}
-            </select>
-          }
-        />
-      </div>
-
-      {/* ── Section: Defaults ── */}
-      <p style={sectionTitle}>Process Defaults</p>
-      <div style={card}>
-        <SettingRow
-          label="Default namespace"
-          description="Pre-filled namespace when creating new processes or cron jobs."
-          isLast
-          control={
-            <input
-              style={{ ...inputStyle, width: 140, fontSize: 12, padding: '5px 10px' }}
-              value={settings.defaultNamespace}
-              onChange={e => onUpdate({ defaultNamespace: e.target.value })}
-              placeholder="default"
-              spellCheck={false}
+          <p style={sectionTitle}>Behaviour</p>
+          <div style={card}>
+            <SettingRow
+              label="Confirm before delete"
+              description="Show a confirmation dialog when deleting a process."
+              control={
+                <Toggle
+                  checked={settings.confirmBeforeDelete}
+                  onChange={v => onUpdate({ confirmBeforeDelete: v })}
+                />
+              }
             />
-          }
-        />
-      </div>
-
-      {/* ── Section: Storage ── */}
-      <p style={sectionTitle}>Storage</p>
-      <div style={card}>
-        <SettingRow
-          label="Data directory"
-          description="Root folder where alter stores state, PID, and daemon logs."
-          control={sysPaths ? <CopyPath value={sysPaths.data_dir} /> : <span style={{ fontSize: 11, color: 'var(--color-muted-foreground)' }}>loading…</span>}
-        />
-        <SettingRow
-          label="Log directory"
-          description={<>Where process stdout/stderr logs are written. Override with <code style={{ fontSize: 10, fontFamily: 'monospace' }}>ALTER_LOG_DIR</code> env var.</>}
-          isLast
-          control={sysPaths ? <CopyPath value={sysPaths.log_dir} /> : <span style={{ fontSize: 11, color: 'var(--color-muted-foreground)' }}>loading…</span>}
-        />
-      </div>
-
-      {/* ── Section: Connection ── */}
-      <p style={sectionTitle}>Connection</p>
-      <div style={card}>
-        <SettingRow
-          label="Daemon URL"
-          description="Base URL of the alter daemon. Change if running remotely."
-          isLast
-          control={
-            <input
-              style={{ ...inputStyle, width: 200, fontSize: 12, padding: '5px 10px', fontFamily: 'monospace' }}
-              value={settings.daemonUrl}
-              onChange={e => onUpdate({ daemonUrl: e.target.value })}
-              placeholder="http://127.0.0.1:2999"
-              spellCheck={false}
+            <SettingRow
+              label="Confirm before shutdown"
+              description="Show a confirmation dialog when shutting down the daemon."
+              isLast
+              control={
+                <Toggle
+                  checked={settings.confirmBeforeShutdown}
+                  onChange={v => onUpdate({ confirmBeforeShutdown: v })}
+                />
+              }
             />
-          }
-        />
-      </div>
+          </div>
 
-      {/* ── Section: AI Assistant ── */}
-      <p style={sectionTitle}>AI Assistant</p>
-      <div style={card}>
+          <p style={sectionTitle}>Log Viewer</p>
+          <div style={card}>
+            <SettingRow
+              label="Default tail lines"
+              description="Number of log lines to fetch when opening a process log view."
+              isLast
+              control={
+                <select
+                  value={settings.logTailLines}
+                  onChange={e => onUpdate({ logTailLines: Number(e.target.value) })}
+                  style={selectStyle}
+                >
+                  {LOG_TAIL_OPTIONS.map(o => (
+                    <option key={o.value} value={o.value}>{o.label}</option>
+                  ))}
+                </select>
+              }
+            />
+          </div>
 
-        {/* Enable toggle */}
-        <SettingRow
-          label="Enable AI assistant"
-          description="Show the AI panel button in the sidebar."
-          control={<Toggle checked={aiEnabled} onChange={setAiEnabled} />}
-        />
+          <p style={sectionTitle}>Process Defaults</p>
+          <div style={card}>
+            <SettingRow
+              label="Default namespace"
+              description="Pre-filled namespace when creating new processes or cron jobs."
+              isLast
+              control={
+                <input
+                  style={{ ...inputStyle, width: 140, fontSize: 12, padding: '5px 10px' }}
+                  value={settings.defaultNamespace}
+                  onChange={e => onUpdate({ defaultNamespace: e.target.value })}
+                  placeholder="default"
+                  spellCheck={false}
+                />
+              }
+            />
+          </div>
 
-        {/* GitHub OAuth App Client ID */}
-        <SettingRow
-          label="GitHub OAuth App Client ID"
-          description={
-            <>
-              Create an OAuth App at{' '}
-              <a href="https://github.com/settings/developers" target="_blank" rel="noreferrer"
-                style={{ color: 'var(--color-primary)', textDecoration: 'none' }}>
-                github.com/settings/developers
-              </a>
-              {' '}and enable "Device Flow". Paste the Client ID here (no secret needed).
-            </>
-          }
-          control={
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <input
-                type="text"
-                value={aiClientId}
-                onChange={e => setAiClientId(e.target.value)}
-                placeholder="Oauth_…"
-                style={{ ...inputStyle, width: 180, fontSize: 12, padding: '5px 10px', fontFamily: 'monospace' }}
-                spellCheck={false}
-                autoComplete="off"
-              />
-              <button
-                onClick={saveAiSettings}
-                disabled={aiSaving}
-                style={{
-                  padding: '5px 14px', fontSize: 12, fontWeight: 500,
-                  background: aiSaved ? 'var(--color-status-running)' : 'var(--color-primary)',
-                  color: '#fff', border: 'none', borderRadius: 5, cursor: 'pointer',
-                  opacity: aiSaving ? 0.6 : 1, transition: 'background 0.2s',
-                }}
-              >
-                {aiSaved ? 'Saved!' : aiSaving ? 'Saving…' : 'Save'}
-              </button>
-            </div>
-          }
-        />
+          <p style={sectionTitle}>Storage</p>
+          <div style={card}>
+            <SettingRow
+              label="Data directory"
+              description="Root folder where alter stores state, PID, and daemon logs."
+              control={sysPaths ? <CopyPath value={sysPaths.data_dir} /> : <span style={{ fontSize: 11, color: 'var(--color-muted-foreground)' }}>loading…</span>}
+            />
+            <SettingRow
+              label="Log directory"
+              description={<>Where process stdout/stderr logs are written. Override with <code style={{ fontSize: 10, fontFamily: 'monospace' }}>ALTER_LOG_DIR</code> env var.</>}
+              isLast
+              control={sysPaths ? <CopyPath value={sysPaths.log_dir} /> : <span style={{ fontSize: 11, color: 'var(--color-muted-foreground)' }}>loading…</span>}
+            />
+          </div>
 
-        {/* GitHub Sign-in / Status */}
-        <SettingRow
-          label="GitHub account"
-          description="Sign in to let alter fetch an access token automatically via GitHub OAuth."
-          control={
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}>
+          <p style={sectionTitle}>Connection</p>
+          <div style={card}>
+            <SettingRow
+              label="Daemon URL"
+              description="Base URL of the alter daemon. Change if running remotely."
+              isLast
+              control={
+                <input
+                  style={{ ...inputStyle, width: 200, fontSize: 12, padding: '5px 10px', fontFamily: 'monospace' }}
+                  value={settings.daemonUrl}
+                  onChange={e => onUpdate({ daemonUrl: e.target.value })}
+                  placeholder="http://127.0.0.1:2999"
+                  spellCheck={false}
+                />
+              }
+            />
+          </div>
 
-              {/* idle — not connected */}
-              {authPhase === 'idle' && (
+          <p style={sectionTitle}>Daemon</p>
+          <div style={card}>
+            <SettingRow
+              label="Restart daemon"
+              description="Restarts the alter daemon. Your running processes keep running — only the HTTP server briefly restarts."
+              isLast
+              control={
                 <button
-                  onClick={startDeviceFlow}
+                  onClick={handleRestartDaemon}
+                  disabled={restarting}
                   style={{
-                    display: 'inline-flex', alignItems: 'center', gap: 6,
+                    display: 'flex', alignItems: 'center', gap: 7,
                     padding: '6px 14px', fontSize: 12, fontWeight: 500,
-                    background: 'var(--color-foreground)', color: 'var(--color-background)',
-                    border: 'none', borderRadius: 5, cursor: 'pointer',
-                    opacity: 1, transition: 'opacity 0.15s',
+                    background: restartStatus === 'done' ? 'var(--color-status-running)'
+                      : restartStatus === 'error' ? 'var(--color-destructive)'
+                      : 'var(--color-secondary)',
+                    color: restartStatus === 'idle' ? 'var(--color-foreground)' : '#fff',
+                    border: '1px solid var(--color-border)',
+                    borderRadius: 6, cursor: restarting ? 'default' : 'pointer',
+                    opacity: restarting ? 0.7 : 1, transition: 'background 0.2s',
                   }}
                 >
-                  <Github size={13} /> Sign in with GitHub
+                  {restarting
+                    ? <><Loader size={12} style={{ animation: 'spin 1s linear infinite' }} /> Restarting…</>
+                    : restartStatus === 'done' ? <><Check size={12} /> Back online</>
+                    : restartStatus === 'error' ? 'Failed to connect'
+                    : <><RotateCcw size={12} /> Restart daemon</>}
                 </button>
-              )}
+              }
+            />
+          </div>
 
-              {/* in_progress — showing device code */}
-              {authPhase === 'in_progress' && (
-                <div style={{
-                  display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6,
-                  padding: '10px 12px',
-                  background: 'var(--color-accent)',
-                  borderRadius: 8,
-                  border: '1px solid var(--color-border)',
-                  minWidth: 230,
-                }}>
-                  <div style={{ fontSize: 11, color: 'var(--color-muted-foreground)', alignSelf: 'flex-start' }}>
-                    Enter this code at:
-                  </div>
-                  <div style={{ alignSelf: 'flex-start' }}>
-                    <a
-                      href={deviceUri || 'https://github.com/login/device'}
-                      target="_blank" rel="noreferrer"
-                      style={{ fontSize: 11, color: 'var(--color-primary)', textDecoration: 'none' }}
-                    >
-                      {deviceUri || 'github.com/login/device'} ↗
-                    </a>
-                  </div>
-                  {/* Big copyable code */}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, alignSelf: 'flex-start' }}>
-                    <code style={{
-                      fontSize: 22, fontWeight: 700, fontFamily: 'monospace', letterSpacing: '0.12em',
-                      color: 'var(--color-foreground)',
-                    }}>
-                      {deviceUserCode}
-                    </code>
-                    <button
-                      onClick={copyDeviceCode}
-                      title="Copy code"
-                      style={{
-                        background: 'transparent', border: 'none', cursor: 'pointer',
-                        color: codeCopied ? 'var(--color-status-running)' : 'var(--color-muted-foreground)',
-                        display: 'flex', alignItems: 'center',
-                      }}
-                    >
-                      {codeCopied ? <Check size={14} /> : <Copy size={14} />}
-                    </button>
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, alignSelf: 'flex-start' }}>
-                    <Loader size={12} style={{ animation: 'spin 1s linear infinite', color: 'var(--color-muted-foreground)' }} />
-                    <span style={{ fontSize: 11, color: 'var(--color-muted-foreground)' }}>Waiting for authorization…</span>
-                  </div>
-                  <button
-                    onClick={cancelDeviceFlow}
-                    style={{
-                      alignSelf: 'flex-start', padding: '4px 10px', fontSize: 11,
-                      background: 'transparent', border: '1px solid var(--color-border)',
-                      borderRadius: 4, cursor: 'pointer', color: 'var(--color-muted-foreground)',
-                    }}
-                  >
-                    Cancel
-                  </button>
-                </div>
-              )}
+          <p style={{ fontSize: 11, color: 'var(--color-muted-foreground)', textAlign: 'center', marginTop: 8 }}>
+            Settings are stored in your browser's localStorage and apply to this machine only.
+            {' '}Changes take effect immediately.
+          </p>
+        </>
+      )}
 
-              {/* connected */}
-              {authPhase === 'connected' && (
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <span style={{ fontSize: 12, color: 'var(--color-status-running)', fontWeight: 500 }}>
-                    ✓ Connected as @{authUsername}
-                  </span>
-                  <button
-                    onClick={disconnect}
-                    title="Disconnect GitHub account"
-                    style={{
-                      display: 'inline-flex', alignItems: 'center', gap: 4,
-                      padding: '4px 10px', fontSize: 11,
-                      background: 'transparent',
-                      border: '1px solid var(--color-border)',
-                      borderRadius: 4, cursor: 'pointer',
-                      color: 'var(--color-muted-foreground)',
-                    }}
-                  >
-                    <LogOut size={11} /> Disconnect
-                  </button>
-                </div>
-              )}
-
-              {/* auth error */}
-              {authError && (
-                <div style={{ fontSize: 11, color: 'var(--color-destructive)', maxWidth: 240, textAlign: 'right' }}>
-                  {authError}
-                </div>
-              )}
+      {/* ── Tab: Security ── */}
+      {activeTab === 'security' && (
+        <>
+          <p style={sectionTitle}>Password</p>
+          <div style={card}>
+            <div style={{ marginBottom: 4 }}>
+              <div style={labelStyle}>Change password</div>
+              <div style={{ ...descStyle, marginBottom: 16 }}>Update your dashboard login password.</div>
             </div>
-          }
-        />
-
-        {/* Model dropdown — dynamic or fallback */}
-        <SettingRow
-          label="Model"
-          description="GitHub Models model to use for chat responses."
-          isLast
-          control={
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <select
-                value={aiModel}
-                onChange={e => setAiModel(e.target.value)}
-                style={{ ...selectStyle, minWidth: 180 }}
-              >
-                {modelOptions.length > 0
-                  ? modelOptions.map(m => (
-                    <option key={m.id} value={m.id} title={m.summary}>
-                      {m.name}{m.publisher ? ` (${m.publisher})` : ''}
-                    </option>
-                  ))
-                  : (
-                    <>
-                      <option value="gpt-4o-mini">gpt-4o-mini (fast)</option>
-                      <option value="gpt-4o">gpt-4o</option>
-                      <option value="o3-mini">o3-mini</option>
-                      <option value="claude-3-5-sonnet">claude-3-5-sonnet</option>
-                    </>
+            <form onSubmit={handleChangePassword}>
+              {/* Field helper */}
+              {(() => {
+                function PwField({
+                  label, value, onChange, autoComplete, show, onToggle,
+                }: {
+                  label: string
+                  value: string
+                  onChange: (v: string) => void
+                  autoComplete: string
+                  show: boolean
+                  onToggle: () => void
+                }) {
+                  return (
+                    <div style={{ marginBottom: 12 }}>
+                      <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: 'var(--color-muted-foreground)', marginBottom: 5, letterSpacing: '0.04em' }}>
+                        {label}
+                      </label>
+                      <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                        <input
+                          type={show ? 'text' : 'password'}
+                          value={value}
+                          onChange={e => onChange(e.target.value)}
+                          autoComplete={autoComplete}
+                          style={{
+                            ...inputStyle,
+                            width: '100%',
+                            fontSize: 13,
+                            padding: '8px 36px 8px 12px',
+                            boxSizing: 'border-box',
+                            borderRadius: 6,
+                          }}
+                        />
+                        <button
+                          type="button"
+                          onClick={onToggle}
+                          tabIndex={-1}
+                          style={{
+                            position: 'absolute', right: 10,
+                            background: 'none', border: 'none', cursor: 'pointer',
+                            color: 'var(--color-muted-foreground)',
+                            display: 'flex', alignItems: 'center', padding: 0,
+                          }}
+                        >
+                          {show ? <EyeOff size={14} /> : <Eye size={14} />}
+                        </button>
+                      </div>
+                    </div>
                   )
                 }
-              </select>
+                return (
+                  <>
+                    <PwField
+                      label="Current password"
+                      value={currentPassword}
+                      onChange={setCurrentPassword}
+                      autoComplete="current-password"
+                      show={showCurrentPw}
+                      onToggle={() => setShowCurrentPw(p => !p)}
+                    />
+                    <div style={{ height: 1, background: 'var(--color-border)', margin: '4px 0 16px' }} />
+                    <PwField
+                      label="New password"
+                      value={newPassword}
+                      onChange={setNewPassword}
+                      autoComplete="new-password"
+                      show={showNewPw}
+                      onToggle={() => setShowNewPw(p => !p)}
+                    />
+                    <PwField
+                      label="Confirm new password"
+                      value={confirmNewPassword}
+                      onChange={setConfirmNewPassword}
+                      autoComplete="new-password"
+                      show={showConfirmPw}
+                      onToggle={() => setShowConfirmPw(p => !p)}
+                    />
+                    {/* Strength hint */}
+                    {newPassword.length > 0 && (
+                      <div style={{ marginBottom: 14 }}>
+                        <div style={{ display: 'flex', gap: 4, marginBottom: 4 }}>
+                          {[1, 2, 3, 4].map(level => {
+                            const strength = newPassword.length >= 12 && /[A-Z]/.test(newPassword) && /[0-9]/.test(newPassword) && /[^A-Za-z0-9]/.test(newPassword) ? 4
+                              : newPassword.length >= 10 && /[A-Z]/.test(newPassword) && /[0-9]/.test(newPassword) ? 3
+                              : newPassword.length >= 8 ? 2
+                              : 1
+                            const colors = ['var(--color-destructive)', 'orange', '#f0b429', 'var(--color-status-running)']
+                            return (
+                              <div key={level} style={{
+                                flex: 1, height: 3, borderRadius: 2,
+                                background: level <= strength ? colors[strength - 1] : 'var(--color-border)',
+                                transition: 'background 0.2s',
+                              }} />
+                            )
+                          })}
+                        </div>
+                        <span style={{ fontSize: 10, color: 'var(--color-muted-foreground)' }}>
+                          {newPassword.length < 8 ? 'Too short' : newPassword.length >= 12 && /[A-Z]/.test(newPassword) && /[0-9]/.test(newPassword) && /[^A-Za-z0-9]/.test(newPassword) ? 'Strong' : newPassword.length >= 10 && /[A-Z]/.test(newPassword) && /[0-9]/.test(newPassword) ? 'Good' : 'Fair — add uppercase, numbers, symbols'}
+                        </span>
+                      </div>
+                    )}
+                  </>
+                )
+              })()}
+
+              {pwChangeError && (
+                <div style={{
+                  display: 'flex', alignItems: 'center', gap: 7,
+                  padding: '8px 12px', borderRadius: 6, marginBottom: 12,
+                  background: 'color-mix(in srgb, var(--color-destructive) 10%, transparent)',
+                  border: '1px solid color-mix(in srgb, var(--color-destructive) 30%, transparent)',
+                  fontSize: 12, color: 'var(--color-destructive)',
+                }}>
+                  {pwChangeError}
+                </div>
+              )}
+
+              {pwChangeSaved && (
+                <div style={{
+                  display: 'flex', alignItems: 'center', gap: 7,
+                  padding: '8px 12px', borderRadius: 6, marginBottom: 12,
+                  background: 'color-mix(in srgb, var(--color-status-running) 10%, transparent)',
+                  border: '1px solid color-mix(in srgb, var(--color-status-running) 30%, transparent)',
+                  fontSize: 12, color: 'var(--color-status-running)',
+                }}>
+                  <Check size={13} /> Password changed successfully.
+                </div>
+              )}
+
               <button
-                onClick={loadModels}
-                disabled={modelsLoading}
-                title="Refresh model list from GitHub"
+                type="submit"
+                disabled={pwChangeSaving || !currentPassword || !newPassword || !confirmNewPassword}
                 style={{
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  width: 28, height: 28, borderRadius: 5,
-                  background: 'transparent', border: '1px solid var(--color-border)',
-                  cursor: 'pointer', color: 'var(--color-muted-foreground)',
+                  display: 'flex', alignItems: 'center', gap: 7,
+                  padding: '8px 18px', fontSize: 13, fontWeight: 600,
+                  background: pwChangeSaved ? 'var(--color-status-running)' : 'var(--color-primary)',
+                  color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer',
+                  opacity: (pwChangeSaving || !currentPassword || !newPassword || !confirmNewPassword) ? 0.5 : 1,
+                  transition: 'background 0.2s, opacity 0.15s',
                 }}
               >
-                <RefreshCw size={12} style={modelsLoading ? { animation: 'spin 1s linear infinite' } : {}} />
+                <Shield size={13} />
+                {pwChangeSaving ? 'Updating…' : 'Update password'}
               </button>
-              <button
-                onClick={saveAiSettings}
-                disabled={aiSaving}
-                style={{
-                  padding: '5px 14px', fontSize: 12, fontWeight: 500,
-                  background: aiSaved ? 'var(--color-status-running)' : 'var(--color-primary)',
-                  color: '#fff', border: 'none', borderRadius: 5, cursor: 'pointer',
-                  opacity: aiSaving ? 0.6 : 1, transition: 'background 0.2s',
-                }}
-              >
-                {aiSaved ? 'Saved!' : aiSaving ? 'Saving…' : 'Save'}
-              </button>
-            </div>
-          }
-        />
-      </div>
+            </form>
+          </div>
+
+          <p style={sectionTitle}>PIN</p>
+          <div style={card}>
+            <SettingRow
+              label="Quick-unlock PIN"
+              description={pinConfigured
+                ? 'A PIN is set. Enter a new one to replace it, or remove it.'
+                : 'Set a 4 or 6 digit PIN for the lock screen. Faster than typing the full password.'}
+              isLast
+              control={
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}>
+                  {pinError && (
+                    <div style={{ fontSize: 11, color: 'var(--color-destructive)', textAlign: 'right' }}>{pinError}</div>
+                  )}
+                  <form onSubmit={handleSetPin} style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      pattern="[0-9]*"
+                      maxLength={6}
+                      value={pinInput}
+                      onChange={e => setPinInput(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                      placeholder={pinConfigured ? 'New PIN (4 or 6 digits)' : 'PIN (4 or 6 digits)'}
+                      style={{ ...inputStyle, width: 160, fontSize: 12, padding: '5px 10px', letterSpacing: '0.15em', fontFamily: 'monospace' }}
+                    />
+                    <button
+                      type="submit"
+                      disabled={pinSaving || pinInput.length < 4}
+                      style={{
+                        padding: '5px 12px', fontSize: 12, fontWeight: 500,
+                        background: pinSaved ? 'var(--color-status-running)' : 'var(--color-primary)',
+                        color: '#fff', border: 'none', borderRadius: 5, cursor: 'pointer',
+                        opacity: (pinSaving || pinInput.length < 4) ? 0.5 : 1, transition: 'background 0.2s',
+                      }}
+                    >
+                      {pinSaved ? 'Saved!' : pinConfigured ? 'Update' : 'Set PIN'}
+                    </button>
+                    {pinConfigured && (
+                      <button
+                        type="button"
+                        onClick={handleRemovePin}
+                        disabled={pinSaving}
+                        style={{
+                          padding: '5px 10px', fontSize: 12,
+                          background: 'transparent',
+                          border: '1px solid var(--color-destructive)',
+                          borderRadius: 5, cursor: 'pointer',
+                          color: 'var(--color-destructive)',
+                          opacity: pinSaving ? 0.5 : 1,
+                        }}
+                      >
+                        Remove
+                      </button>
+                    )}
+                  </form>
+                </div>
+              }
+            />
+          </div>
+
+          <p style={sectionTitle}>Session</p>
+          <div style={card}>
+            <SettingRow
+              label="Auto-lock after inactivity"
+              description="Automatically lock the dashboard after a period of inactivity. Uses PIN if set, otherwise password."
+              isLast
+              control={
+                <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                  <select
+                    value={lockTimeoutMins}
+                    onChange={e => setLockTimeoutMins(e.target.value)}
+                    style={{ ...selectStyle, minWidth: 120 }}
+                  >
+                    <option value="0">Disabled</option>
+                    <option value="5">5 minutes</option>
+                    <option value="15">15 minutes</option>
+                    <option value="30">30 minutes</option>
+                    <option value="60">1 hour</option>
+                  </select>
+                  <button
+                    onClick={handleSaveLockTimeout}
+                    disabled={lockSaving}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 5,
+                      padding: '5px 12px', fontSize: 12, fontWeight: 500,
+                      background: lockSaved ? 'var(--color-status-running)' : 'var(--color-primary)',
+                      color: '#fff', border: 'none', borderRadius: 5, cursor: 'pointer',
+                      opacity: lockSaving ? 0.6 : 1, transition: 'background 0.2s',
+                    }}
+                  >
+                    <Lock size={11} />
+                    {lockSaved ? 'Saved!' : lockSaving ? 'Saving…' : 'Save'}
+                  </button>
+                </div>
+              }
+            />
+          </div>
+        </>
+      )}
+
+      {/* ── Tab: AI ── */}
+      {activeTab === 'ai' && (
+        <>
+          <p style={sectionTitle}>AI Assistant</p>
+          <div style={card}>
+            <SettingRow
+              label="Enable AI assistant"
+              description="Show the AI panel button in the sidebar."
+              control={<Toggle checked={aiEnabled} onChange={setAiEnabled} />}
+            />
+
+            <SettingRow
+              label="GitHub OAuth App Client ID"
+              description={
+                <>
+                  Create an OAuth App at{' '}
+                  <a href="https://github.com/settings/developers" target="_blank" rel="noreferrer"
+                    style={{ color: 'var(--color-primary)', textDecoration: 'none' }}>
+                    github.com/settings/developers
+                  </a>
+                  {' '}and enable "Device Flow". Paste the Client ID here (no secret needed).
+                </>
+              }
+              control={
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <input
+                    type="text"
+                    value={aiClientId}
+                    onChange={e => setAiClientId(e.target.value)}
+                    placeholder="Oauth_…"
+                    style={{ ...inputStyle, width: 180, fontSize: 12, padding: '5px 10px', fontFamily: 'monospace' }}
+                    spellCheck={false}
+                    autoComplete="off"
+                  />
+                  <button
+                    onClick={saveAiSettings}
+                    disabled={aiSaving}
+                    style={{
+                      padding: '5px 14px', fontSize: 12, fontWeight: 500,
+                      background: aiSaved ? 'var(--color-status-running)' : 'var(--color-primary)',
+                      color: '#fff', border: 'none', borderRadius: 5, cursor: 'pointer',
+                      opacity: aiSaving ? 0.6 : 1, transition: 'background 0.2s',
+                    }}
+                  >
+                    {aiSaved ? 'Saved!' : aiSaving ? 'Saving…' : 'Save'}
+                  </button>
+                </div>
+              }
+            />
+
+            <SettingRow
+              label="GitHub account"
+              description="Sign in to let alter fetch an access token automatically via GitHub OAuth."
+              control={
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}>
+                  {authPhase === 'idle' && (
+                    <button
+                      onClick={startDeviceFlow}
+                      style={{
+                        display: 'inline-flex', alignItems: 'center', gap: 6,
+                        padding: '6px 14px', fontSize: 12, fontWeight: 500,
+                        background: 'var(--color-foreground)', color: 'var(--color-background)',
+                        border: 'none', borderRadius: 5, cursor: 'pointer',
+                        opacity: 1, transition: 'opacity 0.15s',
+                      }}
+                    >
+                      <Github size={13} /> Sign in with GitHub
+                    </button>
+                  )}
+                  {authPhase === 'in_progress' && (
+                    <div style={{
+                      display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6,
+                      padding: '10px 12px',
+                      background: 'var(--color-accent)',
+                      borderRadius: 8,
+                      border: '1px solid var(--color-border)',
+                      minWidth: 230,
+                    }}>
+                      <div style={{ fontSize: 11, color: 'var(--color-muted-foreground)', alignSelf: 'flex-start' }}>
+                        Enter this code at:
+                      </div>
+                      <div style={{ alignSelf: 'flex-start' }}>
+                        <a
+                          href={deviceUri || 'https://github.com/login/device'}
+                          target="_blank" rel="noreferrer"
+                          style={{ fontSize: 11, color: 'var(--color-primary)', textDecoration: 'none' }}
+                        >
+                          {deviceUri || 'github.com/login/device'} ↗
+                        </a>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, alignSelf: 'flex-start' }}>
+                        <code style={{
+                          fontSize: 22, fontWeight: 700, fontFamily: 'monospace', letterSpacing: '0.12em',
+                          color: 'var(--color-foreground)',
+                        }}>
+                          {deviceUserCode}
+                        </code>
+                        <button
+                          onClick={copyDeviceCode}
+                          title="Copy code"
+                          style={{
+                            background: 'transparent', border: 'none', cursor: 'pointer',
+                            color: codeCopied ? 'var(--color-status-running)' : 'var(--color-muted-foreground)',
+                            display: 'flex', alignItems: 'center',
+                          }}
+                        >
+                          {codeCopied ? <Check size={14} /> : <Copy size={14} />}
+                        </button>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, alignSelf: 'flex-start' }}>
+                        <Loader size={12} style={{ animation: 'spin 1s linear infinite', color: 'var(--color-muted-foreground)' }} />
+                        <span style={{ fontSize: 11, color: 'var(--color-muted-foreground)' }}>Waiting for authorization…</span>
+                      </div>
+                      <button
+                        onClick={cancelDeviceFlow}
+                        style={{
+                          alignSelf: 'flex-start', padding: '4px 10px', fontSize: 11,
+                          background: 'transparent', border: '1px solid var(--color-border)',
+                          borderRadius: 4, cursor: 'pointer', color: 'var(--color-muted-foreground)',
+                        }}
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  )}
+                  {authPhase === 'connected' && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                      <span style={{ fontSize: 12, color: 'var(--color-status-running)', fontWeight: 500 }}>
+                        ✓ Connected as @{authUsername}
+                      </span>
+                      <button
+                        onClick={disconnect}
+                        title="Disconnect GitHub account"
+                        style={{
+                          display: 'inline-flex', alignItems: 'center', gap: 4,
+                          padding: '4px 10px', fontSize: 11,
+                          background: 'transparent',
+                          border: '1px solid var(--color-border)',
+                          borderRadius: 4, cursor: 'pointer',
+                          color: 'var(--color-muted-foreground)',
+                        }}
+                      >
+                        <LogOut size={11} /> Disconnect
+                      </button>
+                    </div>
+                  )}
+                  {authError && (
+                    <div style={{ fontSize: 11, color: 'var(--color-destructive)', maxWidth: 240, textAlign: 'right' }}>
+                      {authError}
+                    </div>
+                  )}
+                </div>
+              }
+            />
+
+            <SettingRow
+              label="Model"
+              description="GitHub Models model to use for chat responses."
+              isLast
+              control={
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <select
+                    value={aiModel}
+                    onChange={e => setAiModel(e.target.value)}
+                    style={{ ...selectStyle, minWidth: 180 }}
+                  >
+                    {modelOptions.length > 0
+                      ? modelOptions.map(m => (
+                        <option key={m.id} value={m.id} title={m.summary}>
+                          {m.name}{m.publisher ? ` (${m.publisher})` : ''}
+                        </option>
+                      ))
+                      : (
+                        <>
+                          <option value="gpt-4o-mini">gpt-4o-mini (fast)</option>
+                          <option value="gpt-4o">gpt-4o</option>
+                          <option value="o3-mini">o3-mini</option>
+                          <option value="claude-3-5-sonnet">claude-3-5-sonnet</option>
+                        </>
+                      )
+                    }
+                  </select>
+                  <button
+                    onClick={loadModels}
+                    disabled={modelsLoading}
+                    title="Refresh model list from GitHub"
+                    style={{
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      width: 28, height: 28, borderRadius: 5,
+                      background: 'transparent', border: '1px solid var(--color-border)',
+                      cursor: 'pointer', color: 'var(--color-muted-foreground)',
+                    }}
+                  >
+                    <RefreshCw size={12} style={modelsLoading ? { animation: 'spin 1s linear infinite' } : {}} />
+                  </button>
+                  <button
+                    onClick={saveAiSettings}
+                    disabled={aiSaving}
+                    style={{
+                      padding: '5px 14px', fontSize: 12, fontWeight: 500,
+                      background: aiSaved ? 'var(--color-status-running)' : 'var(--color-primary)',
+                      color: '#fff', border: 'none', borderRadius: 5, cursor: 'pointer',
+                      opacity: aiSaving ? 0.6 : 1, transition: 'background 0.2s',
+                    }}
+                  >
+                    {aiSaved ? 'Saved!' : aiSaving ? 'Saving…' : 'Save'}
+                  </button>
+                </div>
+              }
+            />
+          </div>
+        </>
+      )}
+
+      {/* ── Tab: Telegram ── */}
+      {activeTab === 'telegram' && (
+        <>
+          <p style={sectionTitle}>Telegram Bot</p>
+          <div style={card}>
+            <SettingRow
+              label="Enable Telegram Bot"
+              description="Allow controlling processes and receiving alerts via Telegram"
+              isLast
+              control={<Toggle checked={tgEnabled} onChange={v => setTgEnabled(v)} />}
+            />
+          </div>
+
+          <p style={sectionTitle}>Bot Token</p>
+          <div style={card}>
+            <SettingRow
+              label="Bot Token"
+              description={
+                tgTokenSet && !tgChangingToken
+                  ? 'Token is saved — click Change to replace it'
+                  : 'Get your token from @BotFather on Telegram'
+              }
+              isLast
+              control={
+                tgTokenSet && !tgChangingToken ? (
+                  // @group BusinessLogic > Telegram > Token : Locked state — token already saved
+                  <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                    <div style={{
+                      ...inputStyle, width: 240, fontSize: 12,
+                      display: 'flex', alignItems: 'center', gap: 6,
+                      color: 'var(--color-muted-foreground)',
+                      background: 'var(--color-secondary)',
+                    }}>
+                      <span style={{ color: 'var(--color-status-running)', fontSize: 13 }}>✓</span>
+                      <span style={{ fontFamily: 'monospace' }}>{tgTokenHint ?? '••••••••'}</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => { setTgChangingToken(true); setTgBotInfo(null) }}
+                      style={{
+                        padding: '5px 12px', fontSize: 12, fontWeight: 500,
+                        background: 'var(--color-card)', color: 'var(--color-foreground)',
+                        border: '1px solid var(--color-border)', borderRadius: 5, cursor: 'pointer',
+                      }}
+                    >
+                      Change
+                    </button>
+                  </div>
+                ) : (
+                  // @group BusinessLogic > Telegram > Token : Edit state — enter new token
+                  <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                    <input
+                      type="password"
+                      placeholder="Paste new bot token…"
+                      value={tgToken}
+                      onChange={e => { setTgToken(e.target.value); setTgBotInfo(null) }}
+                      style={{ ...inputStyle, width: 240, fontSize: 12 }}
+                      autoFocus
+                    />
+                    <button
+                      type="button"
+                      onClick={handleValidateToken}
+                      disabled={tgValidating || !tgToken}
+                      style={{
+                        padding: '5px 12px', fontSize: 12, fontWeight: 500,
+                        background: 'var(--color-card)', color: 'var(--color-foreground)',
+                        border: '1px solid var(--color-border)', borderRadius: 5, cursor: 'pointer',
+                        opacity: (tgValidating || !tgToken) ? 0.5 : 1,
+                      }}
+                    >
+                      {tgValidating ? 'Checking…' : 'Validate'}
+                    </button>
+                    {tgTokenSet && (
+                      <button
+                        type="button"
+                        onClick={() => { setTgChangingToken(false); setTgToken(''); setTgBotInfo(null) }}
+                        style={{
+                          padding: '5px 10px', fontSize: 12,
+                          background: 'none', color: 'var(--color-muted-foreground)',
+                          border: '1px solid var(--color-border)', borderRadius: 5, cursor: 'pointer',
+                        }}
+                      >
+                        Cancel
+                      </button>
+                    )}
+                  </div>
+                )
+              }
+            />
+            {tgBotInfo && (
+              <div style={{
+                marginTop: 8, padding: '8px 12px', borderRadius: 6, fontSize: 12,
+                background: tgBotInfo.ok ? 'rgba(34,197,94,0.1)' : 'rgba(239,68,68,0.1)',
+                color: tgBotInfo.ok ? 'var(--color-status-running)' : 'var(--color-status-errored)',
+                border: `1px solid ${tgBotInfo.ok ? 'rgba(34,197,94,0.3)' : 'rgba(239,68,68,0.3)'}`,
+              }}>
+                {tgBotInfo.ok
+                  ? `✅ Connected as @${tgBotInfo.username ?? tgBotInfo.first_name}`
+                  : `❌ ${tgBotInfo.error ?? 'Invalid token'}`}
+              </div>
+            )}
+          </div>
+
+          <p style={sectionTitle}>Allowed Chat IDs</p>
+          <div style={card}>
+            <SettingRow
+              label="Allowed Chat IDs"
+              description="Only these Telegram user/group IDs can send commands. One ID per line. Find your ID by messaging @userinfobot."
+              isLast
+              control={
+                <textarea
+                  placeholder={'123456789\n-987654321'}
+                  value={tgChatIds}
+                  onChange={e => setTgChatIds(e.target.value)}
+                  rows={4}
+                  style={{
+                    ...inputStyle,
+                    width: 200,
+                    resize: 'vertical',
+                    fontFamily: 'monospace',
+                    fontSize: 12,
+                  }}
+                />
+              }
+            />
+          </div>
+
+          <p style={sectionTitle}>Notifications</p>
+          <div style={card}>
+            <SettingRow label="Notify on crash" description="Send a message when a process crashes" control={<Toggle checked={tgNotifyCrash} onChange={setTgNotifyCrash} />} />
+            <SettingRow label="Notify on start" description="Send a message when a process starts" control={<Toggle checked={tgNotifyStart} onChange={setTgNotifyStart} />} />
+            <SettingRow label="Notify on stop" description="Send a message when a process is stopped" control={<Toggle checked={tgNotifyStop} onChange={setTgNotifyStop} />} />
+            <SettingRow
+              label="Notify on restart"
+              description="Send a message when a process is automatically restarted"
+              isLast
+              control={<Toggle checked={tgNotifyRestart} onChange={setTgNotifyRestart} />}
+            />
+          </div>
+
+          {/* Save and test buttons */}
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 4 }}>
+            <button
+              onClick={handleSaveTelegram}
+              disabled={tgSaving}
+              style={{
+                padding: '7px 18px', fontSize: 13, fontWeight: 500,
+                background: tgSaved ? 'var(--color-status-running)' : 'var(--color-primary)',
+                color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer',
+                opacity: tgSaving ? 0.6 : 1, transition: 'background 0.2s',
+              }}
+            >
+              {tgSaved ? 'Saved!' : tgSaving ? 'Saving…' : 'Save'}
+            </button>
+            <button
+              type="button"
+              onClick={handleTestTelegram}
+              disabled={tgTesting || !tgTokenSet || parseChatIds().length === 0}
+              style={{
+                padding: '7px 18px', fontSize: 13, fontWeight: 500,
+                background: 'var(--color-card)', color: 'var(--color-foreground)',
+                border: '1px solid var(--color-border)', borderRadius: 6, cursor: 'pointer',
+                opacity: (tgTesting || !tgTokenSet || parseChatIds().length === 0) ? 0.5 : 1,
+              }}
+            >
+              {tgTesting ? 'Sending…' : 'Send Test Message'}
+            </button>
+            {tgTestResult && (
+              <span style={{ fontSize: 12, color: tgTestResult.startsWith('✅') ? 'var(--color-status-running)' : 'var(--color-status-errored)' }}>
+                {tgTestResult}
+              </span>
+            )}
+          </div>
+          {tgError && (
+            <p style={{ fontSize: 12, color: 'var(--color-status-errored)', marginTop: 8 }}>{tgError}</p>
+          )}
+
+          {/* Setup guide */}
+          <div style={{ ...card, marginTop: 20, background: 'rgba(var(--color-primary-rgb, 99,102,241),0.05)', borderColor: 'rgba(var(--color-primary-rgb, 99,102,241),0.2)' }}>
+            <p style={{ ...sectionTitle, color: 'var(--color-primary)', marginBottom: 8 }}>Setup Guide</p>
+            <ol style={{ fontSize: 12, color: 'var(--color-muted-foreground)', paddingLeft: 20, margin: 0, lineHeight: 1.8 }}>
+              <li>Message <strong>@BotFather</strong> on Telegram → <code>/newbot</code> → copy the token above</li>
+              <li>Click <strong>Validate</strong> to confirm the token works</li>
+              <li>Message your bot, then message <strong>@userinfobot</strong> to get your Chat ID</li>
+              <li>Add your Chat ID to the Allowed Chat IDs list</li>
+              <li>Enable the bot and save</li>
+              <li>Send <strong>/help</strong> to your bot to see available commands</li>
+            </ol>
+            <p style={{ fontSize: 12, color: 'var(--color-muted-foreground)', marginTop: 12, marginBottom: 0 }}>
+              <strong>Commands:</strong> /list · /start &lt;name&gt; · /stop &lt;name&gt; · /restart &lt;name&gt; · /logs &lt;name&gt; [lines] · /status &lt;name&gt; · /ping · /help
+            </p>
+          </div>
+        </>
+      )}
 
       <style>{`@keyframes spin { to { transform: rotate(360deg) } }`}</style>
-
-      {/* Footer note */}
-      <p style={{ fontSize: 11, color: 'var(--color-muted-foreground)', textAlign: 'center', marginTop: 8 }}>
-        Settings are stored in your browser's localStorage and apply to this machine only.
-        {' '}Changes take effect immediately.
-      </p>
     </div>
   )
 }
