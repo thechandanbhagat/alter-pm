@@ -1,6 +1,6 @@
 // @group APIEndpoints : All fetch calls to the alter daemon REST API
 
-import type { CronRun, DaemonHealth, EnvFileEntry, LogLine, NotificationConfig, NotificationsStore, ProcessInfo, ScriptInfo, StartProcessBody } from '@/types'
+import type { CronRun, DaemonHealth, EnvFileEntry, LogAlertConfig, LogLine, LogStatsBucket, MetricSample, NotificationConfig, NotificationsStore, ProcessInfo, ScriptInfo, StartProcessBody } from '@/types'
 import { clearSessionToken, getSessionToken } from '@/lib/auth'
 
 // @group Types > AI : Chat message and request types (mirrored from Rust models/ai.rs)
@@ -100,6 +100,16 @@ export const api = {
   restartProcess: (id: string): Promise<ProcessInfo> =>
     request(`/processes/${id}/restart`, { method: 'POST' }),
 
+  // @group APIEndpoints > Namespace : Bulk namespace operations — one aggregated notification each
+  startNamespace: (ns: string): Promise<{ namespace: string; started: number; processes: ProcessInfo[] }> =>
+    request(`/processes/namespace/${encodeURIComponent(ns)}/start`, { method: 'POST' }),
+
+  stopNamespace: (ns: string): Promise<{ namespace: string; stopped: number; processes: ProcessInfo[] }> =>
+    request(`/processes/namespace/${encodeURIComponent(ns)}/stop`, { method: 'POST' }),
+
+  restartNamespace: (ns: string): Promise<{ namespace: string; restarted: number; processes: ProcessInfo[] }> =>
+    request(`/processes/namespace/${encodeURIComponent(ns)}/restart`, { method: 'POST' }),
+
   deleteProcess: (id: string): Promise<void> =>
     request(`/processes/${id}`, { method: 'DELETE' }),
 
@@ -111,6 +121,21 @@ export const api = {
 
   openTerminal: (id: string): Promise<void> =>
     request(`/processes/${id}/terminal`, { method: 'POST' }),
+
+  // @group APIEndpoints > Metrics : Rolling CPU + memory history for a process
+  getMetricsHistory: (id: string): Promise<{ samples: MetricSample[] }> =>
+    request(`/processes/${id}/metrics/history`),
+
+  // @group APIEndpoints > LogStats : 5-minute stdout/stderr log count buckets for a process
+  getLogStats: (id: string): Promise<{ buckets: LogStatsBucket[] }> =>
+    request(`/processes/${id}/logs/stats`),
+
+  // @group APIEndpoints > LogAlerts : Get / update the log-spike alert configuration
+  getLogAlerts: (): Promise<LogAlertConfig> =>
+    request('/log-alerts'),
+
+  updateLogAlerts: (config: LogAlertConfig): Promise<LogAlertConfig> =>
+    request('/log-alerts', { method: 'PUT', body: JSON.stringify(config) }),
 
   // @group APIEndpoints > Logs
   getLogs: (id: string, params?: { lines?: number; date?: string }): Promise<{ lines: LogLine[] }> => {

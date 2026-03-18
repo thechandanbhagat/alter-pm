@@ -129,3 +129,26 @@ export interface EnvFileEntry {
   name: string
   path: string
 }
+
+// @group Types > Metrics : Single CPU + memory sample returned by the metrics history endpoint
+export interface MetricSample {
+  timestamp: string    // ISO datetime
+  cpu_percent: number
+  memory_bytes: number
+}
+
+// @group Types > LogAlerts : Threshold-based stderr spike notification settings
+export interface LogAlertConfig {
+  enabled: boolean
+  /** Alert when stderr lines in a 5-min bucket reach or exceed this count */
+  stderr_threshold: number
+  /** Minimum minutes between repeated alerts for the same process */
+  cooldown_mins: number
+}
+
+// @group Types > LogStats : One 5-minute bucket of stdout + stderr line counts (from disk)
+export interface LogStatsBucket {
+  window_start: string  // RFC3339 UTC start of the 5-minute window
+  stdout_count: number
+  stderr_count: number
+}

@@ -137,7 +137,7 @@ function CopyPath({ value }: { value: string }) {
 export default function SettingsPage({ settings, onUpdate, onReset }: Props) {
   const isDefault = JSON.stringify(settings) === JSON.stringify(DEFAULT_SETTINGS)
   const [sysPaths, setSysPaths] = useState<{ data_dir: string; log_dir: string } | null>(null)
-  const [activeTab, setActiveTab] = useState<'general' | 'security' | 'ai' | 'telegram'>('general')
+  const [activeTab, setActiveTab] = useState<'general' | 'security' | 'ai' | 'telegram' | 'log-alerts'>('general')
 
   // @group BusinessLogic > AI : Core settings state
   const [aiEnabled, setAiEnabled] = useState(false)
@@ -187,6 +187,14 @@ export default function SettingsPage({ settings, onUpdate, onReset }: Props) {
   const [restarting, setRestarting] = useState(false)
   const [restartStatus, setRestartStatus] = useState<'idle' | 'restarting' | 'done' | 'error'>('idle')
 
+  // @group BusinessLogic > LogAlerts : Log spike alert settings state
+  const [laEnabled, setLaEnabled] = useState(false)
+  const [laThreshold, setLaThreshold] = useState(10)
+  const [laCooldown, setLaCooldown] = useState(15)
+  const [laSaving, setLaSaving] = useState(false)
+  const [laSaved, setLaSaved] = useState(false)
+  const [laError, setLaError] = useState<string | null>(null)
+
   // @group BusinessLogic > Telegram : Bot config state
   const [tgEnabled, setTgEnabled] = useState(false)
   const [tgToken, setTgToken] = useState('')
@@ -205,6 +213,15 @@ export default function SettingsPage({ settings, onUpdate, onReset }: Props) {
   const [tgTesting, setTgTesting] = useState(false)
   const [tgTestResult, setTgTestResult] = useState<string | null>(null)
   const [tgChangingToken, setTgChangingToken] = useState(false)
+
+  // @group BusinessLogic > LogAlerts : Load initial log alert settings
+  useEffect(() => {
+    api.getLogAlerts().then(cfg => {
+      setLaEnabled(cfg.enabled)
+      setLaThreshold(cfg.stderr_threshold)
+      setLaCooldown(cfg.cooldown_mins)
+    }).catch(() => {})
+  }, [])
 
   // @group BusinessLogic > AI : Load initial settings + models on mount
   useEffect(() => {
@@ -584,6 +601,7 @@ export default function SettingsPage({ settings, onUpdate, onReset }: Props) {
         <button style={tabStyle(activeTab === 'security')} onClick={() => setActiveTab('security')}>Security</button>
         <button style={tabStyle(activeTab === 'ai')} onClick={() => setActiveTab('ai')}>AI</button>
         <button style={tabStyle(activeTab === 'telegram')} onClick={() => setActiveTab('telegram')}>Telegram</button>
+        <button style={tabStyle(activeTab === 'log-alerts')} onClick={() => setActiveTab('log-alerts')}>Log Alerts</button>
       </div>
 
       {/* ── Tab: General ── */}
@@ -1430,6 +1448,83 @@ export default function SettingsPage({ settings, onUpdate, onReset }: Props) {
             <p style={{ fontSize: 12, color: 'var(--color-muted-foreground)', marginTop: 12, marginBottom: 0 }}>
               <strong>Commands:</strong> /list · /start &lt;name&gt; · /stop &lt;name&gt; · /restart &lt;name&gt; · /logs &lt;name&gt; [lines] · /status &lt;name&gt; · /ping · /help
             </p>
+          </div>
+        </>
+      )}
+
+      {/* ── Tab: Log Alerts ── */}
+      {activeTab === 'log-alerts' && (
+        <>
+          <p style={sectionTitle}>Log Spike Alerts</p>
+          <div style={card}>
+            <SettingRow
+              label="Enable log alerts"
+              description="Fire a notification when stderr lines in a 5-minute interval exceed the threshold"
+              control={<Toggle checked={laEnabled} onChange={setLaEnabled} />}
+            />
+            <SettingRow
+              label="Stderr threshold"
+              description="Alert when this many stderr lines appear in a single 5-minute bucket"
+              control={
+                <input
+                  type="number" min={1} max={10000} value={laThreshold}
+                  onChange={e => setLaThreshold(Math.max(1, Number(e.target.value)))}
+                  style={{ ...inputStyle, width: 80, textAlign: 'right' }}
+                />
+              }
+            />
+            <SettingRow
+              label="Cooldown"
+              description="Minimum time between repeated alerts for the same process"
+              isLast
+              control={
+                <select
+                  value={laCooldown}
+                  onChange={e => setLaCooldown(Number(e.target.value))}
+                  style={{ ...inputStyle, width: 140 }}
+                >
+                  <option value={5}>5 minutes</option>
+                  <option value={10}>10 minutes</option>
+                  <option value={15}>15 minutes</option>
+                  <option value={30}>30 minutes</option>
+                  <option value={60}>1 hour</option>
+                </select>
+              }
+            />
+          </div>
+
+          <div style={{ ...card, background: 'rgba(var(--color-primary-rgb,99,102,241),0.05)', borderColor: 'rgba(var(--color-primary-rgb,99,102,241),0.2)', marginBottom: 16 }}>
+            <p style={{ fontSize: 12, color: 'var(--color-muted-foreground)', margin: 0, lineHeight: 1.7 }}>
+              Alerts are sent through your configured <strong>Webhook / Slack / Teams</strong> and <strong>Telegram</strong> channels.
+              Make sure at least one is set up in the Notifications or Telegram tabs.
+            </p>
+          </div>
+
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <button
+              onClick={async () => {
+                setLaSaving(true); setLaSaved(false); setLaError(null)
+                try {
+                  await api.updateLogAlerts({ enabled: laEnabled, stderr_threshold: laThreshold, cooldown_mins: laCooldown })
+                  setLaSaved(true)
+                  setTimeout(() => setLaSaved(false), 2500)
+                } catch (e: unknown) {
+                  setLaError(e instanceof Error ? e.message : 'Save failed')
+                } finally {
+                  setLaSaving(false)
+                }
+              }}
+              disabled={laSaving}
+              style={{
+                padding: '7px 18px', fontSize: 13, fontWeight: 500,
+                background: laSaved ? 'var(--color-status-running)' : 'var(--color-primary)',
+                color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer',
+                opacity: laSaving ? 0.6 : 1, transition: 'background 0.2s',
+              }}
+            >
+              {laSaved ? 'Saved!' : laSaving ? 'Saving…' : 'Save'}
+            </button>
+            {laError && <span style={{ fontSize: 12, color: 'var(--color-status-crashed)' }}>{laError}</span>}
           </div>
         </>
       )}
