@@ -16,10 +16,14 @@ interface Props {
   processes: ProcessInfo[]
   reload: () => void
   settings: AppSettings
+  namespaceFilter?: string
 }
 
 
-export default function ProcessesPage({ processes, reload, settings }: Props) {
+export default function ProcessesPage({ processes, reload, settings, namespaceFilter }: Props) {
+  const displayedProcesses = namespaceFilter
+    ? processes.filter(p => (p.namespace || 'default') === namespaceFilter)
+    : processes
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
   const [envModalProcess, setEnvModalProcess] = useState<ProcessInfo | null>(null)
   const [notifProcess, setNotifProcess]       = useState<ProcessInfo | null>(null)
@@ -51,7 +55,7 @@ export default function ProcessesPage({ processes, reload, settings }: Props) {
   // This handles deep npm/node spawn trees where the actual socket lives 3-4 levels deep.
   const portMap = useMemo(() => {
     const managedPids = new Set(
-      processes.map(p => p.pid).filter((pid): pid is number => pid != null)
+      displayedProcesses.map(p => p.pid).filter((pid): pid is number => pid != null)
     )
     const map = new Map<number, number[]>()
     for (const entry of portData) {
@@ -70,7 +74,7 @@ export default function ProcessesPage({ processes, reload, settings }: Props) {
 
   // Group by namespace
   const groups = new Map<string, ProcessInfo[]>()
-  for (const p of processes) {
+  for (const p of displayedProcesses) {
     const ns = p.namespace || 'default'
     if (!groups.has(ns)) groups.set(ns, [])
     groups.get(ns)!.push(p)
@@ -88,8 +92,7 @@ export default function ProcessesPage({ processes, reload, settings }: Props) {
   }
 
   async function startAll(ns: string) {
-    const targets = (groups.get(ns) ?? []).filter(p => p.status === 'stopped' || p.status === 'crashed' || p.status === 'errored')
-    await Promise.all(targets.map(p => api.startStopped(p.id).catch(() => {})))
+    await api.startNamespace(ns).catch(() => {})
     setTimeout(reload, 300)
   }
 
@@ -97,19 +100,20 @@ export default function ProcessesPage({ processes, reload, settings }: Props) {
     const targets = (groups.get(ns) ?? []).filter(p => p.status === 'running' || p.status === 'watching')
     const ok = await confirm(`Stop all in "${ns}"?`, `${targets.length} running process${targets.length !== 1 ? 'es' : ''} will be stopped.`)
     if (!ok) return
-    await Promise.all(targets.map(p => api.stopProcess(p.id).catch(() => {})))
+    await api.stopNamespace(ns).catch(() => {})
     setTimeout(reload, 400)
   }
 
   async function restartAll(ns: string) {
-    const targets = (groups.get(ns) ?? []).filter(p => p.status === 'running' || p.status === 'watching' || p.status === 'sleeping')
-    await Promise.all(targets.map(p => api.restartProcess(p.id).catch(() => {})))
+    await api.restartNamespace(ns).catch(() => {})
     setTimeout(reload, 400)
   }
 
-  if (!processes.length) {
+  if (!displayedProcesses.length) {
     return (
-      <div style={{ padding: 32, color: 'var(--color-muted-foreground)' }}>No processes registered.</div>
+      <div style={{ padding: 32, color: 'var(--color-muted-foreground)' }}>
+        {namespaceFilter ? `No processes in namespace "${namespaceFilter}".` : 'No processes registered.'}
+      </div>
     )
   }
 
@@ -142,7 +146,19 @@ export default function ProcessesPage({ processes, reload, settings }: Props) {
         {/* Left column: header + scrollable process table */}
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, overflow: 'hidden' }}>
           <div style={{ padding: '16px 20px 10px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid var(--color-border)', flexShrink: 0 }}>
-            <h2 style={{ fontSize: 16, fontWeight: 600 }}>Processes</h2>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              {namespaceFilter && (
+                <button
+                  onClick={() => navigate('/processes')}
+                  style={{ ...smallBtnStyle, padding: '3px 8px', fontSize: 12 }}
+                >
+                  ← All
+                </button>
+              )}
+              <h2 style={{ fontSize: 16, fontWeight: 600 }}>
+                {namespaceFilter ? <><span style={{ color: 'var(--color-muted-foreground)', fontWeight: 400 }}>ns /</span> {namespaceFilter}</> : 'Processes'}
+              </h2>
+            </div>
             <button onClick={() => { reload(); loadPorts() }} style={smallBtnStyle}>↻ Refresh</button>
           </div>
 

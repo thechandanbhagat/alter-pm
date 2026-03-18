@@ -8,7 +8,7 @@ import { Dialog } from '@/components/Dialog'
 import { EnvFileModal } from '@/components/EnvFileModal'
 import { statusColor } from '@/lib/utils'
 import type { AppSettings } from '@/lib/settings'
-import type { LogLine, ProcessInfo } from '@/types'
+import type { LogLine, LogStatsBucket, ProcessInfo } from '@/types'
 
 interface Props {
   reload: () => void
@@ -25,6 +25,7 @@ export default function ProcessDetailPage({ reload, settings }: Props) {
   const [streamFilter, setStreamFilter] = useState<'all' | 'stdout' | 'stderr'>('all')
   const [textFilter, setTextFilter] = useState('')
   const [envOpen, setEnvOpen] = useState(false)
+  const [logStats, setLogStats] = useState<LogStatsBucket[]>([])
   const [sliderPos, setSliderPos] = useState(1000) // 0–1000 = 0%–100% of scroll, starts pinned to bottom
   const logEndRef = useRef<HTMLDivElement>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -47,6 +48,17 @@ export default function ProcessDetailPage({ reload, settings }: Props) {
   useEffect(() => {
     if (!id) return
     api.getLogDates(id).then(d => setLogDates(d.dates)).catch(() => {})
+  }, [id])
+
+  // @group BusinessLogic > LogStats : Fetch today's log volume buckets; refresh every 5 minutes
+  useEffect(() => {
+    if (!id) return
+    function fetchStats() {
+      api.getLogStats(id!).then(r => setLogStats(r.buckets)).catch(() => {})
+    }
+    fetchStats()
+    const t = setInterval(fetchStats, 5 * 60 * 1000)
+    return () => clearInterval(t)
   }, [id])
 
   // Load historical logs + start SSE when dateIndex changes
@@ -304,6 +316,11 @@ export default function ProcessDetailPage({ reload, settings }: Props) {
         )}
       </div>
 
+      {/* Today's log volume chart — shown only when data is available */}
+      {logStats.length > 0 && (
+        <LogVolumeChart buckets={logStats} />
+      )}
+
       {/* Log output */}
       <div ref={scrollRef} onScroll={handleLogScroll} style={{ flex: 1, overflow: 'auto', padding: '10px 16px', background: 'var(--color-background)' }}>
         <div className="log-output">
@@ -369,4 +386,154 @@ const navBtnStyle: React.CSSProperties = {
   padding: '3px 10px', fontSize: 11, background: 'var(--color-secondary)',
   border: '1px solid var(--color-border)', borderRadius: 4, cursor: 'pointer',
   color: 'var(--color-foreground)',
+}
+
+// @group BusinessLogic > LogVolumeChart : Compact full-day stacked bar chart of stdout/stderr counts
+function LogVolumeChart({ buckets }: { buckets: LogStatsBucket[] }) {
+  const [filter, setFilter] = useState<'both' | 'stdout' | 'stderr'>('both')
+
+  const totalOut = buckets.reduce((s, b) => s + b.stdout_count, 0)
+  const totalErr = buckets.reduce((s, b) => s + b.stderr_count, 0)
+
+  const maxCount = Math.max(...buckets.map(b => {
+    if (filter === 'stdout') return b.stdout_count
+    if (filter === 'stderr') return b.stderr_count
+    return b.stdout_count + b.stderr_count
+  }), 1)
+
+  const slots = buildDaySlots(buckets)
+
+  return (
+    <div style={{
+      borderBottom: '1px solid var(--color-border)',
+      background: 'var(--color-card)',
+      padding: '6px 16px 8px',
+      flexShrink: 0,
+    }}>
+      {/* Header row */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 5 }}>
+        <span style={{ color: 'var(--color-muted-foreground)', fontWeight: 600, letterSpacing: '0.05em', textTransform: 'uppercase', fontSize: 10 }}>
+          Log Volume · Today · 5 min intervals
+        </span>
+
+        {/* Filter toggle */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <div style={{ display: 'flex', gap: 2, background: 'var(--color-background)', borderRadius: 6, padding: 2, border: '1px solid var(--color-border)' }}>
+            {(['both', 'stdout', 'stderr'] as const).map(f => (
+              <button key={f} onClick={() => setFilter(f)} style={{
+                padding: '2px 8px', fontSize: 11, fontWeight: 500, borderRadius: 4,
+                border: 'none', cursor: 'pointer', transition: 'background 0.15s',
+                background: filter === f ? 'var(--color-primary)' : 'transparent',
+                color: filter === f
+                  ? 'var(--color-primary-foreground)'
+                  : f === 'stdout'
+                    ? 'var(--color-status-running)'
+                    : f === 'stderr'
+                      ? 'var(--color-status-crashed)'
+                      : 'var(--color-muted-foreground)',
+              }}>
+                {f === 'both' ? 'Both' : f === 'stdout' ? `Out ${totalOut}` : `Err ${totalErr}`}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* SVG bar chart */}
+      <DayBarChart slots={slots} maxCount={maxCount} filter={filter} />
+
+      {/* Time axis labels */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: 'var(--color-muted-foreground)', marginTop: 3 }}>
+        <span>00:00</span>
+        <span>06:00</span>
+        <span>12:00</span>
+        <span>18:00</span>
+        <span>now</span>
+      </div>
+    </div>
+  )
+}
+
+// @group BusinessLogic > DayBarChart : Pure SVG stacked bar chart spanning all 5-min slots of today
+function DayBarChart({ slots, maxCount, filter }: {
+  slots: Array<{ stdout_count: number; stderr_count: number; isFuture: boolean }>
+  maxCount: number
+  filter: 'both' | 'stdout' | 'stderr'
+}) {
+  const W = 800
+  const H = 48
+  const n = slots.length
+  if (n === 0) return null
+
+  const barW = Math.max(1, (W / n) - 0.5)
+
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', height: H, display: 'block' }}>
+      {/* 50% guide */}
+      <line x1={0} y1={H / 2} x2={W} y2={H / 2}
+        stroke="var(--color-border)" strokeWidth={0.5} strokeDasharray="2 4" />
+
+      {slots.map((s, i) => {
+        if (s.isFuture) return null
+        const x = i * (W / n)
+
+        const showOut = filter === 'both' || filter === 'stdout'
+        const showErr = filter === 'both' || filter === 'stderr'
+
+        const outH = showOut ? (s.stdout_count / maxCount) * H : 0
+        const errH = showErr ? (s.stderr_count / maxCount) * H : 0
+        const totalH = outH + errH
+
+        if (totalH < 0.5) return null
+
+        return (
+          <g key={i}>
+            {/* stderr stacked on top */}
+            {errH > 0.5 && (
+              <rect x={x} y={H - totalH} width={barW} height={errH}
+                fill="var(--color-status-crashed)" fillOpacity={0.8} />
+            )}
+            {/* stdout at the bottom */}
+            {outH > 0.5 && (
+              <rect x={x} y={H - outH} width={barW} height={outH}
+                fill="var(--color-status-running)" fillOpacity={0.8} />
+            )}
+          </g>
+        )
+      })}
+    </svg>
+  )
+}
+
+// @group Utilities > LogVolumeChart : Build a full 288-slot grid for today, merging actual bucket data
+function buildDaySlots(buckets: LogStatsBucket[]) {
+  const BUCKET_MS = 5 * 60 * 1000
+  const now = Date.now()
+
+  // Start of today in local time (midnight)
+  const todayMidnight = new Date()
+  todayMidnight.setHours(0, 0, 0, 0)
+  const startMs = todayMidnight.getTime()
+
+  // How many 5-min slots have elapsed since midnight (up to 288)
+  const slotsFilled = Math.min(288, Math.ceil((now - startMs) / BUCKET_MS))
+
+  // Index bucket data by slot index
+  const bySlot = new Map<number, { stdout_count: number; stderr_count: number }>()
+  for (const b of buckets) {
+    const bucketMs = new Date(b.window_start).getTime()
+    const slotIdx  = Math.floor((bucketMs - startMs) / BUCKET_MS)
+    if (slotIdx >= 0 && slotIdx < 288) {
+      bySlot.set(slotIdx, { stdout_count: b.stdout_count, stderr_count: b.stderr_count })
+    }
+  }
+
+  return Array.from({ length: 288 }, (_, i) => {
+    const data = bySlot.get(i)
+    return {
+      stdout_count: data?.stdout_count ?? 0,
+      stderr_count: data?.stderr_count ?? 0,
+      isFuture: i >= slotsFilled,
+    }
+  })
 }

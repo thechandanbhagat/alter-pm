@@ -38,6 +38,35 @@ struct From {
     id: i64,
 }
 
+// @group BusinessLogic : Register bot commands with Telegram for autocomplete (setMyCommands)
+async fn register_commands(client: &reqwest::Client, token: &str) {
+    let url = format!("{TG_API}/bot{token}/setMyCommands");
+    let commands = serde_json::json!({
+        "commands": [
+            { "command": "list",      "description": "List all processes and their status" },
+            { "command": "status",    "description": "Get status of a process: /status <name>" },
+            { "command": "start",   "description": "Start process or namespace: /start <name> | /start ns <ns>" },
+            { "command": "stop",    "description": "Stop process or namespace: /stop <name> | /stop ns <ns>" },
+            { "command": "restart", "description": "Restart process or namespace: /restart <name> | /restart ns <ns>" },
+            { "command": "logs",    "description": "Get recent logs: /logs <name> [lines]" },
+            { "command": "ping",      "description": "Check if the daemon is responsive" },
+            { "command": "help",      "description": "Show available commands" }
+        ]
+    });
+
+    match client.post(&url).json(&commands).send().await {
+        Ok(r) if r.status().is_success() => {
+            tracing::info!("telegram: commands registered for autocomplete");
+        }
+        Ok(r) => {
+            tracing::warn!("telegram: setMyCommands returned {}", r.status());
+        }
+        Err(e) => {
+            tracing::warn!("telegram: setMyCommands failed: {e}");
+        }
+    }
+}
+
 // @group BusinessLogic : Entry point — run the polling loop as a background task
 pub async fn run(state: Arc<DaemonState>) {
     let client = reqwest::Client::builder()
@@ -46,6 +75,9 @@ pub async fn run(state: Arc<DaemonState>) {
         .expect("failed to build reqwest client for telegram bot");
 
     let mut offset: i64 = 0;
+    // @group BusinessLogic > State : Track which token we last registered commands for,
+    // so we re-register automatically if the token changes at runtime.
+    let mut registered_for_token: Option<String> = None;
 
     loop {
         // @group BusinessLogic > Config : Re-read config each cycle so hot changes take effect
@@ -60,6 +92,12 @@ pub async fn run(state: Arc<DaemonState>) {
         }
 
         let token = token.unwrap();
+
+        // @group BusinessLogic > Commands : Register autocomplete commands once per token
+        if registered_for_token.as_deref() != Some(&token) {
+            register_commands(&client, &token).await;
+            registered_for_token = Some(token.clone());
+        }
 
         // @group BusinessLogic > Polling : Fetch updates via long poll (timeout=30s)
         let url = format!(
@@ -166,23 +204,32 @@ async fn dispatch_command(
             }
         }
         "/start" => {
-            // /start with an argument means "start process", not the bot greeting
-            commands::cmd_start(state, token, chat_id, parts[1]).await
-        }
-        "/stop" => {
-            if parts.len() < 2 {
-                commands::send_message(token, chat_id, "Usage: /stop &lt;name&gt;").await
-            } else {
-                commands::cmd_stop(state, token, chat_id, parts[1]).await
+            // /start with an argument — "ns <namespace>" targets a namespace, otherwise a process name
+            match parts.get(1) {
+                Some(&"ns") => match parts.get(2) {
+                    Some(ns) => commands::cmd_start_namespace(state, token, chat_id, ns).await,
+                    None => commands::send_message(token, chat_id, "Usage: /start ns &lt;namespace&gt;").await,
+                },
+                Some(name) => commands::cmd_start(state, token, chat_id, name).await,
+                None => commands::cmd_help(token, chat_id).await,
             }
         }
-        "/restart" => {
-            if parts.len() < 2 {
-                commands::send_message(token, chat_id, "Usage: /restart &lt;name&gt;").await
-            } else {
-                commands::cmd_restart(state, token, chat_id, parts[1]).await
-            }
-        }
+        "/stop" => match parts.get(1) {
+            Some(&"ns") => match parts.get(2) {
+                Some(ns) => commands::cmd_stop_namespace(state, token, chat_id, ns).await,
+                None => commands::send_message(token, chat_id, "Usage: /stop ns &lt;namespace&gt;").await,
+            },
+            Some(name) => commands::cmd_stop(state, token, chat_id, name).await,
+            None => commands::send_message(token, chat_id, "Usage: /stop &lt;name&gt; | /stop ns &lt;namespace&gt;").await,
+        },
+        "/restart" => match parts.get(1) {
+            Some(&"ns") => match parts.get(2) {
+                Some(ns) => commands::cmd_restart_namespace(state, token, chat_id, ns).await,
+                None => commands::send_message(token, chat_id, "Usage: /restart ns &lt;namespace&gt;").await,
+            },
+            Some(name) => commands::cmd_restart(state, token, chat_id, name).await,
+            None => commands::send_message(token, chat_id, "Usage: /restart &lt;name&gt; | /restart ns &lt;namespace&gt;").await,
+        },
         "/logs" => {
             if parts.len() < 2 {
                 commands::send_message(token, chat_id, "Usage: /logs &lt;name&gt; [lines]").await

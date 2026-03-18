@@ -1,12 +1,13 @@
 // @group BusinessLogic : Analytics dashboard — process and system metrics
 
-import { useMemo } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import type { CSSProperties, ReactNode } from 'react'
+import type { CSSProperties } from 'react'
 import { useDaemonHealth } from '@/hooks/useDaemonHealth'
 import { formatUptime, statusColor, STATUS_COLORS } from '@/lib/utils'
+import { api } from '@/lib/api'
 import type { AppSettings } from '@/lib/settings'
-import type { ProcessInfo, ProcessStatus } from '@/types'
+import type { LogStatsBucket, ProcessInfo, ProcessStatus } from '@/types'
 
 // @group Types > Analytics : Derived data structures for analytics view
 interface StatusSegment {
@@ -28,12 +29,18 @@ interface NamespaceRow {
 interface Props {
   processes: ProcessInfo[]
   settings: AppSettings
+  reload: () => void
 }
 
 // @group BusinessLogic > AnalyticsPage : Main analytics dashboard page
-export default function AnalyticsPage({ processes, settings }: Props) {
+export default function AnalyticsPage({ processes, settings, reload }: Props) {
   const navigate = useNavigate()
   const health = useDaemonHealth(settings.healthRefreshInterval)
+
+  async function startNamespace(ns: string) {
+    await api.startNamespace(ns).catch(() => {})
+    setTimeout(reload, 300)
+  }
 
   // @group BusinessLogic > Analytics : Compute all derived metrics from processes list
   const stats = useMemo(() => {
@@ -199,34 +206,20 @@ export default function AnalyticsPage({ processes, settings }: Props) {
           </div>
         </div>
 
-        {/* Row 3: Namespace breakdown — only shown when multiple namespaces exist */}
-        {stats.namespaces.length > 1 && (
+        {/* Row 3: Namespace breakdown — shown when any namespace exists */}
+        {stats.namespaces.length > 0 && (
           <div style={cardStyle}>
             <div style={cardHeaderStyle}>Namespace Breakdown</div>
-            <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: 10 }}>
-              <thead>
-                <tr style={{ fontSize: 11, color: 'var(--color-muted-foreground)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-                  <th style={{ padding: '4px 8px', textAlign: 'left', fontWeight: 600 }}>Namespace</th>
-                  <Th>Total</Th>
-                  <Th>Running</Th>
-                  <Th>Stopped</Th>
-                  <Th>Crashed</Th>
-                  <Th>Other</Th>
-                </tr>
-              </thead>
-              <tbody>
-                {stats.namespaces.map(ns => (
-                  <tr key={ns.namespace} style={{ borderTop: '1px solid var(--color-border)', fontSize: 13 }}>
-                    <td style={{ padding: '7px 8px', fontWeight: 500 }}>{ns.namespace}</td>
-                    <Td>{ns.total}</Td>
-                    <Td color={ns.running > 0 ? 'var(--color-status-running)' : undefined}>{ns.running}</Td>
-                    <Td color={ns.stopped > 0 ? 'var(--color-status-stopped)' : undefined}>{ns.stopped}</Td>
-                    <Td color={ns.crashed > 0 ? 'var(--color-status-crashed)' : undefined}>{ns.crashed}</Td>
-                    <Td>{ns.other}</Td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 12 }}>
+              {stats.namespaces.map(ns => (
+                <NamespaceCard
+                  key={ns.namespace}
+                  ns={ns}
+                  onNavigate={() => navigate(`/namespace/${encodeURIComponent(ns.namespace)}`)}
+                  onStartAll={() => startNamespace(ns.namespace)}
+                />
+              ))}
+            </div>
           </div>
         )}
 
@@ -279,6 +272,9 @@ export default function AnalyticsPage({ processes, settings }: Props) {
             )}
           </div>
         </div>
+
+        {/* Row 5: Log volume history charts */}
+        <LogStatsSection processes={processes} />
 
         {/* Empty state */}
         {processes.length === 0 && (
@@ -394,13 +390,205 @@ function ProcessRow({ label, sub, dotColor, rank, metric, metricColor, onClick }
   )
 }
 
-// @group BusinessLogic > Th / Td : Table header and data cell helpers
-function Th({ children }: { children: ReactNode }) {
-  return <th style={{ padding: '4px 8px', textAlign: 'right', fontWeight: 600 }}>{children}</th>
+// @group BusinessLogic > NamespaceCard : Clickable namespace row with stacked bar chart and actions
+function NamespaceCard({ ns, onNavigate, onStartAll }: {
+  ns: NamespaceRow
+  onNavigate: () => void
+  onStartAll: () => void
+}) {
+  const hasStopped = ns.stopped > 0 || ns.crashed > 0
+  return (
+    <div
+      onClick={onNavigate}
+      style={{ padding: '10px 12px', borderRadius: 6, border: '1px solid var(--color-border)', cursor: 'pointer' }}
+      onMouseEnter={e => (e.currentTarget.style.background = 'var(--color-accent)')}
+      onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+    >
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 7 }}>
+        <span style={{ fontWeight: 600, fontSize: 13, flex: 1 }}>{ns.namespace}</span>
+        <span style={{ fontSize: 11, color: 'var(--color-muted-foreground)' }}>
+          {ns.total} process{ns.total !== 1 ? 'es' : ''}
+        </span>
+        <span style={{ display: 'flex', gap: 10, fontSize: 11 }}>
+          {ns.running > 0 && <span style={{ color: 'var(--color-status-running)'  }}>{ns.running} running</span>}
+          {ns.other   > 0 && <span style={{ color: 'var(--color-status-sleeping)' }}>{ns.other} other</span>}
+          {ns.stopped > 0 && <span style={{ color: 'var(--color-status-stopped)'  }}>{ns.stopped} stopped</span>}
+          {ns.crashed > 0 && <span style={{ color: 'var(--color-status-crashed)'  }}>{ns.crashed} crashed</span>}
+        </span>
+        {hasStopped && (
+          <button
+            onClick={e => { e.stopPropagation(); onStartAll() }}
+            style={{
+              padding: '2px 8px', fontSize: 11, fontWeight: 600,
+              background: 'transparent', border: '1px solid var(--color-border)',
+              borderRadius: 4, cursor: 'pointer', color: 'var(--color-foreground)',
+              flexShrink: 0,
+            }}
+          >
+            ▶ Start All
+          </button>
+        )}
+      </div>
+      {/* Stacked bar showing running / other / stopped / crashed proportions */}
+      <div style={{ height: 6, display: 'flex', borderRadius: 3, overflow: 'hidden', background: 'var(--color-border)' }}>
+        {ns.running > 0 && <div style={{ flex: ns.running, background: 'var(--color-status-running)'  }} />}
+        {ns.other   > 0 && <div style={{ flex: ns.other,   background: 'var(--color-status-sleeping)' }} />}
+        {ns.stopped > 0 && <div style={{ flex: ns.stopped, background: 'var(--color-status-stopped)'  }} />}
+        {ns.crashed > 0 && <div style={{ flex: ns.crashed, background: 'var(--color-status-crashed)'  }} />}
+      </div>
+    </div>
+  )
 }
 
-function Td({ children, color }: { children: ReactNode; color?: string }) {
-  return <td style={{ padding: '7px 8px', textAlign: 'right', color: color ?? 'var(--color-foreground)' }}>{children}</td>
+// @group BusinessLogic > LogStatsSection : Fetches and renders 5-min log volume bar charts for all processes
+function LogStatsSection({ processes }: { processes: ProcessInfo[] }) {
+  const [statsMap, setStatsMap] = useState<Record<string, LogStatsBucket[]>>({})
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  // Fetch all processes (not just running — stopped ones may still have history)
+  const ids = useMemo(() => processes.map(p => p.id).join(','), [processes])
+
+  useEffect(() => {
+    if (processes.length === 0) return
+
+    async function fetchAll() {
+      const entries = await Promise.all(
+        processes.map(p =>
+          api.getLogStats(p.id)
+            .then(r => [p.id, r.buckets] as const)
+            .catch(() => [p.id, []] as const)
+        )
+      )
+      setStatsMap(Object.fromEntries(entries))
+    }
+
+    fetchAll()
+    timerRef.current = setInterval(fetchAll, 60_000)
+    return () => { if (timerRef.current) clearInterval(timerRef.current) }
+  }, [ids])
+
+  // Only show processes that have at least one bucket of data
+  const withData = processes.filter(p => (statsMap[p.id]?.length ?? 0) > 0)
+
+  if (withData.length === 0) return null
+
+  return (
+    <div style={cardStyle}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+        <div style={cardHeaderStyle}>Log Volume · 5-min intervals</div>
+        <div style={{ display: 'flex', gap: 12, fontSize: 11 }}>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 4, color: 'var(--color-muted-foreground)' }}>
+            <span style={{ width: 8, height: 8, borderRadius: 2, background: 'var(--color-status-running)', display: 'inline-block' }} />
+            stdout
+          </span>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 4, color: 'var(--color-muted-foreground)' }}>
+            <span style={{ width: 8, height: 8, borderRadius: 2, background: 'var(--color-status-crashed)', display: 'inline-block' }} />
+            stderr
+          </span>
+        </div>
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: 12 }}>
+        {withData.map(p => (
+          <LogStatsCard key={p.id} process={p} buckets={statsMap[p.id] ?? []} />
+        ))}
+      </div>
+    </div>
+  )
+}
+
+// @group BusinessLogic > LogStatsCard : Per-process bar chart of stdout + stderr counts per 5-min bucket
+function LogStatsCard({ process, buckets }: { process: ProcessInfo; buckets: LogStatsBucket[] }) {
+  const maxCount = Math.max(...buckets.map(b => b.stdout_count + b.stderr_count), 1)
+  const totalOut = buckets.reduce((s, b) => s + b.stdout_count, 0)
+  const totalErr = buckets.reduce((s, b) => s + b.stderr_count, 0)
+
+  return (
+    <div style={{
+      border: '1px solid var(--color-border)', borderRadius: 6, padding: '10px 12px',
+      background: 'var(--color-background)', display: 'flex', flexDirection: 'column', gap: 8,
+    }}>
+      {/* Header */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+        <span style={{ color: statusColor(process.status), fontSize: 9 }}>●</span>
+        <span style={{ fontWeight: 600, fontSize: 13, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {process.name}
+        </span>
+        <span style={{ fontSize: 11, color: 'var(--color-status-running)', fontWeight: 600 }}>{totalOut} out</span>
+        <span style={{ fontSize: 11, color: 'var(--color-muted-foreground)' }}>·</span>
+        <span style={{ fontSize: 11, color: 'var(--color-status-crashed)', fontWeight: 600 }}>{totalErr} err</span>
+      </div>
+
+      {/* Bar chart */}
+      <LogBarChart buckets={buckets} maxCount={maxCount} />
+
+      {/* Time labels */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: 'var(--color-muted-foreground)' }}>
+        <span>{fmtBucketTime(buckets[0]?.window_start)}</span>
+        <span>{fmtBucketTime(buckets[buckets.length - 1]?.window_start)}</span>
+      </div>
+    </div>
+  )
+}
+
+// @group BusinessLogic > LogBarChart : Pure-SVG stacked bar chart (stdout green, stderr red)
+function LogBarChart({ buckets, maxCount }: { buckets: LogStatsBucket[]; maxCount: number }) {
+  const W = 320
+  const H = 60
+  const PAD_B = 2  // bottom padding
+  const chartH = H - PAD_B
+  const n = buckets.length
+  if (n === 0) return null
+
+  const barW = Math.max(1, (W / n) - 1)
+  const gap  = Math.max(0, (W / n) - barW)
+
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', height: H, display: 'block' }}>
+      {/* 50% guide line */}
+      <line x1={0} y1={chartH / 2} x2={W} y2={chartH / 2}
+        stroke="var(--color-border)" strokeWidth={0.5} strokeDasharray="3 3" />
+
+      {buckets.map((b, i) => {
+        const x = i * (barW + gap)
+        const total = b.stdout_count + b.stderr_count
+        const totalH = (total / maxCount) * chartH
+        const outH   = (b.stdout_count / maxCount) * chartH
+        const errH   = totalH - outH
+
+        return (
+          <g key={i}>
+            {/* stderr (top, red) */}
+            {errH > 0 && (
+              <rect
+                x={x} y={chartH - totalH}
+                width={barW} height={errH}
+                fill="var(--color-status-crashed)"
+                fillOpacity={0.75}
+                rx={1}
+              />
+            )}
+            {/* stdout (bottom, green) */}
+            {outH > 0 && (
+              <rect
+                x={x} y={chartH - outH}
+                width={barW} height={outH}
+                fill="var(--color-status-running)"
+                fillOpacity={0.75}
+                rx={1}
+              />
+            )}
+          </g>
+        )
+      })}
+    </svg>
+  )
+}
+
+// @group Utilities : Format a bucket window_start ISO string into HH:MM
+function fmtBucketTime(iso?: string): string {
+  if (!iso) return ''
+  const d = new Date(iso)
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
 }
 
 // @group Constants > Styles : Shared card and header style objects

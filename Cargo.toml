@@ -1,6 +1,6 @@
 [package]
 name    = "alter"
-version = "0.6.0"
+version = "0.7.0"
 edition = "2021"
 description = "A process manager for your developers — run and manage any application"
 
@@ -58,4 +58,11 @@ windows = { version = "0.58", features = [
 opt-level     = 3
 lto           = true
 codegen-units = 1
+strip         = true
+
+# Faster release builds for day-to-day use — thin LTO, parallel codegen
+[profile.release-fast]
+inherits      = "release"
+lto           = "thin"
+codegen-units = 8
 strip         = true

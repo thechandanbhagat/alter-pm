@@ -27,9 +27,15 @@ pub fn router(state: Arc<DaemonState>) -> Router {
         .route("/{id}/logs", get(get_logs).delete(delete_logs))
         .route("/{id}/logs/dates", get(get_log_dates))
         .route("/{id}/logs/stream", get(stream_logs))
+        .route("/{id}/metrics/history", get(get_metrics_history))
+        .route("/{id}/logs/stats", get(get_log_stats))
         .route("/{id}/cron/history", get(get_cron_history))
         .route("/{id}/envfiles", get(list_envfiles))
         .route("/{id}/envfile", get(get_envfile).put(put_envfile))
+        // Namespace bulk operations
+        .route("/namespace/{ns}/start", post(start_namespace_processes))
+        .route("/namespace/{ns}/stop", post(stop_namespace_processes))
+        .route("/namespace/{ns}/restart", post(restart_namespace_processes))
         .with_state(state)
 }
 
@@ -354,6 +360,33 @@ async fn get_cron_history(
     Ok(Json(json!({ "runs": info.cron_run_history })))
 }
 
+// @group APIEndpoints > LogStats : GET /processes/:id/logs/stats — full-day 5-minute log volume buckets read from disk
+async fn get_log_stats(
+    State(state): State<Arc<DaemonState>>,
+    Path(id_str): Path<String>,
+) -> Result<Json<Value>, ApiError> {
+    let id = resolve(&state, &id_str).await?;
+    let info = state.manager.get(id).await.map_err(ApiError::from)?;
+    let log_dir = crate::config::paths::process_log_dir(&info.name);
+    let buckets = tokio::task::spawn_blocking(move || {
+        crate::logging::reader::read_log_stats_today(&log_dir)
+    })
+    .await
+    .map_err(|e| ApiError::from(anyhow::anyhow!("task join error: {e}")))?
+    .map_err(ApiError::from)?;
+    Ok(Json(json!({ "buckets": buckets })))
+}
+
+// @group APIEndpoints > Metrics : GET /processes/:id/metrics/history — rolling CPU + memory samples
+async fn get_metrics_history(
+    State(state): State<Arc<DaemonState>>,
+    Path(id_str): Path<String>,
+) -> Result<Json<Value>, ApiError> {
+    let id = resolve(&state, &id_str).await?;
+    let samples = state.manager.get_metrics_history(id).await;
+    Ok(Json(json!({ "samples": samples })))
+}
+
 // @group APIEndpoints > Logs : DELETE /processes/:id/logs — remove all log files for a process
 async fn delete_logs(
     State(state): State<Arc<DaemonState>>,
@@ -437,6 +470,72 @@ async fn put_envfile(
         .map_err(|e| ApiError::internal(format!("failed to write env file: {e}")))?;
 
     Ok(Json(json!({ "success": true, "path": env_path.to_string_lossy(), "filename": filename })))
+}
+
+// @group APIEndpoints > Namespace : POST /processes/namespace/:ns/start — start all stopped processes in namespace
+async fn start_namespace_processes(
+    State(state): State<Arc<DaemonState>>,
+    Path(ns): Path<String>,
+) -> Json<Value> {
+    use crate::notifications::sender::ProcessEvent;
+    let infos = state.manager.start_namespace(&ns).await;
+    let s = state.clone();
+    tokio::spawn(async move { if let Err(e) = s.save_to_disk().await { tracing::warn!("auto-save failed: {e}"); } });
+    if !infos.is_empty() {
+        let infos_clone = infos.clone();
+        let ns_clone = ns.clone();
+        let notif = Arc::clone(&state.notifications);
+        tokio::spawn(async move {
+            crate::telegram::commands::fire_telegram_namespace_notification(&ns_clone, ProcessEvent::Started, &infos_clone).await;
+            let store = notif.read().await;
+            crate::notifications::sender::fire_namespace_event(&store, &ns_clone, &infos_clone, ProcessEvent::Started).await;
+        });
+    }
+    Json(json!({ "namespace": ns, "started": infos.len(), "processes": infos }))
+}
+
+// @group APIEndpoints > Namespace : POST /processes/namespace/:ns/stop — stop all running processes in namespace
+async fn stop_namespace_processes(
+    State(state): State<Arc<DaemonState>>,
+    Path(ns): Path<String>,
+) -> Json<Value> {
+    use crate::notifications::sender::ProcessEvent;
+    let infos = state.manager.stop_namespace(&ns).await;
+    let s = state.clone();
+    tokio::spawn(async move { if let Err(e) = s.save_to_disk().await { tracing::warn!("auto-save failed: {e}"); } });
+    if !infos.is_empty() {
+        let infos_clone = infos.clone();
+        let ns_clone = ns.clone();
+        let notif = Arc::clone(&state.notifications);
+        tokio::spawn(async move {
+            crate::telegram::commands::fire_telegram_namespace_notification(&ns_clone, ProcessEvent::Stopped, &infos_clone).await;
+            let store = notif.read().await;
+            crate::notifications::sender::fire_namespace_event(&store, &ns_clone, &infos_clone, ProcessEvent::Stopped).await;
+        });
+    }
+    Json(json!({ "namespace": ns, "stopped": infos.len(), "processes": infos }))
+}
+
+// @group APIEndpoints > Namespace : POST /processes/namespace/:ns/restart — restart all processes in namespace
+async fn restart_namespace_processes(
+    State(state): State<Arc<DaemonState>>,
+    Path(ns): Path<String>,
+) -> Json<Value> {
+    use crate::notifications::sender::ProcessEvent;
+    let infos = state.manager.restart_namespace(&ns).await;
+    let s = state.clone();
+    tokio::spawn(async move { if let Err(e) = s.save_to_disk().await { tracing::warn!("auto-save failed: {e}"); } });
+    if !infos.is_empty() {
+        let infos_clone = infos.clone();
+        let ns_clone = ns.clone();
+        let notif = Arc::clone(&state.notifications);
+        tokio::spawn(async move {
+            crate::telegram::commands::fire_telegram_namespace_notification(&ns_clone, ProcessEvent::Restarted, &infos_clone).await;
+            let store = notif.read().await;
+            crate::notifications::sender::fire_namespace_event(&store, &ns_clone, &infos_clone, ProcessEvent::Restarted).await;
+        });
+    }
+    Json(json!({ "namespace": ns, "restarted": infos.len(), "processes": infos }))
 }
 
 async fn resolve(state: &DaemonState, id_str: &str) -> Result<Uuid, ApiError> {

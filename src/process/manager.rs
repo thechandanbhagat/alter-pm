@@ -4,6 +4,7 @@ use crate::config::ecosystem::AppConfig;
 use crate::config::notification_store::NotificationsStore;
 use crate::logging::writer::LogWriter;
 use crate::models::cron_run::{CronRun, MAX_CRON_HISTORY};
+use crate::models::metric_sample::MetricSample;
 use crate::models::process_info::ProcessInfo;
 use crate::models::process_status::ProcessStatus;
 use crate::notifications::sender::{fire_event, ProcessEvent};
@@ -15,12 +16,17 @@ use crate::process::watcher::FileWatcher;
 use anyhow::{anyhow, Result};
 use chrono::Utc;
 use dashmap::DashMap;
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::sync::Arc;
 use sysinfo::{Pid, ProcessRefreshKind, ProcessesToUpdate, System};
 use tokio::sync::mpsc;
 use tokio::sync::{broadcast, Mutex, RwLock};
 use uuid::Uuid;
+
+// @group Constants : Maximum number of metric samples retained per process (288 × 30 s ≈ 2.4 h)
+const MAX_METRIC_SAMPLES: usize = 288;
+// @group Constants : Collect one metric sample every N metric-loop ticks (tick = 3 s → 10 × 3 s = 30 s)
+const METRIC_SAMPLE_INTERVAL_TICKS: u32 = 10;
 
 pub type ProcessRegistry = DashMap<Uuid, Arc<RwLock<ManagedProcess>>>;
 
@@ -33,6 +39,11 @@ pub struct ProcessManager {
     cron_schedulers: Arc<Mutex<HashMap<Uuid, CronScheduler>>>,
     /// Shared notification store for firing alerts on process events
     notifications: Arc<RwLock<NotificationsStore>>,
+    /// Suppress per-process Telegram notifications during bulk namespace ops.
+    /// Value = remaining events to suppress (2 for restart = stop+start, 1 otherwise).
+    pub bulk_suppress: Arc<DashMap<Uuid, u32>>,
+    // @group BusinessLogic > Metrics : Rolling per-process metric history (CPU + mem samples)
+    pub metrics_history: Arc<DashMap<Uuid, Mutex<VecDeque<MetricSample>>>>,
 }
 
 impl ProcessManager {
@@ -63,10 +74,21 @@ impl ProcessManager {
         });
 
         let reg_metrics = Arc::clone(&registry);
+        let metrics_history: Arc<DashMap<Uuid, Mutex<VecDeque<MetricSample>>>> =
+            Arc::new(DashMap::new());
+        let hist_metrics = Arc::clone(&metrics_history);
 
         // @group BusinessLogic > Metrics : Background task that polls CPU and memory per process
         tokio::spawn(async move {
-            Self::metrics_loop(reg_metrics).await;
+            Self::metrics_loop(reg_metrics, hist_metrics).await;
+        });
+
+        let reg_alert = Arc::clone(&registry);
+        let notif_alert = Arc::clone(&notifications);
+
+        // @group BusinessLogic > LogAlerts : Background task that checks stderr spikes every 5 minutes
+        tokio::spawn(async move {
+            Self::log_alert_loop(reg_alert, notif_alert).await;
         });
 
         Self {
@@ -75,7 +97,23 @@ impl ProcessManager {
             cron_trigger_tx,
             cron_schedulers,
             notifications,
+            bulk_suppress: Arc::new(DashMap::new()),
+            metrics_history,
         }
+    }
+
+    // @group Utilities > BulkSuppress : Decrement suppress counter; return true if the event should be suppressed
+    fn suppress_consume(suppress: &DashMap<Uuid, u32>, id: &Uuid) -> bool {
+        if let Some(mut entry) = suppress.get_mut(id) {
+            if *entry > 1 {
+                *entry -= 1;
+            } else {
+                drop(entry);
+                suppress.remove(id);
+            }
+            return true;
+        }
+        false
     }
 
     // @group BusinessLogic > Lifecycle : Start a new process from config
@@ -232,11 +270,14 @@ impl ProcessManager {
 
         let info_for_notif = proc.to_info();
         let notif = Arc::clone(&self.notifications);
+        let suppress = Arc::clone(&self.bulk_suppress);
         let info_clone = info_for_notif.clone();
         tokio::spawn(async move {
-            let store = notif.read().await;
-            fire_event(&store, &info_clone, ProcessEvent::Stopped).await;
-            crate::telegram::commands::fire_telegram_notification(&info_clone, ProcessEvent::Stopped).await;
+            if !Self::suppress_consume(&suppress, &info_clone.id) {
+                let store = notif.read().await;
+                fire_event(&store, &info_clone, ProcessEvent::Stopped).await;
+                crate::telegram::commands::fire_telegram_notification(&info_clone, ProcessEvent::Stopped).await;
+            }
         });
 
         Ok(info_for_notif)
@@ -314,6 +355,92 @@ impl ProcessManager {
         Ok(guard.to_info())
     }
 
+    // @group BusinessLogic > Namespace : Start all stopped/crashed processes in a namespace (bulk — one Telegram notification)
+    pub async fn start_namespace(&self, namespace: &str) -> Vec<ProcessInfo> {
+        let ids: Vec<Uuid> = {
+            let mut result = vec![];
+            for entry in self.registry.iter() {
+                let proc = entry.value().read().await;
+                if proc.config.namespace == namespace
+                    && matches!(proc.status, ProcessStatus::Stopped | ProcessStatus::Crashed | ProcessStatus::Errored)
+                {
+                    result.push(proc.id);
+                }
+            }
+            result
+        };
+        for &id in &ids {
+            self.bulk_suppress.insert(id, 1);
+        }
+        let mut infos = vec![];
+        for id in ids {
+            if self.do_spawn(id).await.is_ok() {
+                if let Ok(info) = self.get(id).await {
+                    infos.push(info);
+                }
+            }
+        }
+        infos
+    }
+
+    // @group BusinessLogic > Namespace : Stop all running processes in a namespace (bulk — one Telegram notification)
+    pub async fn stop_namespace(&self, namespace: &str) -> Vec<ProcessInfo> {
+        let ids: Vec<Uuid> = {
+            let mut result = vec![];
+            for entry in self.registry.iter() {
+                let proc = entry.value().read().await;
+                if proc.config.namespace == namespace
+                    && matches!(proc.status, ProcessStatus::Running | ProcessStatus::Watching | ProcessStatus::Sleeping)
+                {
+                    result.push(proc.id);
+                }
+            }
+            result
+        };
+        for &id in &ids {
+            self.bulk_suppress.insert(id, 1);
+        }
+        let mut infos = vec![];
+        for id in ids {
+            if let Ok(info) = self.stop(id).await {
+                infos.push(info);
+            }
+        }
+        infos
+    }
+
+    // @group BusinessLogic > Namespace : Restart all processes in a namespace (bulk — one Telegram notification)
+    pub async fn restart_namespace(&self, namespace: &str) -> Vec<ProcessInfo> {
+        // Collect ids paired with whether the process is currently active.
+        // Active processes will emit stop + start (2 events); inactive ones only start (1 event).
+        // Setting the wrong count leaves a stale suppress entry that silently eats a future
+        // individual notification (e.g. the next manual stop).
+        let ids: Vec<(Uuid, bool)> = {
+            let mut result = vec![];
+            for entry in self.registry.iter() {
+                let proc = entry.value().read().await;
+                if proc.config.namespace == namespace {
+                    let is_active = matches!(
+                        proc.status,
+                        ProcessStatus::Running | ProcessStatus::Watching | ProcessStatus::Sleeping
+                    );
+                    result.push((proc.id, is_active));
+                }
+            }
+            result
+        };
+        for &(id, is_active) in &ids {
+            self.bulk_suppress.insert(id, if is_active { 2 } else { 1 });
+        }
+        let mut infos = vec![];
+        for (id, _) in ids {
+            if let Ok(info) = self.restart(id).await {
+                infos.push(info);
+            }
+        }
+        infos
+    }
+
     // @group BusinessLogic > Lifecycle : Reset restart counter
     pub async fn reset(&self, id: Uuid) -> Result<ProcessInfo> {
         let arc = self.get_arc(id)?;
@@ -331,6 +458,30 @@ impl ProcessManager {
         }
         result.sort_by(|a, b| a.created_at.cmp(&b.created_at));
         result
+    }
+
+    // @group BusinessLogic > LogStats : Return bucketed stdout/stderr log counts for a process
+    pub async fn get_log_stats(&self, id: Uuid) -> Vec<crate::models::log_stats::LogStatsBucket> {
+        match self.registry.get(&id) {
+            Some(arc) => {
+                // Clone the Arc out before dropping the read guard to avoid lifetime issues
+                let stats_arc = {
+                    let proc = arc.read().await;
+                    Arc::clone(&proc.log_stats)
+                };
+                let snapshot = stats_arc.lock().await.snapshot();
+                snapshot
+            }
+            None => Vec::new(),
+        }
+    }
+
+    // @group BusinessLogic > Metrics : Return a snapshot of all recorded samples for a process
+    pub async fn get_metrics_history(&self, id: Uuid) -> Vec<MetricSample> {
+        match self.metrics_history.get(&id) {
+            Some(entry) => entry.lock().await.iter().cloned().collect(),
+            None => Vec::new(),
+        }
     }
 
     // @group BusinessLogic > Query : Get a single process info by id
@@ -367,7 +518,7 @@ impl ProcessManager {
     async fn do_spawn(&self, id: Uuid) -> Result<()> {
         let arc = self.get_arc(id)?;
 
-        let (config, log_tx) = {
+        let (config, log_tx, log_stats) = {
             let mut proc = arc.write().await;
             proc.status = ProcessStatus::Starting;
             proc.started_at = Some(Utc::now());
@@ -382,14 +533,15 @@ impl ProcessManager {
             let writer = LogWriter::new(&log_dir, proc.log_tx.clone())?;
             proc.log_writer = Some(writer);
 
-            (proc.config.clone(), proc.log_tx.clone())
+            (proc.config.clone(), proc.log_tx.clone(), Arc::clone(&proc.log_stats))
         };
 
         // @group BusinessLogic > Hooks : Run pre_start hook before spawning
         if let Some(cmd) = &config.pre_start {
-            crate::process::hooks::run_hook(cmd, config.cwd.as_deref(), &config.env)
-                .await
-                .map_err(|e| anyhow::anyhow!("pre_start hook failed: {e}"))?;
+            if let Err(e) = crate::process::hooks::run_hook(cmd, config.cwd.as_deref(), &config.env).await {
+                arc.write().await.status = ProcessStatus::Errored;
+                return Err(anyhow::anyhow!("pre_start hook failed: {e}"));
+            }
         }
 
         // @group BusinessLogic > EnvFile : Merge .env file vars with explicit env (explicit wins)
@@ -401,7 +553,7 @@ impl ProcessManager {
 
         let (exit_tx, exit_rx) = mpsc::channel::<crate::process::runner::RunResult>(1);
 
-        let child = spawn_process(
+        let child = match spawn_process(
             id,
             &config.script,
             &config.args,
@@ -409,8 +561,15 @@ impl ProcessManager {
             &merged_env,
             log_tx,
             exit_tx.clone(),
+            log_stats,
         )
-        .await?;
+        .await {
+            Ok(c) => c,
+            Err(e) => {
+                arc.write().await.status = ProcessStatus::Errored;
+                return Err(e);
+            }
+        };
 
         let pid = child.id();
 
@@ -429,11 +588,14 @@ impl ProcessManager {
 
         // Fire Started notification (non-blocking)
         let notif = Arc::clone(&self.notifications);
+        let suppress = Arc::clone(&self.bulk_suppress);
         let info_for_tg = info_for_notif.clone();
         tokio::spawn(async move {
-            let store = notif.read().await;
-            fire_event(&store, &info_for_notif, ProcessEvent::Started).await;
-            crate::telegram::commands::fire_telegram_notification(&info_for_tg, ProcessEvent::Started).await;
+            if !Self::suppress_consume(&suppress, &info_for_tg.id) {
+                let store = notif.read().await;
+                fire_event(&store, &info_for_notif, ProcessEvent::Started).await;
+                crate::telegram::commands::fire_telegram_notification(&info_for_tg, ProcessEvent::Started).await;
+            }
         });
 
         // @group BusinessLogic > Hooks : Run post_start hook after process is running (non-blocking)
@@ -550,14 +712,14 @@ impl ProcessManager {
                                 proc.started_at = Some(Utc::now());
                             }
 
-                            let (config, log_tx) = {
+                            let (config, log_tx, log_stats) = {
                                 let mut proc = arc.write().await;
                                 let log_dir = crate::config::paths::process_log_dir(&proc.config.name);
                                 let _ = std::fs::create_dir_all(&log_dir);
                                 if let Ok(writer) = LogWriter::new(&log_dir, proc.log_tx.clone()) {
                                     proc.log_writer = Some(writer);
                                 }
-                                (proc.config.clone(), proc.log_tx.clone())
+                                (proc.config.clone(), proc.log_tx.clone(), Arc::clone(&proc.log_stats))
                             };
 
                             let (exit_tx, exit_rx) = mpsc::channel::<crate::process::runner::RunResult>(1);
@@ -577,6 +739,7 @@ impl ProcessManager {
                                 &merged_env,
                                 log_tx,
                                 exit_tx.clone(),
+                                log_stats,
                             ).await {
                                 Ok(child) => {
                                     let pid = child.id();
@@ -721,12 +884,12 @@ impl ProcessManager {
                     let log_dir = crate::config::paths::process_log_dir(&config.name);
                     let _ = std::fs::create_dir_all(&log_dir);
 
-                    let log_tx = {
+                    let (log_tx, log_stats) = {
                         let mut proc = arc.write().await;
                         if let Ok(writer) = LogWriter::new(&log_dir, proc.log_tx.clone()) {
                             proc.log_writer = Some(writer);
                         }
-                        proc.log_tx.clone()
+                        (proc.log_tx.clone(), Arc::clone(&proc.log_stats))
                     };
 
                     let (exit_tx, exit_rx) = mpsc::channel::<crate::process::runner::RunResult>(1);
@@ -804,6 +967,7 @@ impl ProcessManager {
                         &merged_env,
                         log_tx,
                         exit_tx.clone(),
+                        log_stats,
                     ).await {
                         Ok(child) => {
                             let pid = child.id();
@@ -868,10 +1032,16 @@ impl ProcessManager {
     }
 
     // @group BusinessLogic > Metrics : Periodically collects CPU and memory for each running process
-    async fn metrics_loop(registry: Arc<ProcessRegistry>) {
+    async fn metrics_loop(
+        registry: Arc<ProcessRegistry>,
+        hist: Arc<DashMap<Uuid, Mutex<VecDeque<MetricSample>>>>,
+    ) {
         let mut sys = System::new();
+        let mut tick: u32 = 0;
+
         loop {
             tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
+            tick = tick.wrapping_add(1);
 
             // Collect process IDs that currently have a PID (i.e. are running)
             let pid_map: Vec<(Uuid, Pid)> = {
@@ -897,18 +1067,106 @@ impl ProcessManager {
                 ProcessRefreshKind::new().with_cpu().with_memory(),
             );
 
+            // @group BusinessLogic > Metrics : Decide whether this tick records a history sample
+            let record_sample = tick % METRIC_SAMPLE_INTERVAL_TICKS == 0;
+            let now = Utc::now();
+
             // Write new metrics back into each process entry
             for (id, sysinfo_pid) in &pid_map {
                 if let Some(arc) = registry.get(id) {
                     let mut proc = arc.write().await;
                     if let Some(sp) = sys.process(*sysinfo_pid) {
-                        proc.cpu_percent = Some(sp.cpu_usage());
-                        proc.memory_bytes = Some(sp.memory());
+                        let cpu = sp.cpu_usage();
+                        let mem = sp.memory();
+                        proc.cpu_percent = Some(cpu);
+                        proc.memory_bytes = Some(mem);
+
+                        // @group BusinessLogic > Metrics : Push sample into the per-process ring buffer
+                        if record_sample {
+                            let entry = hist.entry(*id).or_insert_with(|| {
+                                Mutex::new(VecDeque::with_capacity(MAX_METRIC_SAMPLES + 1))
+                            });
+                            let mut buf = entry.lock().await;
+                            buf.push_back(MetricSample {
+                                timestamp: now,
+                                cpu_percent: cpu,
+                                memory_bytes: mem,
+                            });
+                            if buf.len() > MAX_METRIC_SAMPLES {
+                                buf.pop_front();
+                            }
+                        }
                     } else {
                         proc.cpu_percent = None;
                         proc.memory_bytes = None;
                     }
                 }
+            }
+        }
+    }
+
+    // @group BusinessLogic > LogAlerts : Wake every 5 min, check last closed bucket per process, fire alerts
+    async fn log_alert_loop(
+        registry: Arc<ProcessRegistry>,
+        notifications: Arc<RwLock<NotificationsStore>>,
+    ) {
+        // Per-process cooldown tracker — stores the last time an alert was fired
+        let mut last_alerted: HashMap<Uuid, chrono::DateTime<Utc>> = HashMap::new();
+
+        loop {
+            tokio::time::sleep(tokio::time::Duration::from_secs(300)).await;
+
+            // Read config fresh from disk each cycle so changes take effect immediately
+            let cfg = crate::config::log_alert_config::load();
+            if !cfg.enabled {
+                continue;
+            }
+
+            let threshold = cfg.stderr_threshold;
+            let cooldown_secs = cfg.cooldown_mins as i64 * 60;
+            let now = Utc::now();
+
+            for entry in registry.iter() {
+                let id = *entry.key();
+
+                // Check cooldown before taking any locks
+                if let Some(&last) = last_alerted.get(&id) {
+                    if (now - last).num_seconds() < cooldown_secs {
+                        continue;
+                    }
+                }
+
+                // Clone the Arc<Mutex<LogStatsState>> without holding the RwLock guard
+                let (stats_arc, proc_info) = {
+                    let proc = entry.value().read().await;
+                    (Arc::clone(&proc.log_stats), proc.to_info())
+                };
+
+                let stderr_count = {
+                    let stats = stats_arc.lock().await;
+                    // Use the most recently completed bucket
+                    stats.history.back().map(|b| b.stderr_count).unwrap_or(0)
+                };
+
+                if stderr_count < threshold {
+                    continue;
+                }
+
+                // Threshold exceeded — record cooldown and fire
+                last_alerted.insert(id, now);
+
+                let notif = Arc::clone(&notifications);
+                let name = proc_info.name.clone();
+
+                tokio::spawn(async move {
+                    let store = notif.read().await;
+                    crate::notifications::sender::fire_log_alert(
+                        &store, &proc_info, stderr_count, threshold,
+                    ).await;
+                    crate::telegram::commands::fire_log_alert_telegram(
+                        &name, stderr_count, threshold,
+                    ).await;
+                });
             }
         }
     }

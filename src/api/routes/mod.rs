@@ -3,6 +3,7 @@
 pub mod ai;
 pub mod auth;
 pub mod ecosystem;
+pub mod log_alerts;
 pub mod logs;
 pub mod metrics;
 pub mod notifications;

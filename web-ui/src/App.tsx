@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import LoginPage from '@/pages/LoginPage'
 import { isAuthenticated, setSessionToken } from '@/lib/auth'
-import { BrowserRouter, Link, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
+import { BrowserRouter, Link, Route, Routes, useLocation, useNavigate, useParams } from 'react-router-dom'
 import { LayoutGrid, Plus, Clock, ScrollText, Settings, Bell, Bot, Network, type LucideIcon } from 'lucide-react'
 import { useDaemonHealth } from '@/hooks/useDaemonHealth'
 import { useProcesses } from '@/hooks/useProcesses'
@@ -27,6 +27,13 @@ import LogLibraryPage from '@/pages/LogLibraryPage'
 import NotificationsPage from '@/pages/NotificationsPage'
 import PortFinderPage from '@/pages/PortFinderPage'
 import type { ProcessInfo } from '@/types'
+import type { AppSettings } from '@/lib/settings'
+
+// @group BusinessLogic > NamespaceRoute : Stable module-level wrapper — reads :name param and filters processes
+function NamespaceRoute({ processes, reload, settings }: { processes: ProcessInfo[]; reload: () => void; settings: AppSettings }) {
+  const { name } = useParams<{ name: string }>()
+  return <ProcessesPage processes={processes} reload={reload} settings={settings} namespaceFilter={name} />
+}
 
 // @group BusinessLogic > Layout : Sidebar + content shell
 function Layout({ onLock }: { onLock: () => void }) {
@@ -79,7 +86,7 @@ function Layout({ onLock }: { onLock: () => void }) {
     await api.shutdownDaemon().catch(() => {})
   }
 
-  const isProcessActive = location.pathname === '/processes' || location.pathname.startsWith('/processes/')
+  const isProcessActive = location.pathname === '/processes' || location.pathname.startsWith('/processes/') || location.pathname.startsWith('/namespace/')
   const isCronActive    = location.pathname === '/cron-jobs' || location.pathname === '/cron-jobs/new'
   const isPortsActive   = location.pathname === '/ports'
 
@@ -224,8 +231,9 @@ function Layout({ onLock }: { onLock: () => void }) {
       {/* Main content */}
       <div style={{ flex: 1, overflow: 'auto', display: 'flex', flexDirection: 'column' }}>
         <Routes>
-          <Route path="/" element={<AnalyticsPage processes={processes} settings={settings} />} />
+          <Route path="/" element={<AnalyticsPage processes={processes} settings={settings} reload={reload} />} />
           <Route path="/processes" element={<ProcessesPage processes={processes} reload={reload} settings={settings} />} />
+          <Route path="/namespace/:name" element={<NamespaceRoute processes={processes} reload={reload} settings={settings} />} />
           <Route path="/start" element={<StartPage onDone={() => { reload(); navigate('/processes') }} settings={settings} />} />
           <Route path="/edit/:id" element={<EditPage onDone={() => { reload(); navigate('/processes') }} />} />
           <Route path="/processes/:id" element={<ProcessDetailPage reload={reload} settings={settings} />} />
