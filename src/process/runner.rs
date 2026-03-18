@@ -1,15 +1,18 @@
 // @group BusinessLogic : Spawn child process and pipe stdout/stderr to log infrastructure
 
+use crate::models::log_stats::LogStatsState;
 use crate::process::instance::{LogLine, LogStream};
 use anyhow::{Context, Result};
 use chrono::Utc;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::process::Stdio;
+use std::sync::Arc;
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::{Child, Command};
 use tokio::sync::broadcast;
 use tokio::sync::mpsc;
+use tokio::sync::Mutex;
 use uuid::Uuid;
 
 // @group BusinessLogic > Windows : Process creation flags
@@ -36,6 +39,7 @@ pub async fn spawn_process(
     env_vars: &HashMap<String, String>,
     log_tx: broadcast::Sender<LogLine>,
     exit_tx: mpsc::Sender<RunResult>,
+    log_stats: Arc<Mutex<LogStatsState>>,
 ) -> Result<Child> {
     // @group BusinessLogic > Windows : npm/node/python etc. are .cmd batch scripts on Windows.
     // Wrap with cmd.exe /C so the shell resolves them correctly.
@@ -85,8 +89,9 @@ pub async fn spawn_process(
     let stdout = child.stdout.take().expect("stdout was piped");
     let stderr = child.stderr.take().expect("stderr was piped");
 
-    // @group BusinessLogic > Logging : Stream stdout to broadcast + disk
+    // @group BusinessLogic > Logging : Stream stdout to broadcast + disk + log stats counter
     let stdout_tx = log_tx.clone();
+    let stats_out = Arc::clone(&log_stats);
     tokio::spawn(async move {
         let mut reader = BufReader::new(stdout).lines();
         while let Ok(Some(line)) = reader.next_line().await {
@@ -97,11 +102,13 @@ pub async fn spawn_process(
                 content: line,
             };
             let _ = stdout_tx.send(entry);
+            stats_out.lock().await.record(true);
         }
     });
 
-    // @group BusinessLogic > Logging : Stream stderr to broadcast + disk
+    // @group BusinessLogic > Logging : Stream stderr to broadcast + disk + log stats counter
     let stderr_tx = log_tx.clone();
+    let stats_err = Arc::clone(&log_stats);
     tokio::spawn(async move {
         let mut reader = BufReader::new(stderr).lines();
         while let Ok(Some(line)) = reader.next_line().await {
@@ -112,6 +119,7 @@ pub async fn spawn_process(
                 content: line,
             };
             let _ = stderr_tx.send(entry);
+            stats_err.lock().await.record(false);
         }
     });
 

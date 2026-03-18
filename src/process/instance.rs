@@ -3,10 +3,12 @@
 use crate::config::ecosystem::AppConfig;
 use crate::logging::writer::LogWriter;
 use crate::models::cron_run::CronRun;
+use crate::models::log_stats::LogStatsState;
 use crate::models::process_info::{HealthCheckStatus, ProcessInfo};
 use crate::models::process_status::ProcessStatus;
 use chrono::{DateTime, Utc};
-use tokio::sync::broadcast;
+use std::sync::Arc;
+use tokio::sync::{broadcast, Mutex};
 use uuid::Uuid;
 
 /// A single log line emitted by a child process
@@ -51,6 +53,8 @@ pub struct ManagedProcess {
     pub health_status: Option<HealthCheckStatus>,
     /// Handle to the running health check task — aborted on process stop
     pub health_check_handle: Option<tokio::task::JoinHandle<()>>,
+    // @group BusinessLogic > LogStats : Rolling 5-minute log volume buckets (stdout + stderr counts)
+    pub log_stats: Arc<Mutex<LogStatsState>>,
 }
 
 impl ManagedProcess {
@@ -79,6 +83,7 @@ impl ManagedProcess {
             memory_bytes: None,
             health_status: None,
             health_check_handle: None,
+            log_stats: Arc::new(Mutex::new(LogStatsState::new())),
         }
     }
 
