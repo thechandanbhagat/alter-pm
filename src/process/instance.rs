@@ -120,6 +120,7 @@ impl ManagedProcess {
             memory_bytes: self.memory_bytes,
             env: self.config.env.clone(),
             notify: self.config.notify.clone(),
+            log_alert: self.config.log_alert.clone(),
             health_status: self.health_status.clone(),
         }
     }
