@@ -21,6 +21,16 @@ pub async fn run(config: DaemonConfig) -> Result<()> {
     // Write PID file
     crate::utils::pid::write_pid_file()?;
 
+    // @group BusinessLogic > Update : Clean up leftover .exe.old from a previous self-update (Windows only)
+    #[cfg(windows)]
+    if let Ok(exe) = std::env::current_exe() {
+        let stem = exe.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
+        let old_path = exe.with_file_name(format!("{stem}.exe.old"));
+        if old_path.exists() {
+            let _ = std::fs::remove_file(&old_path);
+        }
+    }
+
     // Set up daemon-level tracing to file
     let daemon_log = crate::config::paths::daemon_log_file();
     let file_appender = tracing_appender::rolling::never(
