@@ -49,6 +49,9 @@ pub struct AppConfig {
     /// Process-level notification override (takes priority over namespace and global)
     #[serde(default)]
     pub notify: Option<crate::models::notification::NotificationConfig>,
+    /// Process-level log alert override (takes priority over namespace and global)
+    #[serde(default)]
+    pub log_alert: Option<crate::config::log_alert_config::LogAlertOverride>,
 
     // @group Configuration > EnvFile : Path to a .env file — vars merged with env (env wins on conflict)
     #[serde(default)]
