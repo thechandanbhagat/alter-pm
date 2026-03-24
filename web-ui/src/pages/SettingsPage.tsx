@@ -1,7 +1,8 @@
 // @group BusinessLogic : Settings page — all user-configurable preferences
 
 import { useEffect, useRef, useState } from 'react'
-import { Copy, Check, Eye, EyeOff, Github, Loader, Lock, LogOut, RefreshCw, RotateCcw, Shield } from 'lucide-react'
+import { ArrowDownToLine, Check, ChevronDown, ChevronUp, Copy, Eye, EyeOff, Github, Loader, Lock, LogOut, RefreshCw, RotateCcw, Shield } from 'lucide-react'
+import type { UpdateInfo } from '@/types'
 import type { AiModelInfo } from '@/lib/api'
 import type { AppSettings } from '@/lib/settings'
 import { DEFAULT_SETTINGS, LOG_TAIL_OPTIONS, REFRESH_INTERVAL_OPTIONS } from '@/lib/settings'
@@ -187,10 +188,20 @@ export default function SettingsPage({ settings, onUpdate, onReset }: Props) {
   const [restarting, setRestarting] = useState(false)
   const [restartStatus, setRestartStatus] = useState<'idle' | 'restarting' | 'done' | 'error'>('idle')
 
+  // @group BusinessLogic > Update : Self-update state
+  const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null)
+  const [updateChecking, setUpdateChecking] = useState(false)
+  const [updateStatus, setUpdateStatus] = useState<'idle' | 'updating' | 'done' | 'error'>('idle')
+  const [updateError, setUpdateError] = useState<string | null>(null)
+  const [releaseNotesOpen, setReleaseNotesOpen] = useState(false)
+
   // @group BusinessLogic > LogAlerts : Log spike alert settings state
   const [laEnabled, setLaEnabled] = useState(false)
   const [laThreshold, setLaThreshold] = useState(10)
   const [laCooldown, setLaCooldown] = useState(15)
+  const [laCheckInterval, setLaCheckInterval] = useState(5)
+  const [laNsOverrides, setLaNsOverrides] = useState<Record<string, { enabled?: boolean; stderr_threshold?: number; cooldown_mins?: number }>>({})
+  const [laNsNew, setLaNsNew] = useState('')
   const [laSaving, setLaSaving] = useState(false)
   const [laSaved, setLaSaved] = useState(false)
   const [laError, setLaError] = useState<string | null>(null)
@@ -216,10 +227,12 @@ export default function SettingsPage({ settings, onUpdate, onReset }: Props) {
 
   // @group BusinessLogic > LogAlerts : Load initial log alert settings
   useEffect(() => {
-    api.getLogAlerts().then(cfg => {
-      setLaEnabled(cfg.enabled)
-      setLaThreshold(cfg.stderr_threshold)
-      setLaCooldown(cfg.cooldown_mins)
+    api.getLogAlerts().then(store => {
+      setLaEnabled(store.global.enabled)
+      setLaThreshold(store.global.stderr_threshold)
+      setLaCooldown(store.global.cooldown_mins)
+      setLaCheckInterval(store.global.check_interval_mins ?? 5)
+      setLaNsOverrides(store.namespaces ?? {})
     }).catch(() => {})
   }, [])
 
@@ -402,6 +415,48 @@ export default function SettingsPage({ settings, onUpdate, onReset }: Props) {
     } finally {
       setRestarting(false)
       setTimeout(() => setRestartStatus('idle'), 3000)
+    }
+  }
+
+  // @group BusinessLogic > Update : Check for a newer version on GitHub
+  async function handleCheckUpdate() {
+    setUpdateChecking(true)
+    setUpdateError(null)
+    try {
+      const info = await api.checkUpdate()
+      setUpdateInfo(info)
+      if (info.error) setUpdateError(info.error)
+    } catch (e: unknown) {
+      setUpdateError(e instanceof Error ? e.message : 'Check failed')
+    } finally {
+      setUpdateChecking(false)
+    }
+  }
+
+  // @group BusinessLogic > Update : Download and apply the update, then reconnect
+  async function handleApplyUpdate() {
+    if (!updateInfo?.download_url) return
+    setUpdateStatus('updating')
+    setUpdateError(null)
+    try {
+      await api.applyUpdate(updateInfo.download_url).catch(() => {}) // daemon exits — response may not arrive
+      // Poll until new daemon is up (same pattern as restart)
+      let ok = false
+      for (let i = 0; i < 40; i++) {
+        await new Promise(r => setTimeout(r, 750))
+        try {
+          await api.getHealth()
+          ok = true
+          break
+        } catch { /* not up yet */ }
+      }
+      setUpdateStatus(ok ? 'done' : 'error')
+      if (ok) {
+        // Reload so the new version's web UI is served
+        setTimeout(() => window.location.reload(), 1500)
+      }
+    } catch {
+      setUpdateStatus('error')
     }
   }
 
@@ -779,6 +834,120 @@ export default function SettingsPage({ settings, onUpdate, onReset }: Props) {
                 </button>
               }
             />
+          </div>
+
+          <p style={sectionTitle}>Updates</p>
+          <div style={card}>
+            <div style={{ ...rowStyle, borderBottom: updateInfo && !updateInfo.up_to_date ? '1px solid var(--color-border)' : 'none', paddingBottom: updateInfo && !updateInfo.up_to_date ? 10 : 0 }}>
+              <div style={{ flex: 1, paddingRight: 24 }}>
+                <div style={labelStyle}>Application version</div>
+                <div style={descStyle}>
+                  Current: <code style={{ fontFamily: 'monospace', fontSize: 11 }}>{updateInfo?.current ?? '…'}</code>
+                  {updateInfo && !updateInfo.up_to_date && (
+                    <span style={{ marginLeft: 8, color: '#f97316', fontWeight: 600 }}>
+                      → v{updateInfo.latest} available
+                    </span>
+                  )}
+                  {updateInfo?.up_to_date && (
+                    <span style={{ marginLeft: 8, color: 'var(--color-status-running)' }}>✓ up to date</span>
+                  )}
+                </div>
+                {updateError && <div style={{ ...descStyle, color: 'var(--color-destructive)', marginTop: 4 }}>{updateError}</div>}
+              </div>
+              <button
+                onClick={handleCheckUpdate}
+                disabled={updateChecking || updateStatus === 'updating'}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 6,
+                  padding: '6px 14px', fontSize: 12, fontWeight: 500,
+                  background: 'var(--color-secondary)',
+                  color: 'var(--color-foreground)',
+                  border: '1px solid var(--color-border)',
+                  borderRadius: 6, cursor: updateChecking ? 'default' : 'pointer',
+                  opacity: updateChecking ? 0.6 : 1, flexShrink: 0,
+                }}
+              >
+                {updateChecking
+                  ? <><Loader size={12} style={{ animation: 'spin 1s linear infinite' }} /> Checking…</>
+                  : <><RefreshCw size={12} /> Check for updates</>}
+              </button>
+            </div>
+
+            {/* Update available panel */}
+            {updateInfo && !updateInfo.up_to_date && (
+              <div style={{ paddingTop: 12 }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 10 }}>
+                  <div>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: '#f97316' }}>
+                      v{updateInfo.latest} is available
+                    </div>
+                    {updateInfo.published_at && (
+                      <div style={descStyle}>
+                        Released {new Date(updateInfo.published_at).toLocaleDateString()}
+                      </div>
+                    )}
+                    {!updateInfo.download_url && (
+                      <div style={{ ...descStyle, color: 'var(--color-destructive)', marginTop: 2 }}>
+                        No binary found for this platform — update manually from GitHub.
+                      </div>
+                    )}
+                  </div>
+                  {updateInfo.download_url && (
+                    <button
+                      onClick={handleApplyUpdate}
+                      disabled={updateStatus === 'updating' || updateStatus === 'done'}
+                      style={{
+                        display: 'flex', alignItems: 'center', gap: 7,
+                        padding: '7px 16px', fontSize: 12, fontWeight: 600,
+                        background: updateStatus === 'done' ? 'var(--color-status-running)'
+                          : updateStatus === 'error' ? 'var(--color-destructive)'
+                          : 'var(--color-primary)',
+                        color: '#fff',
+                        border: 'none', borderRadius: 6,
+                        cursor: updateStatus === 'updating' || updateStatus === 'done' ? 'default' : 'pointer',
+                        opacity: updateStatus === 'updating' ? 0.75 : 1,
+                        flexShrink: 0,
+                      }}
+                    >
+                      {updateStatus === 'updating'
+                        ? <><Loader size={12} style={{ animation: 'spin 1s linear infinite' }} /> Updating…</>
+                        : updateStatus === 'done' ? <><Check size={12} /> Reloading…</>
+                        : updateStatus === 'error' ? 'Failed — retry?'
+                        : <><ArrowDownToLine size={12} /> Update Now</>}
+                    </button>
+                  )}
+                </div>
+
+                {/* Release notes collapsible */}
+                {updateInfo.release_notes && (
+                  <div>
+                    <button
+                      onClick={() => setReleaseNotesOpen(o => !o)}
+                      style={{
+                        display: 'flex', alignItems: 'center', gap: 4,
+                        background: 'transparent', border: 'none', cursor: 'pointer',
+                        fontSize: 11, color: 'var(--color-muted-foreground)', padding: 0, marginBottom: 6,
+                      }}
+                    >
+                      {releaseNotesOpen ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+                      Release notes
+                    </button>
+                    {releaseNotesOpen && (
+                      <pre style={{
+                        fontSize: 11, fontFamily: 'monospace',
+                        background: 'var(--color-muted)', border: '1px solid var(--color-border)',
+                        borderRadius: 4, padding: '8px 10px', margin: 0,
+                        whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+                        maxHeight: 200, overflow: 'auto',
+                        color: 'var(--color-foreground)',
+                      }}>
+                        {updateInfo.release_notes}
+                      </pre>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           <p style={{ fontSize: 11, color: 'var(--color-muted-foreground)', textAlign: 'center', marginTop: 8 }}>
@@ -1455,16 +1624,31 @@ export default function SettingsPage({ settings, onUpdate, onReset }: Props) {
       {/* ── Tab: Log Alerts ── */}
       {activeTab === 'log-alerts' && (
         <>
-          <p style={sectionTitle}>Log Spike Alerts</p>
+          <p style={sectionTitle}>Global Settings</p>
           <div style={card}>
             <SettingRow
               label="Enable log alerts"
-              description="Fire a notification when stderr lines in a 5-minute interval exceed the threshold"
+              description="Fire a notification when stderr lines in a check interval exceed the threshold"
               control={<Toggle checked={laEnabled} onChange={setLaEnabled} />}
             />
             <SettingRow
+              label="Check interval"
+              description="How often the daemon scans for log spikes"
+              control={
+                <select value={laCheckInterval} onChange={e => setLaCheckInterval(Number(e.target.value))} style={{ ...inputStyle, width: 140 }}>
+                  <option value={1}>1 minute</option>
+                  <option value={2}>2 minutes</option>
+                  <option value={5}>5 minutes</option>
+                  <option value={10}>10 minutes</option>
+                  <option value={15}>15 minutes</option>
+                  <option value={30}>30 minutes</option>
+                  <option value={60}>1 hour</option>
+                </select>
+              }
+            />
+            <SettingRow
               label="Stderr threshold"
-              description="Alert when this many stderr lines appear in a single 5-minute bucket"
+              description="Alert when this many stderr lines appear within one check interval"
               control={
                 <input
                   type="number" min={1} max={10000} value={laThreshold}
@@ -1478,11 +1662,7 @@ export default function SettingsPage({ settings, onUpdate, onReset }: Props) {
               description="Minimum time between repeated alerts for the same process"
               isLast
               control={
-                <select
-                  value={laCooldown}
-                  onChange={e => setLaCooldown(Number(e.target.value))}
-                  style={{ ...inputStyle, width: 140 }}
-                >
+                <select value={laCooldown} onChange={e => setLaCooldown(Number(e.target.value))} style={{ ...inputStyle, width: 140 }}>
                   <option value={5}>5 minutes</option>
                   <option value={10}>10 minutes</option>
                   <option value={15}>15 minutes</option>
@@ -1493,10 +1673,94 @@ export default function SettingsPage({ settings, onUpdate, onReset }: Props) {
             />
           </div>
 
+          <p style={sectionTitle}>Namespace Overrides</p>
+          <p style={{ fontSize: 12, color: 'var(--color-muted-foreground)', marginTop: -8, marginBottom: 12 }}>
+            Override global settings for specific namespaces. Leave a field blank to inherit the global value.
+          </p>
+
+          {Object.keys(laNsOverrides).length > 0 && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 12 }}>
+              {Object.entries(laNsOverrides).map(([ns, ov]) => (
+                <div key={ns} style={{ ...card, padding: '12px 16px', marginBottom: 0, display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center' }}>
+                  <span style={{ fontSize: 13, fontWeight: 600, minWidth: 120, color: 'var(--color-foreground)' }}>📁 {ns}</span>
+                  <label style={{ fontSize: 12, color: 'var(--color-muted-foreground)', display: 'flex', alignItems: 'center', gap: 6 }}>
+                    Enabled
+                    <select
+                      value={ov.enabled === true ? 'yes' : ov.enabled === false ? 'no' : 'inherit'}
+                      onChange={e => {
+                        const v = e.target.value
+                        setLaNsOverrides(prev => ({ ...prev, [ns]: { ...prev[ns], enabled: v === 'inherit' ? undefined : v === 'yes' } }))
+                      }}
+                      style={{ ...inputStyle, width: 100, padding: '3px 6px' }}
+                    >
+                      <option value="inherit">Inherit</option>
+                      <option value="yes">Yes</option>
+                      <option value="no">No</option>
+                    </select>
+                  </label>
+                  <label style={{ fontSize: 12, color: 'var(--color-muted-foreground)', display: 'flex', alignItems: 'center', gap: 6 }}>
+                    Threshold
+                    <input
+                      type="number" min={1} max={10000}
+                      placeholder="Inherit"
+                      value={ov.stderr_threshold ?? ''}
+                      onChange={e => {
+                        const v = e.target.value === '' ? undefined : Math.max(1, Number(e.target.value))
+                        setLaNsOverrides(prev => ({ ...prev, [ns]: { ...prev[ns], stderr_threshold: v } }))
+                      }}
+                      style={{ ...inputStyle, width: 80, textAlign: 'right', padding: '3px 6px' }}
+                    />
+                  </label>
+                  <label style={{ fontSize: 12, color: 'var(--color-muted-foreground)', display: 'flex', alignItems: 'center', gap: 6 }}>
+                    Cooldown
+                    <select
+                      value={ov.cooldown_mins ?? ''}
+                      onChange={e => {
+                        const v = e.target.value === '' ? undefined : Number(e.target.value)
+                        setLaNsOverrides(prev => ({ ...prev, [ns]: { ...prev[ns], cooldown_mins: v } }))
+                      }}
+                      style={{ ...inputStyle, width: 120, padding: '3px 6px' }}
+                    >
+                      <option value="">Inherit</option>
+                      <option value={5}>5 min</option>
+                      <option value={10}>10 min</option>
+                      <option value={15}>15 min</option>
+                      <option value={30}>30 min</option>
+                      <option value={60}>1 hour</option>
+                    </select>
+                  </label>
+                  <button
+                    onClick={() => setLaNsOverrides(prev => { const next = { ...prev }; delete next[ns]; return next })}
+                    style={{ marginLeft: 'auto', fontSize: 12, padding: '3px 10px', background: 'transparent', border: '1px solid var(--color-border)', borderRadius: 5, cursor: 'pointer', color: 'var(--color-status-crashed)' }}
+                  >Remove</button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 16 }}>
+            <input
+              placeholder="Namespace name"
+              value={laNsNew}
+              onChange={e => setLaNsNew(e.target.value)}
+              style={{ ...inputStyle, width: 180 }}
+            />
+            <button
+              disabled={!laNsNew.trim() || laNsNew.trim() in laNsOverrides}
+              onClick={() => {
+                const ns = laNsNew.trim()
+                if (!ns || ns in laNsOverrides) return
+                setLaNsOverrides(prev => ({ ...prev, [ns]: {} }))
+                setLaNsNew('')
+              }}
+              style={{ padding: '6px 14px', fontSize: 13, background: 'var(--color-secondary)', border: '1px solid var(--color-border)', borderRadius: 6, cursor: 'pointer', color: 'var(--color-foreground)' }}
+            >+ Add namespace</button>
+          </div>
+
           <div style={{ ...card, background: 'rgba(var(--color-primary-rgb,99,102,241),0.05)', borderColor: 'rgba(var(--color-primary-rgb,99,102,241),0.2)', marginBottom: 16 }}>
             <p style={{ fontSize: 12, color: 'var(--color-muted-foreground)', margin: 0, lineHeight: 1.7 }}>
               Alerts are sent through your configured <strong>Webhook / Slack / Teams</strong> and <strong>Telegram</strong> channels.
-              Make sure at least one is set up in the Notifications or Telegram tabs.
+              Process-level overrides can be set via the API (<code>log_alert</code> field on a process).
             </p>
           </div>
 
@@ -1505,7 +1769,10 @@ export default function SettingsPage({ settings, onUpdate, onReset }: Props) {
               onClick={async () => {
                 setLaSaving(true); setLaSaved(false); setLaError(null)
                 try {
-                  await api.updateLogAlerts({ enabled: laEnabled, stderr_threshold: laThreshold, cooldown_mins: laCooldown })
+                  await api.updateLogAlerts({
+                    global: { enabled: laEnabled, stderr_threshold: laThreshold, cooldown_mins: laCooldown, check_interval_mins: laCheckInterval },
+                    namespaces: laNsOverrides,
+                  })
                   setLaSaved(true)
                   setTimeout(() => setLaSaved(false), 2500)
                 } catch (e: unknown) {
