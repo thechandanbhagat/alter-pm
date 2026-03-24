@@ -36,7 +36,8 @@ pub async fn cmd_help(bot_token: &str, chat_id: i64) -> Result<()> {
     let text = concat!(
         "🤖 <b>alter-pm2 Bot Commands</b>\n\n",
         "/list — list all processes\n",
-        "/status &lt;name&gt; — detailed info\n",
+        "/status &lt;name&gt; — detailed info for a process\n",
+        "/status ns &lt;ns&gt; — status of all processes in namespace\n",
         "/logs &lt;name&gt; [lines] — tail logs (default 20)\n\n",
         "<b>/start &lt;name&gt;</b> — start a process\n",
         "<b>/start ns &lt;ns&gt;</b> — start all in namespace\n\n",
@@ -136,6 +137,50 @@ pub async fn cmd_status(
         mem,
     );
     send_message(bot_token, chat_id, &text).await
+}
+
+// @group BusinessLogic > Commands : /status ns <namespace> — status summary for all processes in a namespace
+pub async fn cmd_status_namespace(
+    state: &Arc<DaemonState>,
+    bot_token: &str,
+    chat_id: i64,
+    namespace: &str,
+) -> Result<()> {
+    let mut processes = state.manager.list().await;
+    processes.retain(|p| p.namespace == namespace);
+
+    if processes.is_empty() {
+        return send_message(
+            bot_token,
+            chat_id,
+            &format!("❌ No processes in namespace <b>{}</b>", escape_html(namespace)),
+        )
+        .await;
+    }
+
+    processes.sort_by(|a, b| a.name.cmp(&b.name));
+
+    let mut lines = vec![format!("📁 <b>{}</b>\n", escape_html(namespace))];
+
+    for p in &processes {
+        let emoji = status_emoji(&p.status);
+        let uptime = p.uptime_secs.map(|s| format_uptime(s)).unwrap_or_else(|| "—".to_string());
+        let pid = p.pid.map(|v| v.to_string()).unwrap_or_else(|| "—".to_string());
+        let cpu = p.cpu_percent.map(|c| format!("{:.1}%", c)).unwrap_or_else(|| "—".to_string());
+        let mem = p.memory_bytes.map(|b| format_bytes(b)).unwrap_or_else(|| "—".to_string());
+        lines.push(format!(
+            "{emoji} <b>{}</b>\nStatus: {} · PID: {} · ↺{}\nUptime: {} · CPU: {} · RAM: {}\n",
+            escape_html(&p.name),
+            p.status,
+            pid,
+            p.restart_count,
+            uptime,
+            cpu,
+            mem,
+        ));
+    }
+
+    send_message(bot_token, chat_id, &lines.join("\n")).await
 }
 
 // @group BusinessLogic > Commands : /start <name> — start a stopped process
