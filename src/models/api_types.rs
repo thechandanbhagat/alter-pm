@@ -23,6 +23,8 @@ pub struct StartRequest {
     pub cron: Option<String>,
     /// Process-level notification override
     pub notify: Option<crate::models::notification::NotificationConfig>,
+    /// Process-level log alert override
+    pub log_alert: Option<crate::config::log_alert_config::LogAlertOverride>,
 }
 
 // @group Types > Request : Load an ecosystem config file

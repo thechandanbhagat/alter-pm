@@ -21,6 +21,7 @@ pub fn router(state: Arc<DaemonState>) -> Router {
         .nest("/ports", routes::ports::router())
         .merge(routes::metrics::router(Arc::clone(&state)))
         .merge(routes::log_alerts::router())
+        .nest("/system/update", routes::update::router(Arc::clone(&state)))
         .route_layer(axum_middleware::from_fn_with_state(
             Arc::clone(&state),
             middleware::require_auth,

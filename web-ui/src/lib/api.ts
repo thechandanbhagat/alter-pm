@@ -1,6 +1,6 @@
 // @group APIEndpoints : All fetch calls to the alter daemon REST API
 
-import type { CronRun, DaemonHealth, EnvFileEntry, LogAlertConfig, LogLine, LogStatsBucket, MetricSample, NotificationConfig, NotificationsStore, ProcessInfo, ScriptInfo, StartProcessBody } from '@/types'
+import type { CronRun, DaemonHealth, EnvFileEntry, LogAlertOverride, LogAlertStore, LogLine, LogStatsBucket, MetricSample, NotificationConfig, NotificationsStore, ProcessInfo, ScriptInfo, StartProcessBody, UpdateInfo } from '@/types'
 import { clearSessionToken, getSessionToken } from '@/lib/auth'
 
 // @group Types > AI : Chat message and request types (mirrored from Rust models/ai.rs)
@@ -130,12 +130,18 @@ export const api = {
   getLogStats: (id: string): Promise<{ buckets: LogStatsBucket[] }> =>
     request(`/processes/${id}/logs/stats`),
 
-  // @group APIEndpoints > LogAlerts : Get / update the log-spike alert configuration
-  getLogAlerts: (): Promise<LogAlertConfig> =>
+  // @group APIEndpoints > LogAlerts : Get / update the log-spike alert store (global + namespace overrides)
+  getLogAlerts: (): Promise<LogAlertStore> =>
     request('/log-alerts'),
 
-  updateLogAlerts: (config: LogAlertConfig): Promise<LogAlertConfig> =>
-    request('/log-alerts', { method: 'PUT', body: JSON.stringify(config) }),
+  updateLogAlerts: (store: LogAlertStore): Promise<LogAlertStore> =>
+    request('/log-alerts', { method: 'PUT', body: JSON.stringify(store) }),
+
+  putLogAlertNamespace: (ns: string, override_: LogAlertOverride): Promise<LogAlertOverride> =>
+    request(`/log-alerts/namespace/${encodeURIComponent(ns)}`, { method: 'PUT', body: JSON.stringify(override_) }),
+
+  deleteLogAlertNamespace: (ns: string): Promise<void> =>
+    request(`/log-alerts/namespace/${encodeURIComponent(ns)}`, { method: 'DELETE' }),
 
   // @group APIEndpoints > Logs
   getLogs: (id: string, params?: { lines?: number; date?: string }): Promise<{ lines: LogLine[] }> => {
@@ -416,4 +422,12 @@ export const api = {
     first_name: string | null
     error: string | null
   }> => request('/telegram/botinfo'),
+
+  // @group APIEndpoints > Update : Check GitHub for the latest release
+  checkUpdate: (): Promise<UpdateInfo> =>
+    request('/system/update/check'),
+
+  // @group APIEndpoints > Update : Download and apply the update, then restart daemon
+  applyUpdate: (downloadUrl: string): Promise<{ success: boolean; message: string }> =>
+    request('/system/update/apply', { method: 'POST', body: JSON.stringify({ download_url: downloadUrl }) }),
 }

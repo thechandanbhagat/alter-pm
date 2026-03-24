@@ -224,6 +224,7 @@ fn build_app_config(info: &ProcessInfo) -> AppConfig {
         cron_last_run: None,
         cron_next_run: info.cron_next_run,
         notify: info.notify.clone(),
+        log_alert: info.log_alert.clone(),
         env_file: None,
         health_check_url: None,
         health_check_interval_secs: 30,

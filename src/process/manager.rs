@@ -292,15 +292,32 @@ impl ProcessManager {
                 proc.status,
                 ProcessStatus::Running | ProcessStatus::Watching | ProcessStatus::Sleeping
             );
+            // Suppress the individual Stop + Start events so we can fire a single Restarted event
+            self.bulk_suppress.insert(id, if is_active { 2 } else { 1 });
             if is_active {
                 drop(proc);
                 self.stop(id).await?;
             }
         }
         self.do_spawn(id).await?;
+
         let arc = self.get_arc(id)?;
-        let guard = arc.read().await;
-        Ok(guard.to_info())
+        let info = {
+            let mut proc = arc.write().await;
+            proc.restart_count += 1;
+            proc.to_info()
+        };
+
+        // Fire a single Restarted notification
+        let notif = Arc::clone(&self.notifications);
+        let info_clone = info.clone();
+        tokio::spawn(async move {
+            let store = notif.read().await;
+            fire_event(&store, &info_clone, ProcessEvent::Restarted).await;
+            crate::telegram::commands::fire_telegram_notification(&info_clone, ProcessEvent::Restarted).await;
+        });
+
+        Ok(info)
     }
 
     // @group BusinessLogic > Lifecycle : Delete a process (stop + remove from registry)
@@ -1105,7 +1122,7 @@ impl ProcessManager {
         }
     }
 
-    // @group BusinessLogic > LogAlerts : Wake every 5 min, check last closed bucket per process, fire alerts
+    // @group BusinessLogic > LogAlerts : Configurable-interval loop — resolves per-process effective settings
     async fn log_alert_loop(
         registry: Arc<ProcessRegistry>,
         notifications: Arc<RwLock<NotificationsStore>>,
@@ -1114,33 +1131,51 @@ impl ProcessManager {
         let mut last_alerted: HashMap<Uuid, chrono::DateTime<Utc>> = HashMap::new();
 
         loop {
-            tokio::time::sleep(tokio::time::Duration::from_secs(300)).await;
+            // Read interval before sleeping so a setting change takes effect next cycle
+            let interval_secs = {
+                let s = crate::config::log_alert_config::load();
+                (s.global.check_interval_mins as u64).max(1) * 60
+            };
+            tokio::time::sleep(tokio::time::Duration::from_secs(interval_secs)).await;
 
-            // Read config fresh from disk each cycle so changes take effect immediately
-            let cfg = crate::config::log_alert_config::load();
-            if !cfg.enabled {
-                continue;
-            }
-
-            let threshold = cfg.stderr_threshold;
-            let cooldown_secs = cfg.cooldown_mins as i64 * 60;
+            // Reload store fresh after sleep so threshold/cooldown/enabled changes apply immediately
+            let alert_store = crate::config::log_alert_config::load();
             let now = Utc::now();
 
             for entry in registry.iter() {
                 let id = *entry.key();
 
-                // Check cooldown before taking any locks
+                // Clone stats + info without holding the RwLock guard across awaits
+                let (stats_arc, proc_info) = {
+                    let proc = entry.value().read().await;
+                    (Arc::clone(&proc.log_stats), proc.to_info())
+                };
+
+                // Skip alert if process is not actively running
+                use crate::models::process_status::ProcessStatus;
+                match proc_info.status {
+                    ProcessStatus::Running | ProcessStatus::Watching => {}
+                    _ => continue,
+                }
+
+                // Resolve effective settings: process override → namespace override → global
+                let (enabled, threshold, cooldown_mins) = alert_store.resolve(
+                    &proc_info.namespace,
+                    proc_info.log_alert.as_ref(),
+                );
+
+                if !enabled {
+                    continue;
+                }
+
+                let cooldown_secs = cooldown_mins as i64 * 60;
+
+                // Check per-process cooldown
                 if let Some(&last) = last_alerted.get(&id) {
                     if (now - last).num_seconds() < cooldown_secs {
                         continue;
                     }
                 }
-
-                // Clone the Arc<Mutex<LogStatsState>> without holding the RwLock guard
-                let (stats_arc, proc_info) = {
-                    let proc = entry.value().read().await;
-                    (Arc::clone(&proc.log_stats), proc.to_info())
-                };
 
                 let stderr_count = {
                     let stats = stats_arc.lock().await;

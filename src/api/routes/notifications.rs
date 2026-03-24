@@ -133,6 +133,7 @@ async fn test_notification(
         memory_bytes: None,
         env: HashMap::new(),
         notify: None,
+        log_alert: None,
         health_status: None,
     };
 

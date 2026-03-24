@@ -45,6 +45,8 @@ pub struct ProcessInfo {
     pub env: HashMap<String, String>,
     /// Process-level notification override
     pub notify: Option<crate::models::notification::NotificationConfig>,
+    /// Process-level log alert override
+    pub log_alert: Option<crate::config::log_alert_config::LogAlertOverride>,
     /// Health check probe result — None if no health check is configured
     pub health_status: Option<HealthCheckStatus>,
 }

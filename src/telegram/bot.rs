@@ -44,7 +44,7 @@ async fn register_commands(client: &reqwest::Client, token: &str) {
     let commands = serde_json::json!({
         "commands": [
             { "command": "list",      "description": "List all processes and their status" },
-            { "command": "status",    "description": "Get status of a process: /status <name>" },
+            { "command": "status",    "description": "Status of a process or namespace: /status <name> | /status ns <ns>" },
             { "command": "start",   "description": "Start process or namespace: /start <name> | /start ns <ns>" },
             { "command": "stop",    "description": "Stop process or namespace: /stop <name> | /stop ns <ns>" },
             { "command": "restart", "description": "Restart process or namespace: /restart <name> | /restart ns <ns>" },
@@ -196,13 +196,14 @@ async fn dispatch_command(
         "/ping" => commands::cmd_ping(token, chat_id).await,
         "/help" | "/start" if parts.len() == 1 => commands::cmd_help(token, chat_id).await,
         "/list" => commands::cmd_list(state, token, chat_id).await,
-        "/status" => {
-            if parts.len() < 2 {
-                commands::send_message(token, chat_id, "Usage: /status &lt;name&gt;").await
-            } else {
-                commands::cmd_status(state, token, chat_id, parts[1]).await
-            }
-        }
+        "/status" => match parts.get(1) {
+            Some(&"ns") => match parts.get(2) {
+                Some(ns) => commands::cmd_status_namespace(state, token, chat_id, ns).await,
+                None => commands::send_message(token, chat_id, "Usage: /status ns &lt;namespace&gt;").await,
+            },
+            Some(name) => commands::cmd_status(state, token, chat_id, name).await,
+            None => commands::send_message(token, chat_id, "Usage: /status &lt;name&gt; | /status ns &lt;ns&gt;").await,
+        },
         "/start" => {
             // /start with an argument — "ns <namespace>" targets a namespace, otherwise a process name
             match parts.get(1) {

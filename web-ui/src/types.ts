@@ -140,10 +140,33 @@ export interface MetricSample {
 // @group Types > LogAlerts : Threshold-based stderr spike notification settings
 export interface LogAlertConfig {
   enabled: boolean
-  /** Alert when stderr lines in a 5-min bucket reach or exceed this count */
   stderr_threshold: number
-  /** Minimum minutes between repeated alerts for the same process */
   cooldown_mins: number
+  check_interval_mins: number
+}
+
+// @group Types > LogAlerts : Partial override for namespace or process scope (all fields optional = inherit)
+export interface LogAlertOverride {
+  enabled?: boolean
+  stderr_threshold?: number
+  cooldown_mins?: number
+}
+
+// @group Types > LogAlerts : Full store — global config + per-namespace overrides
+export interface LogAlertStore {
+  global: LogAlertConfig
+  namespaces: Record<string, LogAlertOverride>
+}
+
+// @group Types > Update : Update availability info returned by GET /system/update/check
+export interface UpdateInfo {
+  current: string
+  latest: string
+  up_to_date: boolean
+  download_url: string | null
+  release_notes: string | null
+  published_at: string | null
+  error?: string
 }
 
 // @group Types > LogStats : One 5-minute bucket of stdout + stderr line counts (from disk)

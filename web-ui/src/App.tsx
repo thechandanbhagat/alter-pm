@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 import LoginPage from '@/pages/LoginPage'
 import { isAuthenticated, setSessionToken } from '@/lib/auth'
 import { BrowserRouter, Link, Route, Routes, useLocation, useNavigate, useParams } from 'react-router-dom'
-import { LayoutGrid, Plus, Clock, ScrollText, Settings, Bell, Bot, Network, type LucideIcon } from 'lucide-react'
+import { LayoutGrid, Plus, Clock, ScrollText, Settings, Bell, Bot, Network, BarChart2, type LucideIcon } from 'lucide-react'
 import { useDaemonHealth } from '@/hooks/useDaemonHealth'
 import { useProcesses } from '@/hooks/useProcesses'
 import { useSettings } from '@/hooks/useSettings'
@@ -24,6 +24,7 @@ import ProcessDetailPage from '@/pages/ProcessDetailPage'
 import SettingsPage from '@/pages/SettingsPage'
 import AnalyticsPage from '@/pages/AnalyticsPage'
 import LogLibraryPage from '@/pages/LogLibraryPage'
+import LogVolumePage from '@/pages/LogVolumePage'
 import NotificationsPage from '@/pages/NotificationsPage'
 import PortFinderPage from '@/pages/PortFinderPage'
 import type { ProcessInfo } from '@/types'
@@ -64,6 +65,14 @@ function Layout({ onLock }: { onLock: () => void }) {
   const closeAi = () => setAiOpen(false)
 
   const connected = error === null
+
+  // @group BusinessLogic > Update : Check for new version once on initial load
+  const [updateAvailable, setUpdateAvailable] = useState(false)
+  useEffect(() => {
+    api.checkUpdate().then(info => {
+      if (!info.up_to_date && info.download_url) setUpdateAvailable(true)
+    }).catch(() => {})
+  }, [])
 
   // @group BusinessLogic > SidebarList : Active processes only (running/watching/sleeping/starting)
   const activeProcesses = processes.filter(p =>
@@ -178,6 +187,7 @@ function Layout({ onLock }: { onLock: () => void }) {
 
           <div style={{ height: 4 }} />
           <NavBtn to="/logs" icon={ScrollText} label="Log Library" active={location.pathname === '/logs'} />
+          <NavBtn to="/log-volume" icon={BarChart2} label="Log Volume" active={location.pathname === '/log-volume'} />
 
           {/* Tools section */}
           <div style={{
@@ -219,7 +229,7 @@ function Layout({ onLock }: { onLock: () => void }) {
 
         {/* Footer */}
         <div style={{ padding: '10px 12px', borderTop: '1px solid var(--color-border)', display: 'flex', flexDirection: 'column', gap: 6 }}>
-          <NavBtn to="/settings" icon={Settings} label="Settings" active={location.pathname === '/settings'} />
+          <NavBtnBadge to="/settings" icon={Settings} label="Settings" active={location.pathname === '/settings'} badge={updateAvailable} />
           <div style={{ display: 'flex', gap: 6 }}>
             <SidebarBtn label="Save" onClick={handleSave} />
             <SidebarBtn label="Lock" onClick={onLock} />
@@ -240,6 +250,7 @@ function Layout({ onLock }: { onLock: () => void }) {
           <Route path="/cron-jobs" element={<CronJobsPage processes={processes} reload={reload} settings={settings} />} />
           <Route path="/cron-jobs/new" element={<CreateCronJobPage onDone={() => { reload(); navigate('/cron-jobs') }} settings={settings} />} />
           <Route path="/logs" element={<LogLibraryPage processes={processes} reload={reload} />} />
+          <Route path="/log-volume" element={<LogVolumePage processes={processes} />} />
           <Route path="/notifications" element={<NotificationsPage />} />
           <Route path="/ports" element={<PortFinderPage />} />
           <Route path="/settings" element={<SettingsPage settings={settings} onUpdate={updateSettings} onReset={resetToDefaults} />} />
@@ -307,6 +318,35 @@ function NavBtn({ to, icon: Icon, label, active }: { to: string; icon: LucideIco
     >
       <Icon size={14} />
       {label}
+    </Link>
+  )
+}
+
+// @group BusinessLogic > NavBtnBadge : Sidebar nav link with optional orange dot badge (e.g. update available)
+function NavBtnBadge({ to, icon: Icon, label, active, badge }: { to: string; icon: LucideIcon; label: string; active: boolean; badge?: boolean }) {
+  return (
+    <Link to={to} style={{
+      display: 'flex', alignItems: 'center', gap: 9,
+      padding: '7px 16px', fontSize: 13,
+      color: active ? 'var(--color-primary)' : 'var(--color-foreground)',
+      textDecoration: 'none', fontWeight: active ? 600 : 500,
+      background: active ? 'var(--color-accent)' : 'transparent',
+      borderLeft: active ? '2px solid var(--color-primary)' : '2px solid transparent',
+      position: 'relative',
+    }}
+      onMouseEnter={e => { if (!active) e.currentTarget.style.background = 'var(--color-accent)' }}
+      onMouseLeave={e => { if (!active) e.currentTarget.style.background = 'transparent' }}
+    >
+      <Icon size={14} />
+      {label}
+      {badge && (
+        <span style={{
+          width: 7, height: 7, borderRadius: '50%',
+          background: '#f97316',
+          marginLeft: 2, flexShrink: 0,
+          display: 'inline-block',
+        }} title="Update available" />
+      )}
     </Link>
   )
 }
