@@ -1,7 +1,8 @@
 // @group APIEndpoints : All fetch calls to the alter daemon REST API
 
-import type { CronRun, DaemonHealth, EnvFileEntry, LogAlertOverride, LogAlertStore, LogLine, LogStatsBucket, MetricSample, NotificationConfig, NotificationsStore, ProcessInfo, ScriptInfo, StartProcessBody, UpdateInfo } from '@/types'
+import type { CronRun, DaemonHealth, EnvFileEntry, GitInfo, GitPullResult, LogAlertOverride, LogAlertStore, LogLine, LogStatsBucket, MetricSample, NotificationConfig, NotificationsStore, ProcessInfo, ScriptInfo, StartProcessBody, TunnelEntry, TunnelProvider, TunnelSettings, UpdateInfo } from '@/types'
 import { clearSessionToken, getSessionToken } from '@/lib/auth'
+import { getActiveServer, serverBaseUrl } from '@/lib/servers'
 
 // @group Types > AI : Chat message and request types (mirrored from Rust models/ai.rs)
 export interface AiChatMessage {
@@ -45,7 +46,7 @@ export interface AiModelInfo {
   summary: string
 }
 
-const BASE = '/api/v1'
+function getBase(): string { return serverBaseUrl(getActiveServer()) }
 
 // @group Authentication : Attach Bearer token to every request; redirect to login on 401
 function authHeaders(): Record<string, string> {
@@ -54,7 +55,7 @@ function authHeaders(): Record<string, string> {
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`${BASE}${path}`, {
+  const res = await fetch(`${getBase()}${path}`, {
     ...init,
     headers: {
       'Content-Type': 'application/json',
@@ -113,6 +114,9 @@ export const api = {
   deleteProcess: (id: string): Promise<void> =>
     request(`/processes/${id}`, { method: 'DELETE' }),
 
+  cloneProcess: (id: string, name?: string): Promise<ProcessInfo> =>
+    request(`/processes/${id}/clone`, { method: 'POST', body: JSON.stringify(name ? { name } : {}) }),
+
   updateProcess: (id: string, body: StartProcessBody): Promise<ProcessInfo> =>
     request(`/processes/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
 
@@ -121,6 +125,9 @@ export const api = {
 
   openTerminal: (id: string): Promise<void> =>
     request(`/processes/${id}/terminal`, { method: 'POST' }),
+
+  openFolder: (path: string): Promise<void> =>
+    request(`/system/open-folder`, { method: 'POST', body: JSON.stringify({ path }) }),
 
   // @group APIEndpoints > Metrics : Rolling CPU + memory history for a process
   getMetricsHistory: (id: string): Promise<{ samples: MetricSample[] }> =>
@@ -186,7 +193,7 @@ export const api = {
   streamLogs: (id: string): EventSource => {
     const token = getSessionToken()
     const qs = token ? `?token=${encodeURIComponent(token)}` : ''
-    return new EventSource(`${BASE}/processes/${id}/logs/stream${qs}`)
+    return new EventSource(`${getBase()}/processes/${id}/logs/stream${qs}`)
   },
 
   // @group APIEndpoints > Scripts
@@ -205,7 +212,7 @@ export const api = {
   runScript: (name: string): EventSource => {
     const token = getSessionToken()
     const qs = token ? `?token=${encodeURIComponent(token)}` : ''
-    return new EventSource(`${BASE}/scripts/${name}/run${qs}`)
+    return new EventSource(`${getBase()}/scripts/${name}/run${qs}`)
   },
 
   // @group APIEndpoints > Notifications
@@ -227,6 +234,13 @@ export const api = {
   // @group APIEndpoints > System
   getHealth: (): Promise<DaemonHealth> =>
     request('/system/health'),
+
+  getSystemStats: (): Promise<{
+    cpu_percent: number
+    ram_used_bytes: number
+    ram_total_bytes: number
+    gpu: { name: string; utilization_percent: number; vram_used_bytes: number; vram_total_bytes: number } | null
+  }> => request('/system/stats'),
 
   getSystemPaths: (): Promise<{ data_dir: string; log_dir: string }> =>
     request('/system/paths'),
@@ -284,7 +298,7 @@ export const api = {
     const abort = new AbortController()
     ;(async () => {
       try {
-        const res = await fetch(`${BASE}/ai/chat`, {
+        const res = await fetch(`${getBase()}/ai/chat`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(req),
@@ -333,7 +347,7 @@ export const api = {
     passkeys_count: number
     pin_configured: boolean
     lock_timeout_mins: number | null
-  }> => fetch(`${BASE}/auth/status`).then(r => r.json()),
+  }> => fetch(`${getBase()}/auth/status`).then(r => r.json()),
 
   // @group APIEndpoints > Auth : First-time password setup
   authSetup: (password: string): Promise<{ session_token: string; expires_at: string }> =>
@@ -430,4 +444,56 @@ export const api = {
   // @group APIEndpoints > Update : Download and apply the update, then restart daemon
   applyUpdate: (downloadUrl: string): Promise<{ success: boolean; message: string }> =>
     request('/system/update/apply', { method: 'POST', body: JSON.stringify({ download_url: downloadUrl }) }),
+
+  // @group APIEndpoints > Git : Get git repo info (branch, SHA, dirty, ahead/behind) for a process
+  getProcessGit: (id: string): Promise<GitInfo> =>
+    request(`/processes/${id}/git`),
+
+  // @group APIEndpoints > Git : git pull + install deps + restart for a process
+  gitPull: (id: string): Promise<GitPullResult> =>
+    request(`/processes/${id}/git/pull`, { method: 'POST' }),
+
+  // @group APIEndpoints > Tunnels : List all active tunnels
+  getTunnels: (): Promise<{ tunnels: TunnelEntry[] }> =>
+    request('/tunnels'),
+
+  // @group APIEndpoints > Tunnels : Create a tunnel for a port
+  createTunnel: (body: {
+    port: number
+    process_name?: string | null
+    process_id?: string | null
+    provider?: TunnelProvider | null
+  }): Promise<{ tunnel?: TunnelEntry; error?: string }> =>
+    request('/tunnels', { method: 'POST', body: JSON.stringify(body) }),
+
+  // @group APIEndpoints > Tunnels : Stop a running tunnel (keeps it in the list as stopped)
+  stopTunnel: (id: string): Promise<{ success: boolean; error?: string }> =>
+    request(`/tunnels/${id}/stop`, { method: 'POST' }),
+
+  // @group APIEndpoints > Tunnels : Remove a tunnel entry from the list entirely (stops first if running)
+  removeTunnel: (id: string): Promise<{ success: boolean; error?: string }> =>
+    request(`/tunnels/${id}`, { method: 'DELETE' }),
+
+  // @group APIEndpoints > TunnelSettings : Get tunnel provider configuration
+  getTunnelSettings: (): Promise<TunnelSettings> =>
+    request('/tunnels/settings'),
+
+  // @group APIEndpoints > TunnelSettings : Save tunnel provider configuration
+  updateTunnelSettings: (settings: TunnelSettings): Promise<{ success: boolean; error?: string }> =>
+    request('/tunnels/settings', { method: 'PUT', body: JSON.stringify(settings) }),
+
+  // @group APIEndpoints > TunnelSettings : Test whether a provider binary is installed
+  testTunnelProvider: (provider: TunnelProvider): Promise<{ ok: boolean; message: string }> =>
+    request('/tunnels/settings/test', { method: 'POST', body: JSON.stringify({ provider }) }),
+
+  // @group APIEndpoints > TunnelSettings : Install a provider binary via system package manager
+  installTunnelProvider: (provider: TunnelProvider): Promise<{ ok: boolean; output: string }> =>
+    request('/tunnels/settings/install', { method: 'POST', body: JSON.stringify({ provider }) }),
+
+  // @group APIEndpoints > TunnelSettings : Stream install output as SSE
+  streamInstallProvider: (provider: TunnelProvider): EventSource => {
+    const token = getSessionToken()
+    const qs = new URLSearchParams({ provider, ...(token ? { token } : {}) })
+    return new EventSource(`${getBase()}/tunnels/settings/install/stream?${qs}`)
+  },
 }
