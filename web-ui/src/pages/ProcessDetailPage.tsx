@@ -2,20 +2,22 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
+import { SquareTerminal, Copy, Check, FolderOpen } from 'lucide-react'
 import { api } from '@/lib/api'
 import { useDialog } from '@/hooks/useDialog'
 import { Dialog } from '@/components/Dialog'
 import { EnvFileModal } from '@/components/EnvFileModal'
 import { statusColor } from '@/lib/utils'
 import type { AppSettings } from '@/lib/settings'
-import type { LogLine, LogStatsBucket, ProcessInfo } from '@/types'
+import type { GitInfo, LogLine, LogStatsBucket, MetricSample, ProcessInfo } from '@/types'
 
 interface Props {
   reload: () => void
   settings: AppSettings
+  onOpenTerminal?: (cwd: string, name?: string) => void
 }
 
-export default function ProcessDetailPage({ reload, settings }: Props) {
+export default function ProcessDetailPage({ reload, settings, onOpenTerminal }: Props) {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const [process, setProcess] = useState<ProcessInfo | null>(null)
@@ -26,12 +28,20 @@ export default function ProcessDetailPage({ reload, settings }: Props) {
   const [textFilter, setTextFilter] = useState('')
   const [envOpen, setEnvOpen] = useState(false)
   const [logStats, setLogStats] = useState<LogStatsBucket[]>([])
+  const [metricSamples, setMetricSamples] = useState<MetricSample[]>([])
   const [sliderPos, setSliderPos] = useState(1000) // 0–1000 = 0%–100% of scroll, starts pinned to bottom
   const logEndRef = useRef<HTMLDivElement>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const atBottomRef = useRef(true) // tracks whether user is pinned to bottom
   const esRef = useRef<EventSource | null>(null)
   const { dialogState, confirm, danger, alert, handleConfirm, handleCancel } = useDialog()
+  const [cwdCopied, setCwdCopied] = useState(false)
+
+  // @group BusinessLogic > Git : Git repo info + pull state
+  const [gitInfo, setGitInfo] = useState<GitInfo | null>(null)
+  const [gitStatus, setGitStatus] = useState<'idle' | 'pulling' | 'done' | 'error'>('idle')
+  const [gitLog, setGitLog] = useState<string | null>(null)
+  const [gitLogOpen, setGitLogOpen] = useState(false)
 
   // Load process info + poll at configured interval
   useEffect(() => {
@@ -59,6 +69,23 @@ export default function ProcessDetailPage({ reload, settings }: Props) {
     fetchStats()
     const t = setInterval(fetchStats, 5 * 60 * 1000)
     return () => clearInterval(t)
+  }, [id])
+
+  // @group BusinessLogic > Metrics : Fetch CPU/memory history; refresh every 60 seconds
+  useEffect(() => {
+    if (!id) return
+    function fetchMetrics() {
+      api.getMetricsHistory(id!).then(r => setMetricSamples(r.samples)).catch(() => {})
+    }
+    fetchMetrics()
+    const t = setInterval(fetchMetrics, 60 * 1000)
+    return () => clearInterval(t)
+  }, [id])
+
+  // @group BusinessLogic > Git : Fetch git info once on mount (and after pull)
+  useEffect(() => {
+    if (!id) return
+    api.getProcessGit(id).then(setGitInfo).catch(() => {})
   }, [id])
 
   // Load historical logs + start SSE when dateIndex changes
@@ -163,9 +190,36 @@ export default function ProcessDetailPage({ reload, settings }: Props) {
     navigate('/processes')
     reload()
   }
-  async function doTerminal() {
-    await api.openTerminal(process!.id).catch(() => {})
+  function doTerminal() {
+    if (onOpenTerminal && process?.cwd) {
+      onOpenTerminal(process.cwd, process.name)
+    }
   }
+  async function doGitPull() {
+    setGitStatus('pulling')
+    setGitLog(null)
+    setGitLogOpen(false)
+    try {
+      const result = await api.gitPull(process!.id)
+      const log = [result.pull_output, result.deps_output].filter(Boolean).join('\n\n---\n\n')
+      setGitLog(log)
+      setGitStatus('done')
+      setGitLogOpen(true)
+      // Refresh git info + process after pull
+      api.getProcessGit(process!.id).then(setGitInfo).catch(() => {})
+      setTimeout(reload, 1000)
+    } catch (e: unknown) {
+      setGitLog((e as Error)?.message ?? 'Pull failed')
+      setGitStatus('error')
+      setGitLogOpen(true)
+    }
+  }
+
+  async function doOpenFolder() {
+    if (!process!.cwd) return
+    await api.openFolder(process!.cwd).catch(() => {})
+  }
+
   async function doVSCode() {
     if (!process!.cwd) {
       await alert('No working directory', 'This process has no working directory configured.')
@@ -219,10 +273,190 @@ export default function ProcessDetailPage({ reload, settings }: Props) {
           <ToolBtn label="✎ Edit" onClick={() => navigate(`/edit/${process.id}`)} />
           <ToolBtn label="🔑 .env" onClick={() => setEnvOpen(true)} />
           <ToolBtn label="✕ Delete" onClick={doDelete} danger />
-          <ToolBtn label="⌨ Terminal" onClick={doTerminal} />
+
+          {/* Terminal button group — terminal + copy path + open explorer */}
+          <div style={{ display: 'flex', gap: 0 }}>
+            {/* Open terminal — shows full cwd path on hover */}
+            <button
+              onClick={doTerminal}
+              title={process.cwd ? `Open terminal at:\n${process.cwd}` : 'Open terminal'}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 5,
+                padding: '4px 10px', fontSize: 12, fontWeight: 500,
+                background: 'var(--color-secondary)',
+                border: '1px solid var(--color-border)',
+                borderRight: 'none',
+                borderRadius: '4px 0 0 4px',
+                cursor: 'pointer', color: 'var(--color-foreground)', fontFamily: 'inherit',
+              }}
+              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'var(--color-accent)' }}
+              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'var(--color-secondary)' }}
+            >
+              <SquareTerminal size={12} />
+              Terminal
+            </button>
+
+            {/* Copy path to clipboard */}
+            {process.cwd && (
+              <button
+                onClick={() => {
+                  navigator.clipboard.writeText(process.cwd!).then(() => {
+                    setCwdCopied(true)
+                    setTimeout(() => setCwdCopied(false), 1500)
+                  })
+                }}
+                title={`Copy path: ${process.cwd}`}
+                style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  width: 26, padding: '4px 0',
+                  background: 'var(--color-secondary)',
+                  border: '1px solid var(--color-border)',
+                  borderRight: 'none',
+                  borderRadius: 0,
+                  cursor: 'pointer',
+                  color: cwdCopied ? '#4ade80' : 'var(--color-muted-foreground)',
+                  transition: 'color 0.15s',
+                }}
+                onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'var(--color-accent)' }}
+                onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'var(--color-secondary)' }}
+              >
+                {cwdCopied ? <Check size={11} /> : <Copy size={11} />}
+              </button>
+            )}
+
+            {/* Open in Explorer */}
+            {process.cwd && (
+              <button
+                onClick={doOpenFolder}
+                title={`Open in Explorer: ${process.cwd}`}
+                style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  width: 26, padding: '4px 0',
+                  background: 'var(--color-secondary)',
+                  border: '1px solid var(--color-border)',
+                  borderRadius: '0 4px 4px 0',
+                  cursor: 'pointer',
+                  color: 'var(--color-muted-foreground)',
+                }}
+                onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'var(--color-accent)' }}
+                onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'var(--color-secondary)' }}
+              >
+                <FolderOpen size={11} />
+              </button>
+            )}
+          </div>
+
           <ToolBtn label="VS Code" onClick={doVSCode} />
         </div>
       </div>
+
+      {/* Git strip — shown only for git repos */}
+      {gitInfo?.is_git_repo && (
+        <div style={{
+          padding: '6px 16px', borderBottom: '1px solid var(--color-border)',
+          background: 'var(--color-card)', flexShrink: 0,
+          display: 'flex', flexDirection: 'column', gap: 0,
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+            {/* Branch */}
+            <span style={{
+              display: 'inline-flex', alignItems: 'center', gap: 4,
+              background: 'color-mix(in srgb, var(--color-primary) 12%, transparent)',
+              color: 'var(--color-primary)', borderRadius: 4,
+              padding: '1px 7px', fontSize: 11, fontWeight: 600, fontFamily: 'monospace',
+            }}>
+              ⎇ {gitInfo.branch ?? 'HEAD'}
+            </span>
+
+            {/* Short SHA */}
+            {gitInfo.sha_short && (
+              <code style={{ fontSize: 10, color: 'var(--color-muted-foreground)', fontFamily: 'monospace' }}>
+                {gitInfo.sha_short}
+              </code>
+            )}
+
+            {/* Commit message */}
+            {gitInfo.message && (
+              <span style={{ fontSize: 11, color: 'var(--color-foreground)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {gitInfo.message}
+              </span>
+            )}
+
+            {/* Dirty indicator */}
+            {gitInfo.dirty && (
+              <span style={{ fontSize: 10, color: '#f97316', fontWeight: 600 }} title="Uncommitted changes">✎ modified</span>
+            )}
+
+            {/* Ahead / behind */}
+            {gitInfo.behind > 0 && (
+              <span style={{ fontSize: 10, color: 'var(--color-destructive)', fontWeight: 600 }}>↓{gitInfo.behind} behind</span>
+            )}
+            {gitInfo.ahead > 0 && (
+              <span style={{ fontSize: 10, color: 'var(--color-status-running)', fontWeight: 600 }}>↑{gitInfo.ahead} ahead</span>
+            )}
+
+            {/* Package manager badge */}
+            {gitInfo.pkg_manager !== 'none' && (
+              <span style={{ fontSize: 10, color: 'var(--color-muted-foreground)', background: 'var(--color-secondary)', borderRadius: 3, padding: '1px 5px', fontFamily: 'monospace' }}>
+                {gitInfo.pkg_manager}
+              </span>
+            )}
+
+            <div style={{ flex: 1 }} />
+
+            {/* Pull & Restart button */}
+            <button
+              onClick={gitStatus === 'pulling' ? undefined : doGitPull}
+              disabled={gitStatus === 'pulling'}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 5,
+                padding: '3px 10px', fontSize: 11, fontWeight: 600, borderRadius: 4,
+                border: 'none', cursor: gitStatus === 'pulling' ? 'default' : 'pointer',
+                background: gitStatus === 'done' ? 'var(--color-status-running)'
+                  : gitStatus === 'error' ? 'var(--color-destructive)'
+                  : 'var(--color-primary)',
+                color: '#fff',
+                opacity: gitStatus === 'pulling' ? 0.7 : 1,
+                flexShrink: 0,
+              }}
+            >
+              {gitStatus === 'pulling' ? '⟳ Pulling…'
+                : gitStatus === 'done' ? '✓ Done'
+                : gitStatus === 'error' ? '✕ Failed'
+                : '↓ Pull & Restart'}
+            </button>
+
+            {/* Reset to idle after done/error */}
+            {(gitStatus === 'done' || gitStatus === 'error') && (
+              <button
+                onClick={() => { setGitStatus('idle'); setGitLog(null); setGitLogOpen(false) }}
+                style={{ fontSize: 10, background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-muted-foreground)' }}
+              >✕</button>
+            )}
+          </div>
+
+          {/* Pull output log */}
+          {gitLog && gitLogOpen && (
+            <pre style={{
+              marginTop: 6, fontSize: 10, fontFamily: 'monospace',
+              background: 'var(--color-secondary)', border: '1px solid var(--color-border)',
+              borderRadius: 4, padding: '6px 8px', maxHeight: 140, overflow: 'auto',
+              whiteSpace: 'pre-wrap', wordBreak: 'break-all',
+              color: gitStatus === 'error' ? 'var(--color-destructive)' : 'var(--color-foreground)',
+            }}>
+              {gitLog}
+            </pre>
+          )}
+          {gitLog && !gitLogOpen && (
+            <button
+              onClick={() => setGitLogOpen(true)}
+              style={{ fontSize: 10, marginTop: 3, background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-muted-foreground)', textAlign: 'left', padding: 0 }}
+            >
+              ▸ Show output
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Date navigation + stream filter */}
       <div style={{
@@ -316,10 +550,8 @@ export default function ProcessDetailPage({ reload, settings }: Props) {
         )}
       </div>
 
-      {/* Today's log volume chart — shown only when data is available */}
-      {logStats.length > 0 && (
-        <LogVolumeChart buckets={logStats} />
-      )}
+      {/* Unified collapsible metrics panel */}
+      <MetricsPanel buckets={logStats} samples={metricSamples} />
 
       {/* Log output */}
       <div ref={scrollRef} onScroll={handleLogScroll} style={{ flex: 1, overflow: 'auto', padding: '10px 16px', background: 'var(--color-background)' }}>
@@ -388,124 +620,260 @@ const navBtnStyle: React.CSSProperties = {
   color: 'var(--color-foreground)',
 }
 
-// @group BusinessLogic > LogVolumeChart : Compact full-day stacked bar chart of stdout/stderr counts
-function LogVolumeChart({ buckets }: { buckets: LogStatsBucket[] }) {
-  const [filter, setFilter] = useState<'both' | 'stdout' | 'stderr'>('both')
+// @group Utilities : Format bytes as human-readable string
+function fmtBytes(bytes: number): string {
+  if (bytes >= 1024 ** 3) return `${(bytes / 1024 ** 3).toFixed(1)} GB`
+  if (bytes >= 1024 ** 2) return `${(bytes / 1024 ** 2).toFixed(1)} MB`
+  if (bytes >= 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  return `${bytes} B`
+}
+
+// @group BusinessLogic > MetricsPanel : Collapsible panel — shows live stats in header, expands to tabbed charts
+function MetricsPanel({ buckets, samples }: {
+  buckets: LogStatsBucket[]
+  samples: MetricSample[]
+}) {
+  const [open, setOpen] = useState(false)
+  const [tab, setTab] = useState<'logs' | 'cpu' | 'mem'>('logs')
 
   const totalOut = buckets.reduce((s, b) => s + b.stdout_count, 0)
   const totalErr = buckets.reduce((s, b) => s + b.stderr_count, 0)
 
+  const todayMidnight = new Date(); todayMidnight.setHours(0, 0, 0, 0)
+  const todaySamples = samples.filter(s => new Date(s.timestamp).getTime() >= todayMidnight.getTime())
+  const latest = todaySamples[todaySamples.length - 1]
+
+  const hasCpu = latest != null
+  const hasMem = latest != null
+  const hasLogs = buckets.length > 0
+
+  const hasAny = hasCpu || hasMem || hasLogs
+  if (!hasAny) return null
+
+  return (
+    <div style={{ borderBottom: '1px solid var(--color-border)', background: 'var(--color-card)', flexShrink: 0 }}>
+      {/* Collapsed header — always visible, click to toggle */}
+      <button
+        onClick={() => setOpen(o => !o)}
+        style={{
+          width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          padding: '5px 16px', background: 'transparent', border: 'none', cursor: 'pointer',
+          gap: 12,
+        }}
+      >
+        <span style={{ fontSize: 10, fontWeight: 600, color: 'var(--color-muted-foreground)', letterSpacing: '0.05em', textTransform: 'uppercase', flexShrink: 0 }}>
+          Metrics
+        </span>
+        {/* Live stats pills */}
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center', flex: 1 }}>
+          {hasCpu && (
+            <span style={{ fontSize: 11, fontVariantNumeric: 'tabular-nums', color: 'var(--color-primary)' }}>
+              CPU {latest!.cpu_percent.toFixed(1)}%
+            </span>
+          )}
+          {hasMem && (
+            <span style={{ fontSize: 11, fontVariantNumeric: 'tabular-nums', color: '#a78bfa' }}>
+              {fmtBytes(latest!.memory_bytes)}
+            </span>
+          )}
+          {hasLogs && (
+            <span style={{ fontSize: 11, fontVariantNumeric: 'tabular-nums', color: 'var(--color-muted-foreground)' }}>
+              <span style={{ color: 'var(--color-status-running)' }}>{totalOut}</span>
+              {' / '}
+              <span style={{ color: 'var(--color-status-crashed)' }}>{totalErr}</span>
+              {' lines today'}
+            </span>
+          )}
+        </div>
+        <span style={{ fontSize: 11, color: 'var(--color-muted-foreground)', transition: 'transform 0.15s', display: 'inline-block', transform: open ? 'rotate(180deg)' : 'none' }}>▾</span>
+      </button>
+
+      {/* Expanded charts area */}
+      {open && (
+        <div style={{ padding: '0 16px 10px' }}>
+          {/* Tab switcher */}
+          <div style={{ display: 'flex', gap: 2, marginBottom: 8, background: 'var(--color-background)', borderRadius: 6, padding: 2, border: '1px solid var(--color-border)', width: 'fit-content' }}>
+            {([['logs', 'Log Volume'], ['cpu', 'CPU'], ['mem', 'Memory']] as const).map(([t, label]) => (
+              <button key={t} onClick={() => setTab(t)} style={{
+                padding: '3px 12px', fontSize: 11, fontWeight: 500, borderRadius: 4,
+                border: 'none', cursor: 'pointer', transition: 'background 0.15s',
+                background: tab === t ? 'var(--color-primary)' : 'transparent',
+                color: tab === t ? 'var(--color-primary-foreground)' : 'var(--color-muted-foreground)',
+              }}>
+                {label}
+              </button>
+            ))}
+          </div>
+
+          {tab === 'logs' && hasLogs && <LogVolumeContent buckets={buckets} />}
+          {tab === 'cpu' && hasCpu && <CpuContent samples={todaySamples} />}
+          {tab === 'mem' && hasMem && <MemContent samples={todaySamples} />}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// @group BusinessLogic > MetricsPanel : Log volume bar chart content
+function LogVolumeContent({ buckets }: { buckets: LogStatsBucket[] }) {
+  const [filter, setFilter] = useState<'both' | 'stdout' | 'stderr'>('both')
+  const totalOut = buckets.reduce((s, b) => s + b.stdout_count, 0)
+  const totalErr = buckets.reduce((s, b) => s + b.stderr_count, 0)
   const maxCount = Math.max(...buckets.map(b => {
     if (filter === 'stdout') return b.stdout_count
     if (filter === 'stderr') return b.stderr_count
     return b.stdout_count + b.stderr_count
   }), 1)
-
   const slots = buildDaySlots(buckets)
+  const W = 800, H = 48
+  const todayMidnight = new Date(); todayMidnight.setHours(0, 0, 0, 0)
+  const nowX = ((Date.now() - todayMidnight.getTime()) / (24 * 60 * 60 * 1000)) * W
+  const n = slots.length
+  const barW = Math.max(1, (W / n) - 0.5)
 
   return (
-    <div style={{
-      borderBottom: '1px solid var(--color-border)',
-      background: 'var(--color-card)',
-      padding: '6px 16px 8px',
-      flexShrink: 0,
-    }}>
-      {/* Header row */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 5 }}>
-        <span style={{ color: 'var(--color-muted-foreground)', fontWeight: 600, letterSpacing: '0.05em', textTransform: 'uppercase', fontSize: 10 }}>
-          Log Volume · Today · 5 min intervals
-        </span>
-
-        {/* Filter toggle */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <div style={{ display: 'flex', gap: 2, background: 'var(--color-background)', borderRadius: 6, padding: 2, border: '1px solid var(--color-border)' }}>
-            {(['both', 'stdout', 'stderr'] as const).map(f => (
-              <button key={f} onClick={() => setFilter(f)} style={{
-                padding: '2px 8px', fontSize: 11, fontWeight: 500, borderRadius: 4,
-                border: 'none', cursor: 'pointer', transition: 'background 0.15s',
-                background: filter === f ? 'var(--color-primary)' : 'transparent',
-                color: filter === f
-                  ? 'var(--color-primary-foreground)'
-                  : f === 'stdout'
-                    ? 'var(--color-status-running)'
-                    : f === 'stderr'
-                      ? 'var(--color-status-crashed)'
-                      : 'var(--color-muted-foreground)',
-              }}>
-                {f === 'both' ? 'Both' : f === 'stdout' ? `Out ${totalOut}` : `Err ${totalErr}`}
-              </button>
-            ))}
-          </div>
+    <>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 5 }}>
+        <span style={{ fontSize: 10, color: 'var(--color-muted-foreground)' }}>5 min intervals · today</span>
+        <div style={{ display: 'flex', gap: 2, background: 'var(--color-background)', borderRadius: 6, padding: 2, border: '1px solid var(--color-border)' }}>
+          {(['both', 'stdout', 'stderr'] as const).map(f => (
+            <button key={f} onClick={() => setFilter(f)} style={{
+              padding: '2px 8px', fontSize: 11, fontWeight: 500, borderRadius: 4,
+              border: 'none', cursor: 'pointer', transition: 'background 0.15s',
+              background: filter === f ? 'var(--color-primary)' : 'transparent',
+              color: filter === f ? 'var(--color-primary-foreground)'
+                : f === 'stdout' ? 'var(--color-status-running)'
+                : f === 'stderr' ? 'var(--color-status-crashed)'
+                : 'var(--color-muted-foreground)',
+            }}>
+              {f === 'both' ? 'Both' : f === 'stdout' ? `Out ${totalOut}` : `Err ${totalErr}`}
+            </button>
+          ))}
         </div>
       </div>
+      <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', height: H, display: 'block' }}>
+        <line x1={0} y1={H / 2} x2={W} y2={H / 2} stroke="var(--color-border)" strokeWidth={0.5} strokeDasharray="2 4" />
+        <line x1={nowX} y1={0} x2={nowX} y2={H} stroke="var(--color-muted-foreground)" strokeWidth={0.75} strokeOpacity={0.35} />
+        {slots.map((s, i) => {
+          if (s.isFuture) return null
+          const x = i * (W / n)
+          const showOut = filter === 'both' || filter === 'stdout'
+          const showErr = filter === 'both' || filter === 'stderr'
+          const outH = showOut ? (s.stdout_count / maxCount) * H : 0
+          const errH = showErr ? (s.stderr_count / maxCount) * H : 0
+          const totalH = outH + errH
+          if (totalH < 0.5) return null
+          return (
+            <g key={i}>
+              {errH > 0.5 && <rect x={x} y={H - totalH} width={barW} height={errH} fill="var(--color-status-crashed)" fillOpacity={0.8} />}
+              {outH > 0.5 && <rect x={x} y={H - outH} width={barW} height={outH} fill="var(--color-status-running)" fillOpacity={0.8} />}
+            </g>
+          )
+        })}
+      </svg>
+      <TimeAxis nowX={nowX} W={W} />
+    </>
+  )
+}
 
-      {/* SVG bar chart */}
-      <DayBarChart slots={slots} maxCount={maxCount} filter={filter} />
+// @group BusinessLogic > MetricsPanel : CPU line chart content
+function CpuContent({ samples }: { samples: MetricSample[] }) {
+  const W = 800, H = 60
+  const todayMidnight = new Date(); todayMidnight.setHours(0, 0, 0, 0)
+  const startMs = todayMidnight.getTime()
+  const dayMs = 24 * 60 * 60 * 1000
+  const nowX = ((Date.now() - startMs) / dayMs) * W
+  function toX(ts: string) { return ((new Date(ts).getTime() - startMs) / dayMs) * W }
+  const pts = samples.map(s => `${toX(s.timestamp).toFixed(1)},${(H - (Math.min(s.cpu_percent, 100) / 100) * H).toFixed(1)}`).join(' ')
+  const fill = samples.length ? `${toX(samples[0].timestamp).toFixed(1)},${H} ${pts} ${toX(samples[samples.length-1].timestamp).toFixed(1)},${H}` : ''
+  const peak = Math.max(...samples.map(s => s.cpu_percent), 0)
+  return (
+    <>
+      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: 'var(--color-muted-foreground)', marginBottom: 4 }}>
+        <span>1 min samples · today</span>
+        <span>peak {peak.toFixed(1)}%</span>
+      </div>
+      <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', height: H, display: 'block' }}>
+        <defs>
+          <linearGradient id="cpuFill" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="var(--color-primary)" stopOpacity="0.25" />
+            <stop offset="100%" stopColor="var(--color-primary)" stopOpacity="0.02" />
+          </linearGradient>
+        </defs>
+        <line x1={0} y1={H / 2} x2={W} y2={H / 2} stroke="var(--color-border)" strokeWidth={0.5} strokeDasharray="2 4" />
+        <line x1={nowX} y1={0} x2={nowX} y2={H} stroke="var(--color-primary)" strokeWidth={0.75} strokeOpacity={0.35} />
+        {fill && <polygon points={fill} fill="url(#cpuFill)" />}
+        {pts && <polyline points={pts} fill="none" stroke="var(--color-primary)" strokeWidth={1.5} strokeLinejoin="round" />}
+      </svg>
+      <TimeAxis nowX={nowX} W={W} />
+    </>
+  )
+}
 
-      {/* Time axis labels */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: 'var(--color-muted-foreground)', marginTop: 3 }}>
-        <span>00:00</span>
-        <span>06:00</span>
-        <span>12:00</span>
-        <span>18:00</span>
-        <span>now</span>
+// @group BusinessLogic > MetricsPanel : Memory line chart content
+function MemContent({ samples }: { samples: MetricSample[] }) {
+  const W = 800, H = 60
+  const todayMidnight = new Date(); todayMidnight.setHours(0, 0, 0, 0)
+  const startMs = todayMidnight.getTime()
+  const dayMs = 24 * 60 * 60 * 1000
+  const nowX = ((Date.now() - startMs) / dayMs) * W
+  function toX(ts: string) { return ((new Date(ts).getTime() - startMs) / dayMs) * W }
+  const maxMem = Math.max(...samples.map(s => s.memory_bytes), 1)
+  const pts = samples.map(s => `${toX(s.timestamp).toFixed(1)},${(H - (s.memory_bytes / maxMem) * H).toFixed(1)}`).join(' ')
+  const fill = samples.length ? `${toX(samples[0].timestamp).toFixed(1)},${H} ${pts} ${toX(samples[samples.length-1].timestamp).toFixed(1)},${H}` : ''
+  return (
+    <>
+      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: 'var(--color-muted-foreground)', marginBottom: 4 }}>
+        <span>1 min samples · today</span>
+        <span>peak {fmtBytes(maxMem)}</span>
+      </div>
+      <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', height: H, display: 'block' }}>
+        <defs>
+          <linearGradient id="memFill" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#a78bfa" stopOpacity="0.25" />
+            <stop offset="100%" stopColor="#a78bfa" stopOpacity="0.02" />
+          </linearGradient>
+        </defs>
+        <line x1={0} y1={H / 2} x2={W} y2={H / 2} stroke="var(--color-border)" strokeWidth={0.5} strokeDasharray="2 4" />
+        <line x1={nowX} y1={0} x2={nowX} y2={H} stroke="#a78bfa" strokeWidth={0.75} strokeOpacity={0.35} />
+        {fill && <polygon points={fill} fill="url(#memFill)" />}
+        {pts && <polyline points={pts} fill="none" stroke="#a78bfa" strokeWidth={1.5} strokeLinejoin="round" />}
+      </svg>
+      <TimeAxis nowX={nowX} W={W} />
+    </>
+  )
+}
+
+// @group Utilities > MetricsPanel : Shared time axis — fixed 6-hr grid + floating local-time "now" label
+function TimeAxis({ nowX, W = 800 }: { nowX: number; W?: number }) {
+  const nowPct = (Math.min(Math.max(nowX, 0), W) / W) * 100
+  const d = new Date()
+  const nowLabel = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+  return (
+    <div style={{ position: 'relative', marginTop: 2 }}>
+      {/* Floating current-time label pinned at the actual nowX position */}
+      <div style={{ position: 'relative', height: 13 }}>
+        <span style={{
+          position: 'absolute',
+          left: `${nowPct}%`,
+          transform: 'translateX(-50%)',
+          fontSize: 9,
+          fontWeight: 700,
+          color: 'var(--color-primary)',
+          whiteSpace: 'nowrap',
+        }}>
+          {nowLabel}
+        </span>
+      </div>
+      {/* Static 6-hour grid ticks — right edge is 24:00, NOT "now" */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: 'var(--color-muted-foreground)' }}>
+        <span>00:00</span><span>06:00</span><span>12:00</span><span>18:00</span><span>24:00</span>
       </div>
     </div>
   )
 }
 
-// @group BusinessLogic > DayBarChart : Pure SVG stacked bar chart spanning all 5-min slots of today
-function DayBarChart({ slots, maxCount, filter }: {
-  slots: Array<{ stdout_count: number; stderr_count: number; isFuture: boolean }>
-  maxCount: number
-  filter: 'both' | 'stdout' | 'stderr'
-}) {
-  const W = 800
-  const H = 48
-  const n = slots.length
-  if (n === 0) return null
-
-  const barW = Math.max(1, (W / n) - 0.5)
-
-  return (
-    <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', height: H, display: 'block' }}>
-      {/* 50% guide */}
-      <line x1={0} y1={H / 2} x2={W} y2={H / 2}
-        stroke="var(--color-border)" strokeWidth={0.5} strokeDasharray="2 4" />
-
-      {slots.map((s, i) => {
-        if (s.isFuture) return null
-        const x = i * (W / n)
-
-        const showOut = filter === 'both' || filter === 'stdout'
-        const showErr = filter === 'both' || filter === 'stderr'
-
-        const outH = showOut ? (s.stdout_count / maxCount) * H : 0
-        const errH = showErr ? (s.stderr_count / maxCount) * H : 0
-        const totalH = outH + errH
-
-        if (totalH < 0.5) return null
-
-        return (
-          <g key={i}>
-            {/* stderr stacked on top */}
-            {errH > 0.5 && (
-              <rect x={x} y={H - totalH} width={barW} height={errH}
-                fill="var(--color-status-crashed)" fillOpacity={0.8} />
-            )}
-            {/* stdout at the bottom */}
-            {outH > 0.5 && (
-              <rect x={x} y={H - outH} width={barW} height={outH}
-                fill="var(--color-status-running)" fillOpacity={0.8} />
-            )}
-          </g>
-        )
-      })}
-    </svg>
-  )
-}
-
-// @group Utilities > LogVolumeChart : Build a full 288-slot grid for today, merging actual bucket data
+// @group Utilities > MetricsPanel : Build a full 288-slot grid for today, merging actual bucket data
 function buildDaySlots(buckets: LogStatsBucket[]) {
   const BUCKET_MS = 5 * 60 * 1000
   const now = Date.now()
