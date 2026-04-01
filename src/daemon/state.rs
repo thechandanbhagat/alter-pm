@@ -7,7 +7,10 @@ use crate::config::notification_store::NotificationsStore;
 use crate::config::telegram_config::TelegramConfig;
 use crate::models::cron_run::CronRun;
 use crate::models::process_info::ProcessInfo;
+use crate::models::tunnel::TunnelSettings;
 use crate::process::manager::ProcessManager;
+use crate::terminal::TerminalManager;
+use crate::tunnel::TunnelManager;
 use anyhow::Result;
 use chrono::{DateTime, Utc};
 use dashmap::DashMap;
@@ -62,6 +65,14 @@ pub struct DaemonState {
 
     // @group Configuration : Telegram bot config — guarded for hot reload
     pub telegram: Arc<RwLock<TelegramConfig>>,
+
+    // @group BusinessLogic : Tunnel manager — tracks active cloudflared/ngrok/custom subprocesses
+    pub tunnel_manager: TunnelManager,
+    // @group Configuration : Tunnel provider settings — guarded for hot reload
+    pub tunnel_settings: Arc<RwLock<TunnelSettings>>,
+
+    // @group BusinessLogic : Terminal manager — tracks active PTY/WebSocket terminal sessions
+    pub terminal_manager: TerminalManager,
 }
 
 impl DaemonState {
@@ -71,6 +82,7 @@ impl DaemonState {
         let auth_cfg = crate::config::auth_config::load();
 
         let telegram_cfg = crate::config::telegram_config::load();
+        let tunnel_cfg = crate::config::tunnel_config::load();
 
         Self {
             manager: ProcessManager::new(Arc::clone(&notifications)),
@@ -81,6 +93,9 @@ impl DaemonState {
             sessions: Arc::new(DashMap::new()),
             auth: Arc::new(RwLock::new(auth_cfg)),
             telegram: Arc::new(RwLock::new(telegram_cfg)),
+            tunnel_manager: TunnelManager::new(),
+            tunnel_settings: Arc::new(RwLock::new(tunnel_cfg)),
+            terminal_manager: TerminalManager::new(),
         }
     }
 

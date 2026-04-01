@@ -31,11 +31,13 @@ function ChannelFields({
   setWebhook,
   setSlack,
   setTeams,
+  setDiscord,
 }: {
   config: NotificationConfig
   setWebhook: (p: Partial<NonNullable<NotificationConfig['webhook']>>) => void
   setSlack:   (p: Partial<NonNullable<NotificationConfig['slack']>>)   => void
   setTeams:   (p: Partial<NonNullable<NotificationConfig['teams']>>)   => void
+  setDiscord: (p: Partial<NonNullable<NotificationConfig['discord']>>) => void
 }) {
   const channels = [
     {
@@ -69,6 +71,16 @@ function ChannelFields({
         { label: 'Webhook URL', type: 'url' as const, placeholder: 'https://outlook.office.com/webhook/…',
           value: config.teams?.webhook_url ?? '',
           onChange: (v: string) => setTeams({ webhook_url: v }) },
+      ],
+    },
+    {
+      label: 'Discord',
+      enabled: config.discord?.enabled ?? false,
+      onToggle: (v: boolean) => setDiscord({ enabled: v }),
+      fields: [
+        { label: 'Webhook URL', type: 'url' as const, placeholder: 'https://discord.com/api/webhooks/…',
+          value: config.discord?.webhook_url ?? '',
+          onChange: (v: string) => setDiscord({ webhook_url: v }) },
       ],
     },
   ]
@@ -168,6 +180,8 @@ export function ProcessNotifModal({ process, onClose }: { process: ProcessInfo; 
     setConfig(c => ({ ...c, slack: { webhook_url: '', enabled: false, ...c.slack, ...patch } }))
   const setTeams   = (patch: Partial<NonNullable<NotificationConfig['teams']>>) =>
     setConfig(c => ({ ...c, teams: { webhook_url: '', enabled: false, ...c.teams, ...patch } }))
+  const setDiscord = (patch: Partial<NonNullable<NotificationConfig['discord']>>) =>
+    setConfig(c => ({ ...c, discord: { webhook_url: '', enabled: false, ...c.discord, ...patch } }))
 
   async function handleSave() {
     setSaving(true); setError('')
@@ -206,7 +220,7 @@ export function ProcessNotifModal({ process, onClose }: { process: ProcessInfo; 
         </div>
         <div style={{ padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 12 }}>
           <EventPanels config={config} setEvents={setEvents} showCronEvents={!!process.cron} />
-          <ChannelFields config={config} setWebhook={setWebhook} setSlack={setSlack} setTeams={setTeams} />
+          <ChannelFields config={config} setWebhook={setWebhook} setSlack={setSlack} setTeams={setTeams} setDiscord={setDiscord} />
           {error && <div style={{ fontSize: 12, color: 'var(--color-destructive)' }}>{error}</div>}
         </div>
         <div style={{ padding: '10px 16px', borderTop: '1px solid var(--color-border)', display: 'flex', gap: 8, alignItems: 'center' }}>
@@ -248,6 +262,8 @@ export function NsNotifModal({ ns, onClose }: { ns: string; onClose: () => void 
     setConfig(c => ({ ...c, slack: { webhook_url: '', enabled: false, ...c.slack, ...patch } }))
   const setTeams   = (patch: Partial<NonNullable<NotificationConfig['teams']>>) =>
     setConfig(c => ({ ...c, teams: { webhook_url: '', enabled: false, ...c.teams, ...patch } }))
+  const setDiscord = (patch: Partial<NonNullable<NotificationConfig['discord']>>) =>
+    setConfig(c => ({ ...c, discord: { webhook_url: '', enabled: false, ...c.discord, ...patch } }))
 
   async function handleSave() {
     setSaving(true); setError('')
@@ -281,7 +297,7 @@ export function NsNotifModal({ ns, onClose }: { ns: string; onClose: () => void 
           <>
             <div style={{ padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 12 }}>
               <EventPanels config={config} setEvents={setEvents} showCronEvents />
-              <ChannelFields config={config} setWebhook={setWebhook} setSlack={setSlack} setTeams={setTeams} />
+              <ChannelFields config={config} setWebhook={setWebhook} setSlack={setSlack} setTeams={setTeams} setDiscord={setDiscord} />
               {error && <div style={{ fontSize: 12, color: 'var(--color-destructive)' }}>{error}</div>}
             </div>
             <div style={{ padding: '10px 16px', borderTop: '1px solid var(--color-border)', display: 'flex', gap: 8, alignItems: 'center' }}>

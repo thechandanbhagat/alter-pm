@@ -181,3 +181,100 @@ fn read_merged_logs_for_paths(
     let start = entries.len().saturating_sub(n);
     Ok(entries[start..].to_vec())
 }
+
+// @group UnitTests : parse_log_line and read_last_lines
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Write;
+
+    // @group UnitTests > ParseLogLine : Well-formed disk format splits at "] "
+    #[test]
+    fn test_parse_log_line_valid() {
+        let (ts, content) = parse_log_line("[2026-03-30T12:00:00Z] hello world");
+        assert_eq!(ts,      "2026-03-30T12:00:00Z");
+        assert_eq!(content, "hello world");
+    }
+
+    // @group UnitTests > ParseLogLine : Lines without the bracket prefix are returned as-is
+    #[test]
+    fn test_parse_log_line_no_bracket() {
+        let (ts, content) = parse_log_line("plain log line");
+        assert!(ts.is_empty());
+        assert_eq!(content, "plain log line");
+    }
+
+    // @group UnitTests > ParseLogLine : Empty string returns two empty strings
+    #[test]
+    fn test_parse_log_line_empty() {
+        let (ts, content) = parse_log_line("");
+        assert!(ts.is_empty());
+        assert!(content.is_empty());
+    }
+
+    // @group UnitTests > ParseLogLine : Bracket without closing "] " is treated as no-prefix
+    #[test]
+    fn test_parse_log_line_unclosed_bracket() {
+        let (ts, content) = parse_log_line("[no closing bracket");
+        assert!(ts.is_empty());
+        assert_eq!(content, "[no closing bracket");
+    }
+
+    // @group UnitTests > ParseLogLine : Content after "] " may itself contain brackets
+    #[test]
+    fn test_parse_log_line_content_with_brackets() {
+        let (ts, content) = parse_log_line("[2026-01-01T00:00:00Z] [INFO] server started");
+        assert_eq!(ts,      "2026-01-01T00:00:00Z");
+        assert_eq!(content, "[INFO] server started");
+    }
+
+    // @group UnitTests > ReadLastLines : Non-existent path returns empty vec (no error)
+    #[test]
+    fn test_read_last_lines_missing_file() {
+        let result = read_last_lines(Path::new("/nonexistent/path/to/log.txt"), 10).unwrap();
+        assert!(result.is_empty());
+    }
+
+    // @group UnitTests > ReadLastLines : Returns only the last n lines of a file
+    #[test]
+    fn test_read_last_lines_tail() {
+        let mut tmp = tempfile_in_temp_dir("alter_test_tail.log");
+        for i in 1..=10u32 {
+            writeln!(tmp, "line {i}").unwrap();
+        }
+        let path = tmp_path("alter_test_tail.log");
+        let lines = read_last_lines(&path, 3).unwrap();
+        assert_eq!(lines, vec!["line 8", "line 9", "line 10"]);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    // @group UnitTests > ReadLastLines : Requesting more lines than exist returns all lines
+    #[test]
+    fn test_read_last_lines_more_than_exist() {
+        let mut tmp = tempfile_in_temp_dir("alter_test_all.log");
+        writeln!(tmp, "only line").unwrap();
+        let path = tmp_path("alter_test_all.log");
+        let lines = read_last_lines(&path, 100).unwrap();
+        assert_eq!(lines, vec!["only line"]);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    // @group UnitTests > ReadLastLines : Empty file returns empty vec
+    #[test]
+    fn test_read_last_lines_empty_file() {
+        let _tmp = tempfile_in_temp_dir("alter_test_empty.log");
+        let path = tmp_path("alter_test_empty.log");
+        let lines = read_last_lines(&path, 10).unwrap();
+        assert!(lines.is_empty());
+        let _ = std::fs::remove_file(&path);
+    }
+
+    // @group TestHelpers : Write a named file in the OS temp dir, return the open handle
+    fn tempfile_in_temp_dir(name: &str) -> std::fs::File {
+        std::fs::File::create(tmp_path(name)).unwrap()
+    }
+
+    fn tmp_path(name: &str) -> std::path::PathBuf {
+        std::env::temp_dir().join(name)
+    }
+}

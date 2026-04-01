@@ -1,18 +1,18 @@
 // @group Authentication : Session token management and WebAuthn (passkey) helpers
 
-const SESSION_KEY = 'alter_session_token'
+import { getActiveServer, serverTokenKey } from '@/lib/servers'
 
-// @group Authentication > Session : Read/write/clear the session token in localStorage
+// @group Authentication > Session : Read/write/clear the session token for the active server
 export function getSessionToken(): string | null {
-  return localStorage.getItem(SESSION_KEY)
+  return localStorage.getItem(serverTokenKey(getActiveServer()))
 }
 
 export function setSessionToken(token: string): void {
-  localStorage.setItem(SESSION_KEY, token)
+  localStorage.setItem(serverTokenKey(getActiveServer()), token)
 }
 
 export function clearSessionToken(): void {
-  localStorage.removeItem(SESSION_KEY)
+  localStorage.removeItem(serverTokenKey(getActiveServer()))
 }
 
 export function isAuthenticated(): boolean {

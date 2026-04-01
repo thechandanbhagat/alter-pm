@@ -22,6 +22,19 @@ export interface AppSettings {
 
   // Connection
   daemonUrl: string                // base URL — default http://127.0.0.1:2999
+
+  // UI
+  visibleRowActions: string[]      // which secondary actions show inline in process rows; others go in ⋯
+
+  // Developer
+  showQueryDevtools: boolean       // show React Query devtools panel (dev mode only)
+
+  // Terminal
+  terminalShortcuts: {
+    splitPane: string      // default: ctrl+shift+t
+    duplicateTab: string   // default: alt+t
+    newTab: string         // default: ctrl+t
+  }
 }
 
 // @group Constants : Default settings values
@@ -38,6 +51,16 @@ export const DEFAULT_SETTINGS: AppSettings = {
   logTailLines: 200,
 
   daemonUrl: 'http://127.0.0.1:2999',
+
+  visibleRowActions: ['logs'],
+
+  showQueryDevtools: false,
+
+  terminalShortcuts: {
+    splitPane: 'ctrl+shift+t',
+    duplicateTab: 'alt+t',
+    newTab: 'ctrl+t',
+  },
 }
 
 // @group Utilities > Load : Read and merge settings from localStorage

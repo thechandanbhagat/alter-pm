@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { Bell, Plus, Trash2, Send, Save, ChevronDown, ChevronRight } from 'lucide-react'
+import { DiscordIcon } from '@/components/DiscordIcon'
 import { api } from '@/lib/api'
 import type { NotificationConfig, NotificationEvents, NotificationsStore } from '@/types'
 
@@ -105,6 +106,9 @@ function NotifCard({
 
   const setTeams = (patch: Partial<NonNullable<NotificationConfig['teams']>>) =>
     onChange({ ...config, teams: { webhook_url: '', enabled: false, ...config.teams, ...patch } })
+
+  const setDiscord = (patch: Partial<NonNullable<NotificationConfig['discord']>>) =>
+    onChange({ ...config, discord: { webhook_url: '', enabled: false, ...config.discord, ...patch } })
 
   // @group Utilities > EventCheckbox : Single event toggle checkbox
   function EventCheckbox({ eventKey, label }: { eventKey: keyof NotificationEvents; label: string }) {
@@ -275,6 +279,32 @@ function NotifCard({
                 value={config.teams?.webhook_url ?? ''}
                 onChange={e => setTeams({ webhook_url: e.target.value })}
                 disabled={!config.teams?.enabled}
+              />
+            </div>
+          </div>
+
+          {/* Discord */}
+          <div style={fieldsetStyle}>
+            <label style={{ ...legendStyle, display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
+              <input
+                type="checkbox"
+                checked={config.discord?.enabled ?? false}
+                onChange={e => setDiscord({ enabled: e.target.checked })}
+                style={{ accentColor: '#5865F2', width: 13, height: 13 }}
+              />
+              <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                <DiscordIcon size={13} color="#5865F2" /> Discord
+              </span>
+            </label>
+            <div style={{ marginTop: 10, opacity: config.discord?.enabled ? 1 : 0.5 }}>
+              <span style={labelTextStyle}>Webhook URL</span>
+              <input
+                style={inputStyle}
+                type="url"
+                placeholder="https://discord.com/api/webhooks/…"
+                value={config.discord?.webhook_url ?? ''}
+                onChange={e => setDiscord({ webhook_url: e.target.value })}
+                disabled={!config.discord?.enabled}
               />
             </div>
           </div>

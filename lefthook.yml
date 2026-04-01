@@ -1,0 +1,16 @@
+# lefthook.yml — git hook runner for alter-pm2
+# Activate hooks: cd web-ui && npx lefthook install
+# Docs: https://lefthook.dev/configuration/
+
+pre-commit:
+  parallel: true
+  jobs:
+    # @group Validation : Lint + format staged frontend TS/TSX files
+    - name: lint-staged-ui
+      root: "web-ui/"
+      run: npx lint-staged
+
+    # @group Validation : Check Rust formatting (fails if cargo fmt would change anything)
+    - name: fmt-rust
+      glob: "src/**/*.rs"
+      run: cargo fmt -- --check

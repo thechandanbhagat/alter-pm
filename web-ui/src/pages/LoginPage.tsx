@@ -7,29 +7,72 @@ import { api } from '@/lib/api'
 
 interface LoginPageProps {
   onAuthenticated: () => void
+  subtitle?: string
 }
 
 // @group Authentication > LoginPage : Setup vs login mode
 type Mode = 'loading' | 'setup' | 'login'
 
-export default function LoginPage({ onAuthenticated }: LoginPageProps) {
+export default function LoginPage({ onAuthenticated, subtitle }: LoginPageProps) {
   const [mode, setMode] = useState<Mode>('loading')
   const [passkeysAvailable, setPasskeysAvailable] = useState(false)
+  const [pinConfigured, setPinConfigured] = useState(false)
+  const [usePin, setUsePin] = useState(false)
+  const [pin, setPin] = useState('')
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
 
-  // @group Authentication > LoginPage : Determine whether password has been configured
+  // @group Authentication > LoginPage : Determine whether password / PIN has been configured
   useEffect(() => {
     api.authStatus()
-      .then(({ password_configured, passkeys_count }) => {
+      .then(({ password_configured, passkeys_count, pin_configured }) => {
         setMode(password_configured ? 'login' : 'setup')
         setPasskeysAvailable(passkeys_count > 0 && !!window.PublicKeyCredential)
+        setPinConfigured(!!pin_configured)
+        setUsePin(!!pin_configured)
       })
       .catch(() => setMode('login'))
   }, [])
+
+  // @group Authentication > LoginPage : Keyboard input for PIN numpad
+  useEffect(() => {
+    if (!usePin || mode !== 'login') return
+    function handleKey(e: KeyboardEvent) {
+      if (loading) return
+      if (e.key >= '0' && e.key <= '9') pressDigit(e.key)
+      else if (e.key === 'Backspace') setPin(p => p.slice(0, -1))
+    }
+    window.addEventListener('keydown', handleKey)
+    return () => window.removeEventListener('keydown', handleKey)
+  }, [usePin, mode, loading, pin])
+
+  async function handlePinDigit(digits: string) {
+    if (digits.length !== 4 && digits.length !== 6) return
+    setLoading(true)
+    setError(null)
+    try {
+      const { session_token } = await api.authPinLogin(digits)
+      setSessionToken(session_token)
+      onAuthenticated()
+    } catch {
+      setError('Incorrect PIN')
+      setPin('')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  function pressDigit(d: string) {
+    if (loading || pin.length >= 6) return
+    const next = pin + d
+    setPin(next)
+    if (next.length === 4 || next.length === 6) {
+      setTimeout(() => handlePinDigit(next), 80)
+    }
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -88,41 +131,100 @@ export default function LoginPage({ onAuthenticated }: LoginPageProps) {
     )
   }
 
+  const logo = (
+    <div style={{ textAlign: 'center', marginBottom: 24 }}>
+      <span style={{ fontWeight: 700, fontSize: 28, letterSpacing: '-0.5px', color: 'var(--color-primary)' }}>alter</span>
+      <span style={{ fontSize: 14, color: 'var(--color-muted-foreground)', fontWeight: 500 }}>pm</span>
+      <p style={{ margin: '8px 0 0', fontSize: 13, color: 'var(--color-muted-foreground)' }}>
+        {subtitle ?? (mode === 'setup' ? 'Set a password to secure your dashboard' : 'Sign in to continue')}
+      </p>
+    </div>
+  )
+
+  const errorBanner = error && (
+    <div style={{
+      background: 'color-mix(in srgb, var(--color-destructive) 15%, transparent)',
+      border: '1px solid var(--color-destructive)',
+      borderRadius: 6, padding: '8px 12px',
+      fontSize: 13, color: 'var(--color-destructive)',
+      marginBottom: 16,
+    }}>
+      {error}
+    </div>
+  )
+
+  // @group Authentication > LoginPage : PIN numpad view
+  if (mode === 'login' && usePin) {
+    return (
+      <div style={containerStyle}>
+        <div style={{ ...cardStyle, textAlign: 'center' }}>
+          {logo}
+          {errorBanner}
+
+          {/* PIN dots */}
+          <div style={{ display: 'flex', justifyContent: 'center', gap: 12, marginBottom: 20 }}>
+            {[0, 1, 2, 3, 4, 5].map(i => (
+              <div key={i} style={{
+                width: 12, height: 12, borderRadius: '50%',
+                background: i < pin.length ? 'var(--color-primary)' : 'var(--color-border)',
+                transition: 'background 0.15s',
+                display: pin.length <= 4 && i >= 4 ? 'none' : 'block',
+              }} />
+            ))}
+          </div>
+
+          {/* Numpad */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, maxWidth: 220, margin: '0 auto 20px' }}>
+            {['1','2','3','4','5','6','7','8','9','','0','⌫'].map((d, idx) => (
+              d === '' ? <div key={idx} /> :
+              <button
+                key={idx}
+                onClick={() => d === '⌫' ? setPin(p => p.slice(0, -1)) : pressDigit(d)}
+                disabled={loading}
+                style={{
+                  width: 64, height: 64, borderRadius: 32,
+                  fontSize: d === '⌫' ? 20 : 22, fontWeight: 500,
+                  background: 'var(--color-card)',
+                  border: '1px solid var(--color-border)',
+                  cursor: 'pointer', color: 'var(--color-foreground)',
+                  opacity: loading ? 0.5 : 1,
+                }}
+              >
+                {d}
+              </button>
+            ))}
+          </div>
+
+          {/* Passkey option */}
+          {passkeysAvailable && (
+            <button onClick={handlePasskeyLogin} disabled={loading} style={{ ...passkeyBtnStyle, marginBottom: 12 }}>
+              <Fingerprint size={16} />
+              Sign in with Windows Hello / Passkey
+            </button>
+          )}
+
+          {/* Switch to password */}
+          <button
+            onClick={() => { setUsePin(false); setError(null) }}
+            style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 12, color: 'var(--color-muted-foreground)', textDecoration: 'underline' }}
+          >
+            Use password instead
+          </button>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div style={containerStyle}>
       <div style={cardStyle}>
-        {/* Logo */}
-        <div style={{ textAlign: 'center', marginBottom: 24 }}>
-          <span style={{ fontWeight: 700, fontSize: 28, letterSpacing: '-0.5px', color: 'var(--color-primary)' }}>
-            alter
-          </span>
-          <span style={{ fontSize: 14, color: 'var(--color-muted-foreground)', fontWeight: 500 }}>pm</span>
-          <p style={{ margin: '8px 0 0', fontSize: 13, color: 'var(--color-muted-foreground)' }}>
-            {mode === 'setup' ? 'Set a password to secure your dashboard' : 'Sign in to continue'}
-          </p>
-        </div>
-
-        {/* Error */}
-        {error && (
-          <div style={{
-            background: 'color-mix(in srgb, var(--color-destructive) 15%, transparent)',
-            border: '1px solid var(--color-destructive)',
-            borderRadius: 6, padding: '8px 12px',
-            fontSize: 13, color: 'var(--color-destructive)',
-            marginBottom: 16,
-          }}>
-            {error}
-          </div>
-        )}
+        {logo}
+        {errorBanner}
 
         {/* Passkey button — shown on login if passkeys are registered */}
         {mode === 'login' && passkeysAvailable && (
           <>
-            <button
-              onClick={handlePasskeyLogin}
-              disabled={loading}
-              style={passkeyBtnStyle}
-            >
+            <button onClick={handlePasskeyLogin} disabled={loading} style={passkeyBtnStyle}>
               <Fingerprint size={16} />
               Sign in with Windows Hello / Passkey
             </button>
@@ -148,12 +250,7 @@ export default function LoginPage({ onAuthenticated }: LoginPageProps) {
                 required
                 style={inputStyle}
               />
-              <button
-                type="button"
-                onClick={() => setShowPassword(v => !v)}
-                style={eyeBtnStyle}
-                tabIndex={-1}
-              >
+              <button type="button" onClick={() => setShowPassword(v => !v)} style={eyeBtnStyle} tabIndex={-1}>
                 {showPassword ? <EyeOff size={14} /> : <Eye size={14} />}
               </button>
             </div>
@@ -181,11 +278,25 @@ export default function LoginPage({ onAuthenticated }: LoginPageProps) {
           </button>
         </form>
 
-        <p style={{ marginTop: 16, fontSize: 11, color: 'var(--color-muted-foreground)', textAlign: 'center', lineHeight: 1.5 }}>
-          {mode === 'setup'
-            ? 'This password protects the alter dashboard. The CLI authenticates automatically via a local token.'
-            : 'You can also use the CLI — it authenticates automatically.'}
-        </p>
+        {/* Switch to PIN */}
+        {mode === 'login' && pinConfigured && (
+          <div style={{ marginTop: 14, textAlign: 'center' }}>
+            <button
+              onClick={() => { setUsePin(true); setError(null); setPin('') }}
+              style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 12, color: 'var(--color-muted-foreground)', textDecoration: 'underline' }}
+            >
+              Use PIN instead
+            </button>
+          </div>
+        )}
+
+        {!subtitle && (
+          <p style={{ marginTop: 12, fontSize: 11, color: 'var(--color-muted-foreground)', textAlign: 'center', lineHeight: 1.5 }}>
+            {mode === 'setup'
+              ? 'This password protects the alter dashboard. The CLI authenticates automatically via a local token.'
+              : 'You can also use the CLI — it authenticates automatically.'}
+          </p>
+        )}
       </div>
     </div>
   )

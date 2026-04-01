@@ -1,6 +1,6 @@
 [package]
 name    = "alter"
-version = "0.8.0"
+version = "0.9.0"
 edition = "2021"
 description = "A process manager for your developers — run and manage any application"
 
@@ -14,7 +14,7 @@ path = "src/main.rs"
 
 [dependencies]
 tokio              = { version = "1", features = ["full"] }
-axum               = { version = "0.8", features = ["macros"] }
+axum               = { version = "0.8", features = ["macros", "ws"] }
 tower-http         = { version = "0.6", features = ["cors", "trace"] }
 tokio-stream       = { version = "0.1", features = ["sync"] }
 clap               = { version = "4", features = ["derive", "env"] }
@@ -44,6 +44,11 @@ sysinfo            = { version = "0.32", default-features = false, features = ["
 dotenvy = "0.15.7"
 argon2 = "0.5"
 rand   = "0.8"
+portable-pty = "0.8"
+console-subscriber = { version = "0.4", optional = true }
+
+[features]
+tokio-console = ["dep:console-subscriber"]
 
 [target.'cfg(not(windows))'.dependencies]
 libc = "0.2"

@@ -3,6 +3,7 @@ import globals from 'globals'
 import reactHooks from 'eslint-plugin-react-hooks'
 import reactRefresh from 'eslint-plugin-react-refresh'
 import tseslint from 'typescript-eslint'
+import prettierConfig from 'eslint-config-prettier'
 import { defineConfig, globalIgnores } from 'eslint/config'
 
 export default defineConfig([
@@ -14,6 +15,8 @@ export default defineConfig([
       tseslint.configs.recommended,
       reactHooks.configs.flat.recommended,
       reactRefresh.configs.vite,
+      // Must be last — disables ESLint rules that conflict with Prettier
+      prettierConfig,
     ],
     languageOptions: {
       ecmaVersion: 2020,

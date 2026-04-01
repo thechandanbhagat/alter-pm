@@ -4,22 +4,22 @@ use crate::cli::args::DaemonAction;
 use crate::client::daemon_client::DaemonClient;
 use anyhow::Result;
 
-pub async fn run(client: &DaemonClient, action: DaemonAction, port: u16) -> Result<()> {
+pub async fn run(client: &DaemonClient, action: DaemonAction, host: &str, port: u16) -> Result<()> {
     match action {
-        DaemonAction::Start { port: p } => start_daemon(p),
+        DaemonAction::Start { port: p } => start_daemon(host, p),
         DaemonAction::Stop => stop_daemon(client).await,
-        DaemonAction::Restart => restart_daemon(client, port).await,
+        DaemonAction::Restart => restart_daemon(client, host, port).await,
         DaemonAction::Status => status(client).await,
         DaemonAction::Logs => show_logs(),
     }
 }
 
 // @group BusinessLogic > Daemon : Spawn daemon as detached background process and wait for it to bind
-fn start_daemon(port: u16) -> Result<()> {
+fn start_daemon(host: &str, port: u16) -> Result<()> {
     // Check if a real daemon is running — TCP connect + HTTP health check.
     // A zombie socket will accept TCP but won't respond to HTTP, so we treat that as dead.
-    if is_daemon_alive(port) {
-        println!("[alter] daemon is already running on port {port}");
+    if is_daemon_alive(host, port) {
+        println!("[alter] daemon is already running on {host}:{port}");
         return Ok(());
     }
 
@@ -33,8 +33,8 @@ fn start_daemon(port: u16) -> Result<()> {
 
         std::process::Command::new(&exe)
             .arg("--internal-daemon")
-            .arg("--port")
-            .arg(port.to_string())
+            .arg("--host").arg(host)
+            .arg("--port").arg(port.to_string())
             .stdin(std::process::Stdio::null())
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null())
@@ -46,8 +46,8 @@ fn start_daemon(port: u16) -> Result<()> {
     {
         std::process::Command::new(&exe)
             .arg("--internal-daemon")
-            .arg("--port")
-            .arg(port.to_string())
+            .arg("--host").arg(host)
+            .arg("--port").arg(port.to_string())
             .stdin(std::process::Stdio::null())
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null())
@@ -55,10 +55,12 @@ fn start_daemon(port: u16) -> Result<()> {
     }
 
     // Poll via blocking TCP — avoids any async runtime issues
+    let bind_addr = format!("{host}:{port}");
+    let display_host = if host == "0.0.0.0" { "127.0.0.1" } else { host };
     for _ in 0..50 {
         std::thread::sleep(std::time::Duration::from_millis(100));
-        if std::net::TcpStream::connect(format!("127.0.0.1:{port}")).is_ok() {
-            println!("[alter] daemon started  →  http://127.0.0.1:{port}");
+        if std::net::TcpStream::connect(&bind_addr).is_ok() {
+            println!("[alter] daemon started  →  http://{display_host}:{port}");
             return Ok(());
         }
     }
@@ -79,19 +81,19 @@ async fn stop_daemon(client: &DaemonClient) -> Result<()> {
 
 // @group BusinessLogic > Daemon : Stop daemon then start it again; managed processes survive
 // because runner.rs uses CREATE_BREAKAWAY_FROM_JOB on Windows.
-async fn restart_daemon(client: &DaemonClient, port: u16) -> Result<()> {
+async fn restart_daemon(client: &DaemonClient, host: &str, port: u16) -> Result<()> {
     if client.is_alive().await {
         let _ = client.post("/api/v1/system/shutdown", serde_json::json!({})).await;
         // Wait for the daemon to release the port (up to 3 s)
         for _ in 0..30 {
             std::thread::sleep(std::time::Duration::from_millis(100));
-            if !is_daemon_alive(port) {
+            if !is_daemon_alive(host, port) {
                 break;
             }
         }
         println!("[alter] daemon stopped");
     }
-    start_daemon(port)?;
+    start_daemon(host, port)?;
     println!("[alter] daemon restarted");
     Ok(())
 }
@@ -110,12 +112,13 @@ async fn status(client: &DaemonClient) -> Result<()> {
 }
 
 // @group Utilities : Returns true only if daemon is TCP-connectable AND responds to HTTP
-fn is_daemon_alive(port: u16) -> bool {
+fn is_daemon_alive(host: &str, port: u16) -> bool {
     use std::io::Read;
     use std::net::TcpStream;
     use std::time::Duration;
 
-    let addr = format!("127.0.0.1:{port}");
+    let connect_host = if host == "0.0.0.0" { "127.0.0.1" } else { host };
+    let addr = format!("{connect_host}:{port}");
     let Ok(mut stream) = TcpStream::connect_timeout(
         &addr.parse().unwrap(),
         Duration::from_millis(300),

@@ -28,10 +28,16 @@ export interface TeamsTarget {
   enabled: boolean
 }
 
+export interface DiscordTarget {
+  webhook_url: string
+  enabled: boolean
+}
+
 export interface NotificationConfig {
   webhook?: WebhookTarget
   slack?: SlackTarget
   teams?: TeamsTarget
+  discord?: DiscordTarget
   events: NotificationEvents
 }
 
@@ -164,9 +170,34 @@ export interface UpdateInfo {
   latest: string
   up_to_date: boolean
   download_url: string | null
+  /** True when the download is a platform installer (.exe setup, .deb) rather than a raw binary */
+  is_installer: boolean
   release_notes: string | null
   published_at: string | null
   error?: string
+}
+
+// @group Types > Git : Git repository info for a process working directory
+export interface GitInfo {
+  is_git_repo: boolean
+  branch?: string
+  sha?: string
+  sha_short?: string
+  message?: string
+  author?: string
+  date?: string
+  dirty: boolean
+  ahead: number
+  behind: number
+  pkg_manager: string
+}
+
+// @group Types > Git : Result of a git pull + dependency install operation
+export interface GitPullResult {
+  success: boolean
+  pull_output: string
+  deps_output: string | null
+  pkg_manager: string
 }
 
 // @group Types > LogStats : One 5-minute bucket of stdout + stderr line counts (from disk)
@@ -174,4 +205,42 @@ export interface LogStatsBucket {
   window_start: string  // RFC3339 UTC start of the 5-minute window
   stdout_count: number
   stderr_count: number
+}
+
+// @group Types > Tunnels : Cloudflare / ngrok / custom tunnel management
+
+export type TunnelProvider = 'cloudflare' | 'ngrok' | 'custom'
+
+export type TunnelStatus = 'starting' | 'active' | 'failed' | 'stopped'
+
+export interface TunnelEntry {
+  id: string
+  port: number
+  process_name: string | null
+  process_id: string | null
+  provider: TunnelProvider
+  public_url: string | null
+  status: TunnelStatus
+  error: string | null
+  created_at: string
+}
+
+export interface CloudflareSettings {
+  token?: string | null
+}
+
+export interface NgrokSettings {
+  auth_token?: string | null
+}
+
+export interface CustomTunnelSettings {
+  binary_path: string
+  args_template: string
+}
+
+export interface TunnelSettings {
+  provider: TunnelProvider
+  cloudflare: CloudflareSettings
+  ngrok: NgrokSettings
+  custom: CustomTunnelSettings
 }

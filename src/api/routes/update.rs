@@ -31,19 +31,32 @@ fn semver_gt(a: &str, b: &str) -> bool {
     parse(b) > parse(a)
 }
 
-// @group Utilities > Platform : Returns the asset filename for the current OS/arch using Rust target triples
-// Asset naming: alter-{version}-{target_triple}[.exe]
+// @group Utilities > Platform : Returns the asset filename for the current OS/arch
+// Asset naming matches GitHub release conventions:
+//   Windows x64 : alter-{version}-windows-x64-setup.exe
+//   Linux  x64  : alter_{version}_amd64.deb
+//   Linux  arm64: alter_{version}_arm64.deb
+//   macOS  x64  : alter-{version}-macos-x64.tar.gz
+//   macOS  arm64: alter-{version}-macos-arm64.tar.gz
 fn platform_asset_name(version: &str) -> Option<String> {
-    let target = match (std::env::consts::OS, std::env::consts::ARCH) {
-        ("windows", "x86_64") => "x86_64-pc-windows-msvc",
-        ("linux",   "x86_64") => "x86_64-unknown-linux-musl",
-        ("linux",   "aarch64")=> "aarch64-unknown-linux-musl",
-        ("macos",   "x86_64") => "x86_64-apple-darwin",
-        ("macos",   "aarch64")=> "aarch64-apple-darwin",
+    let name = match (std::env::consts::OS, std::env::consts::ARCH) {
+        ("windows", "x86_64") => format!("alter-{version}-windows-x64-setup.exe"),
+        ("linux",   "x86_64") => format!("alter_{version}_amd64.deb"),
+        ("linux",   "aarch64")=> format!("alter_{version}_arm64.deb"),
+        ("macos",   "x86_64") => format!("alter-{version}-macos-x64.tar.gz"),
+        ("macos",   "aarch64")=> format!("alter-{version}-macos-arm64.tar.gz"),
         _ => return None,
     };
-    let ext = if cfg!(windows) { ".exe" } else { "" };
-    Some(format!("alter-{version}-{target}{ext}"))
+    Some(name)
+}
+
+// @group Utilities > Platform : Returns true if the asset for this platform is an installer/package
+// rather than a raw binary — affects how apply_update handles the download.
+fn is_installer_asset() -> bool {
+    matches!(
+        (std::env::consts::OS, std::env::consts::ARCH),
+        ("windows", _) | ("linux", _)
+    )
 }
 
 // @group APIEndpoints > Update : GET /system/update/check
@@ -116,6 +129,7 @@ async fn check_update() -> Json<Value> {
         "latest": latest,
         "up_to_date": up_to_date,
         "download_url": download_url,
+        "is_installer": is_installer_asset(),
         "release_notes": release["body"].as_str(),
         "published_at": release["published_at"].as_str(),
     }))
@@ -123,7 +137,9 @@ async fn check_update() -> Json<Value> {
 
 // @group APIEndpoints > Update : POST /system/update/apply
 // Body: { "download_url": "https://github.com/..." }
-// Downloads the new binary, replaces the running binary, then spawns a new daemon and exits.
+// For raw binaries: replaces the running binary, then spawns a new daemon and exits.
+// For Windows installer: downloads the .exe and runs it (handles its own restart).
+// For Linux .deb: downloads and runs dpkg -i.
 async fn apply_update(
     State(state): State<Arc<DaemonState>>,
     Json(body): Json<Value>,
@@ -142,21 +158,56 @@ async fn apply_update(
     let exe_dir = current_exe
         .parent()
         .ok_or_else(|| ApiError::internal("exe has no parent directory"))?;
+
+    if is_installer_asset() {
+        // Installer path: download to temp, then launch it
+        let ext = if cfg!(windows) { ".exe" } else { ".deb" };
+        let tmp_path = exe_dir.join(format!("alter_update{ext}"));
+
+        if let Err(e) = download_binary(download_url, &tmp_path).await {
+            let _ = std::fs::remove_file(&tmp_path);
+            return Err(ApiError::internal(format!("download failed: {e}")));
+        }
+
+        // Save state before handing off to installer
+        let _ = state.save_to_disk().await;
+
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            // Run the NSIS installer — /S for silent; installer handles daemon restart
+            let _ = std::process::Command::new(&tmp_path)
+                .arg("/S")
+                .creation_flags(0x0000_0000) // allow normal window so UAC prompt can appear
+                .spawn();
+        }
+        #[cfg(target_os = "linux")]
+        {
+            // Run dpkg in background; requires sudo — will prompt or fail silently
+            let _ = std::process::Command::new("sh")
+                .args(["-c", &format!("dpkg -i \"{}\"", tmp_path.display())])
+                .stdin(std::process::Stdio::null())
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null())
+                .spawn();
+        }
+
+        return Ok(Json(json!({ "success": true, "message": "installer launched" })));
+    }
+
+    // Raw binary path: replace in-place and respawn daemon
     let tmp_path = exe_dir.join("alter_update.tmp");
 
-    // Download binary to temp file
     if let Err(e) = download_binary(download_url, &tmp_path).await {
         let _ = std::fs::remove_file(&tmp_path);
         return Err(ApiError::internal(format!("download failed: {e}")));
     }
 
-    // Replace binary (OS-specific)
     if let Err(e) = replace_binary(&current_exe, &tmp_path) {
         let _ = std::fs::remove_file(&tmp_path);
         return Err(ApiError::internal(format!("binary replacement failed: {e}")));
     }
 
-    // Spawn new daemon then exit — fire and forget
     let port = state.config.port;
     let respawn_exe = current_exe.clone();
     tokio::spawn(async move {

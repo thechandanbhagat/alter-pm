@@ -10,6 +10,8 @@ pub mod models;
 pub mod notifications;
 pub mod process;
 pub mod telegram;
+pub mod terminal;
+pub mod tunnel;
 pub mod utils;
 pub mod web;
 
@@ -60,7 +62,7 @@ pub async fn run_cli(cli: Cli) -> anyhow::Result<()> {
         Commands::Resurrect => cli::commands::resurrect::run(&client, json).await?,
 
         Commands::Daemon(d) => {
-            cli::commands::daemon::run(&client, d.action, cli.port).await?
+            cli::commands::daemon::run(&client, d.action, &cli.host, cli.port).await?
         }
 
         Commands::Startup => cli::commands::startup::run_startup().await?,

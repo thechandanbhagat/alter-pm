@@ -100,8 +100,10 @@ fn ancestor_chain(start_pid: u32, parent_map: &HashMap<u32, u32>, max_depth: usi
 // @group Utilities > Ports : Run platform-appropriate netstat command and return raw stdout
 #[cfg(windows)]
 fn run_netstat() -> String {
+    use std::os::windows::process::CommandExt;
     std::process::Command::new("netstat")
         .args(["-ano"])
+        .creation_flags(0x0800_0000) // CREATE_NO_WINDOW
         .output()
         .map(|o| String::from_utf8_lossy(&o.stdout).to_string())
         .unwrap_or_default()

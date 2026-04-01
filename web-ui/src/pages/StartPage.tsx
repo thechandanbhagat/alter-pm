@@ -3,6 +3,7 @@
 import { useRef, useState } from 'react'
 import { FolderOpen } from 'lucide-react'
 import { api } from '@/lib/api'
+import { NamespaceInput } from '@/components/NamespaceInput'
 import { parseArgs, parseEnvString } from '@/lib/utils'
 import { FormCard, FormField, FormRow } from '@/components/FormLayout'
 import { FolderBrowser } from '@/components/FolderBrowser'
@@ -205,8 +206,7 @@ export default function StartPage({ onDone, settings }: Props) {
               </div>
             </FormField>
             <FormField label="Namespace">
-              <input style={inputStyle} value={namespace} onChange={e => setNamespace(e.target.value)}
-                placeholder="default" />
+              <NamespaceInput style={inputStyle} value={namespace} onChange={setNamespace} placeholder="default" />
             </FormField>
           </FormRow>
           <FormRow>
