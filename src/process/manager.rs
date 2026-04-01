@@ -23,10 +23,10 @@ use tokio::sync::mpsc;
 use tokio::sync::{broadcast, Mutex, RwLock};
 use uuid::Uuid;
 
-// @group Constants : Maximum number of metric samples retained per process (288 × 30 s ≈ 2.4 h)
-const MAX_METRIC_SAMPLES: usize = 288;
-// @group Constants : Collect one metric sample every N metric-loop ticks (tick = 3 s → 10 × 3 s = 30 s)
-const METRIC_SAMPLE_INTERVAL_TICKS: u32 = 10;
+// @group Constants : Maximum number of metric samples retained per process (1440 × 60 s = 24 h)
+const MAX_METRIC_SAMPLES: usize = 1440;
+// @group Constants : Collect one metric sample every N metric-loop ticks (tick = 3 s → 20 × 3 s = 60 s)
+const METRIC_SAMPLE_INTERVAL_TICKS: u32 = 20;
 
 pub type ProcessRegistry = DashMap<Uuid, Arc<RwLock<ManagedProcess>>>;
 
@@ -1076,13 +1076,23 @@ impl ProcessManager {
                 continue;
             }
 
-            // Refresh sysinfo for only the PIDs we care about
-            let pids: Vec<Pid> = pid_map.iter().map(|(_, p)| *p).collect();
+            // Refresh ALL processes so we can walk the full process tree.
+            // On Windows, non-.exe scripts are wrapped in cmd.exe /C, so proc.pid points to
+            // cmd.exe rather than the real child (node.exe, python.exe, etc.). Summing the
+            // entire subtree rooted at proc.pid gives accurate CPU + memory figures.
             sys.refresh_processes_specifics(
-                ProcessesToUpdate::Some(&pids),
+                ProcessesToUpdate::All,
                 false,
                 ProcessRefreshKind::new().with_cpu().with_memory(),
             );
+
+            // Build parent -> [children] map for tree traversal
+            let mut children_map: HashMap<Pid, Vec<Pid>> = HashMap::new();
+            for (pid, process) in sys.processes() {
+                if let Some(parent) = process.parent() {
+                    children_map.entry(parent).or_default().push(*pid);
+                }
+            }
 
             // @group BusinessLogic > Metrics : Decide whether this tick records a history sample
             let record_sample = tick % METRIC_SAMPLE_INTERVAL_TICKS == 0;
@@ -1092,9 +1102,10 @@ impl ProcessManager {
             for (id, sysinfo_pid) in &pid_map {
                 if let Some(arc) = registry.get(id) {
                     let mut proc = arc.write().await;
-                    if let Some(sp) = sys.process(*sysinfo_pid) {
-                        let cpu = sp.cpu_usage();
-                        let mem = sp.memory();
+                    if sys.process(*sysinfo_pid).is_some() {
+                        // Sum CPU and memory across the entire process subtree so that
+                        // shell wrappers (cmd.exe) and real child processes are both counted.
+                        let (cpu, mem) = sum_process_tree(&sys, &children_map, *sysinfo_pid);
                         proc.cpu_percent = Some(cpu);
                         proc.memory_bytes = Some(mem);
 
@@ -1212,6 +1223,27 @@ impl ProcessManager {
             .map(|e| Arc::clone(e.value()))
             .ok_or_else(|| anyhow!("process not found: {id}"))
     }
+}
+
+// @group Utilities > Metrics : Sum CPU% and memory bytes for a process and all its descendants
+fn sum_process_tree(
+    sys: &System,
+    children_map: &HashMap<Pid, Vec<Pid>>,
+    root: Pid,
+) -> (f32, u64) {
+    let mut total_cpu = 0.0f32;
+    let mut total_mem = 0u64;
+    let mut stack = vec![root];
+    while let Some(pid) = stack.pop() {
+        if let Some(p) = sys.process(pid) {
+            total_cpu += p.cpu_usage();
+            total_mem += p.memory();
+        }
+        if let Some(children) = children_map.get(&pid) {
+            stack.extend_from_slice(children);
+        }
+    }
+    (total_cpu, total_mem)
 }
 
 // @group Utilities : Check whether a PID is still alive in the OS process table
