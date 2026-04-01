@@ -30,6 +30,7 @@ pub fn router(state: Arc<DaemonState>) -> Router {
         .route("/{id}/metrics/history", get(get_metrics_history))
         .route("/{id}/logs/stats", get(get_log_stats))
         .route("/{id}/cron/history", get(get_cron_history))
+        .route("/{id}/clone", post(clone_process))
         .route("/{id}/envfiles", get(list_envfiles))
         .route("/{id}/envfile", get(get_envfile).put(put_envfile))
         // Namespace bulk operations
@@ -538,6 +539,89 @@ async fn restart_namespace_processes(
         });
     }
     Json(json!({ "namespace": ns, "restarted": infos.len(), "processes": infos }))
+}
+
+// @group APIEndpoints > Process : POST /processes/:id/clone
+// Duplicates an existing process config under a new name. Body: { name?: string }
+// If name is omitted, appends "-copy" (or "-copy-2", "-copy-3", ...) to the original name.
+async fn clone_process(
+    State(state): State<Arc<DaemonState>>,
+    Path(id_str): Path<String>,
+    Json(body): Json<Value>,
+) -> Result<(StatusCode, Json<Value>), ApiError> {
+    let id = resolve(&state, &id_str).await?;
+    let entry = state
+        .manager
+        .registry
+        .get(&id)
+        .ok_or_else(|| ApiError::not_found("process not found"))?;
+    let src_config = entry.read().await.config.clone();
+    drop(entry);
+
+    // Determine a unique clone name
+    let base_name = body
+        .get("name")
+        .and_then(|v| v.as_str())
+        .map(str::to_string)
+        .unwrap_or_else(|| format!("{}-copy", src_config.name));
+
+    let existing_names: std::collections::HashSet<String> = state
+        .manager
+        .list()
+        .await
+        .into_iter()
+        .map(|p| p.name)
+        .collect();
+
+    let clone_name = if !existing_names.contains(&base_name) {
+        base_name.clone()
+    } else {
+        let mut n = 2u32;
+        loop {
+            let candidate = format!("{base_name}-{n}");
+            if !existing_names.contains(&candidate) {
+                break candidate;
+            }
+            n += 1;
+        }
+    };
+
+    let clone_config = AppConfig {
+        name: clone_name,
+        script: src_config.script,
+        args: src_config.args,
+        cwd: src_config.cwd,
+        instances: 1,
+        autorestart: src_config.autorestart,
+        max_restarts: src_config.max_restarts,
+        restart_delay_ms: src_config.restart_delay_ms,
+        namespace: src_config.namespace,
+        watch: src_config.watch,
+        watch_paths: src_config.watch_paths,
+        watch_ignore: src_config.watch_ignore,
+        env: src_config.env,
+        log_file: None,
+        error_file: None,
+        max_log_size_mb: src_config.max_log_size_mb,
+        cron: src_config.cron,
+        cron_last_run: None,
+        cron_next_run: None,
+        notify: src_config.notify,
+        log_alert: src_config.log_alert,
+        env_file: None,
+        health_check_url: src_config.health_check_url,
+        health_check_interval_secs: src_config.health_check_interval_secs,
+        health_check_timeout_secs: src_config.health_check_timeout_secs,
+        health_check_retries: src_config.health_check_retries,
+        pre_start: src_config.pre_start,
+        post_start: src_config.post_start,
+        pre_stop: src_config.pre_stop,
+    };
+
+    let info = state.manager.start(clone_config).await.map_err(ApiError::from)?;
+    let s = state.clone();
+    tokio::spawn(async move { if let Err(e) = s.save_to_disk().await { tracing::warn!("auto-save failed: {e}"); } });
+    Ok((StatusCode::CREATED, Json(json!(info))))
 }
 
 async fn resolve(state: &DaemonState, id_str: &str) -> Result<Uuid, ApiError> {

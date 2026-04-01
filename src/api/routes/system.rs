@@ -15,6 +15,7 @@ use std::sync::Arc;
 pub fn router(state: Arc<DaemonState>) -> Router {
     Router::new()
         .route("/health", get(health))
+        .route("/stats", get(system_stats))
         .route("/paths", get(paths))
         .route("/check-env", get(check_env))
         .route("/list-env", get(list_env_files))
@@ -26,6 +27,7 @@ pub fn router(state: Arc<DaemonState>) -> Router {
         .route("/resurrect", post(resurrect_state))
         .route("/shutdown", post(shutdown))
         .route("/restart", post(restart))
+        .route("/open-folder", post(open_folder))
         .with_state(state)
 }
 
@@ -310,6 +312,65 @@ async fn shutdown(State(state): State<Arc<DaemonState>>) -> Json<Value> {
     Json(json!({ "success": true, "message": "daemon shutting down" }))
 }
 
+// @group APIEndpoints > System : GET /system/stats — system-wide CPU %, RAM, and GPU (nvidia-smi)
+async fn system_stats() -> Json<Value> {
+    // sysinfo is sync and needs a sleep between CPU reads for an accurate %; use spawn_blocking
+    let (cpu, ram_used, ram_total) = tokio::task::spawn_blocking(|| {
+        use sysinfo::System;
+        let mut sys = System::new();
+        sys.refresh_cpu_usage();
+        std::thread::sleep(std::time::Duration::from_millis(500));
+        sys.refresh_cpu_usage();
+        sys.refresh_memory();
+        (sys.global_cpu_usage(), sys.used_memory(), sys.total_memory())
+    })
+    .await
+    .unwrap_or((0.0, 0, 0));
+
+    let gpu = gpu_stats();
+
+    Json(json!({
+        "cpu_percent": cpu,
+        "ram_used_bytes": ram_used,
+        "ram_total_bytes": ram_total,
+        "gpu": gpu,
+    }))
+}
+
+// @group Utilities > System : Parse nvidia-smi output for GPU utilization and VRAM — returns None if unavailable
+fn gpu_stats() -> Option<Value> {
+    let mut cmd = std::process::Command::new("nvidia-smi");
+    cmd.args([
+        "--query-gpu=name,utilization.gpu,memory.used,memory.total",
+        "--format=csv,noheader,nounits",
+    ]);
+    // Suppress console window flash on Windows
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
+    }
+    let output = cmd.output().ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let stdout = String::from_utf8(output.stdout).ok()?;
+    let line = stdout.lines().next()?.trim();
+    let parts: Vec<&str> = line.splitn(4, ',').map(str::trim).collect();
+    if parts.len() < 4 {
+        return None;
+    }
+    let util: f32 = parts[1].parse().ok()?;
+    let vram_used_mb: u64 = parts[2].parse().ok()?;
+    let vram_total_mb: u64 = parts[3].parse().ok()?;
+    Some(json!({
+        "name": parts[0],
+        "utilization_percent": util,
+        "vram_used_bytes": vram_used_mb * 1024 * 1024,
+        "vram_total_bytes": vram_total_mb * 1024 * 1024,
+    }))
+}
+
 // @group APIEndpoints > System : POST /system/restart
 // Saves state, spawns a delayed self-restart, then exits.
 // Managed processes survive because runner uses CREATE_BREAKAWAY_FROM_JOB on Windows.
@@ -357,4 +418,32 @@ async fn restart(State(state): State<Arc<DaemonState>>) -> Json<Value> {
         std::process::exit(0);
     });
     Json(json!({ "success": true, "message": "daemon restarting" }))
+}
+
+// @group APIEndpoints > System : POST /system/open-folder — open a path in the OS file explorer
+#[derive(serde::Deserialize)]
+struct OpenFolderRequest {
+    path: String,
+}
+
+async fn open_folder(Json(req): Json<OpenFolderRequest>) -> Json<Value> {
+    #[cfg(target_os = "windows")]
+    {
+        let _ = std::process::Command::new("explorer.exe")
+            .arg(&req.path)
+            .spawn();
+    }
+    #[cfg(target_os = "macos")]
+    {
+        let _ = std::process::Command::new("open")
+            .arg(&req.path)
+            .spawn();
+    }
+    #[cfg(target_os = "linux")]
+    {
+        let _ = std::process::Command::new("xdg-open")
+            .arg(&req.path)
+            .spawn();
+    }
+    Json(json!({ "success": true }))
 }
