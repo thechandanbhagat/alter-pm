@@ -1,7 +1,7 @@
 // @group BusinessLogic : Notification sender — dispatches webhook / Slack / Teams payloads
 
 use crate::config::notification_store::NotificationsStore;
-use crate::models::notification::{NotificationConfig, SlackTarget, TeamsTarget, WebhookTarget};
+use crate::models::notification::{DiscordTarget, NotificationConfig, SlackTarget, TeamsTarget, WebhookTarget};
 use crate::models::process_info::ProcessInfo;
 use chrono::Utc;
 use serde_json::{json, Value};
@@ -118,6 +118,26 @@ pub async fn fire_log_alert(
             let _ = client.post(&tm.webhook_url).json(&payload).send().await;
         }
     }
+
+    if let Some(dc) = &effective.discord {
+        if dc.enabled && !dc.webhook_url.is_empty() {
+            let payload = serde_json::json!({
+                "embeds": [{
+                    "title": format!("⚠️ {} — log spike detected", proc.name),
+                    "color": 15624260u32,  // #ef4444
+                    "fields": [
+                        { "name": "Process",    "value": &proc.name,              "inline": true },
+                        { "name": "Namespace",  "value": &proc.namespace,         "inline": true },
+                        { "name": "Stderr",     "value": stderr_count.to_string(), "inline": true },
+                        { "name": "Threshold",  "value": threshold.to_string(),   "inline": true },
+                    ],
+                    "footer": { "text": "alter-pm2 · log alert" },
+                    "timestamp": Utc::now().to_rfc3339(),
+                }]
+            });
+            let _ = client.post(&dc.webhook_url).json(&payload).send().await;
+        }
+    }
 }
 
 // @group BusinessLogic > FireNamespaceEvent : Fire one summary notification for a bulk namespace operation
@@ -167,6 +187,11 @@ pub async fn fire_namespace_event(
             send_namespace_teams(&client, tm, namespace, processes, event).await;
         }
     }
+    if let Some(dc) = &effective.discord {
+        if dc.enabled && !dc.webhook_url.is_empty() {
+            send_namespace_discord(&client, dc, namespace, processes, event).await;
+        }
+    }
 }
 
 // @group BusinessLogic > FireEvent : Resolve effective config and dispatch all enabled channels
@@ -210,6 +235,11 @@ pub async fn fire_event(store: &NotificationsStore, proc: &ProcessInfo, event: P
             send_teams(&client, tm, proc, event).await;
         }
     }
+    if let Some(dc) = &effective.discord {
+        if dc.enabled && !dc.webhook_url.is_empty() {
+            send_discord(&client, dc, proc, event).await;
+        }
+    }
 }
 
 // @group BusinessLogic > MergeConfigs : Cascade process → namespace → global, first non-None wins per channel
@@ -236,8 +266,9 @@ fn merge_configs(
     let webhook = sources.iter().find_map(|c| c.webhook.clone());
     let slack   = sources.iter().find_map(|c| c.slack.clone());
     let teams   = sources.iter().find_map(|c| c.teams.clone());
+    let discord = sources.iter().find_map(|c| c.discord.clone());
 
-    NotificationConfig { webhook, slack, teams, events }
+    NotificationConfig { webhook, slack, teams, discord, events }
 }
 
 // @group BusinessLogic > SendWebhook : POST generic JSON payload to webhook URL
@@ -399,6 +430,72 @@ async fn send_namespace_slack(
     }
     if let Err(e) = client.post(&sl.webhook_url).json(&payload).send().await {
         tracing::warn!("Slack namespace notification failed for ns '{}': {e}", namespace);
+    }
+}
+
+// @group BusinessLogic > SendDiscord : POST Discord embed card via incoming webhook
+async fn send_discord(client: &reqwest::Client, dc: &DiscordTarget, proc: &ProcessInfo, event: ProcessEvent) {
+    let color: u32 = match event {
+        ProcessEvent::Started    => 3580751,   // #36a64f green
+        ProcessEvent::Stopped    => 11184810,  // #aaaaaa gray
+        ProcessEvent::Crashed    => 16711680,  // #FF0000 red
+        ProcessEvent::Restarted  => 15774030,  // #f0ad4e orange
+        ProcessEvent::CronRun    => 16498468,  // #fbbf24 yellow
+        ProcessEvent::CronFailed => 15624260,  // #ef4444 red
+    };
+
+    let payload = json!({
+        "embeds": [{
+            "title": format!("{} {} — {}", event.emoji(), proc.name, event.label()),
+            "color": color,
+            "fields": [
+                { "name": "Process",   "value": &proc.name,                                    "inline": true },
+                { "name": "Namespace", "value": &proc.namespace,                               "inline": true },
+                { "name": "Status",    "value": format!("{:?}", proc.status).to_lowercase(),   "inline": true },
+                { "name": "Restarts",  "value": proc.restart_count.to_string(),                "inline": true },
+            ],
+            "footer": { "text": "alter-pm2" },
+            "timestamp": Utc::now().to_rfc3339(),
+        }]
+    });
+
+    if let Err(e) = client.post(&dc.webhook_url).json(&payload).send().await {
+        tracing::warn!("Discord notification failed for '{}': {e}", proc.name);
+    }
+}
+
+// @group BusinessLogic > SendNamespaceDiscord : POST Discord embed for bulk namespace operation
+async fn send_namespace_discord(
+    client: &reqwest::Client,
+    dc: &DiscordTarget,
+    namespace: &str,
+    processes: &[ProcessInfo],
+    event: ProcessEvent,
+) {
+    let color: u32 = match event {
+        ProcessEvent::Started    => 3580751,
+        ProcessEvent::Stopped    => 11184810,
+        ProcessEvent::Crashed    => 16711680,
+        ProcessEvent::Restarted  => 15774030,
+        ProcessEvent::CronRun    => 16498468,
+        ProcessEvent::CronFailed => 15624260,
+    };
+    let names: Vec<&str> = processes.iter().map(|p| p.name.as_str()).collect();
+    let payload = json!({
+        "embeds": [{
+            "title": format!("{} Namespace {} — {} {}", event.emoji(), namespace, processes.len(), event.label()),
+            "color": color,
+            "fields": [
+                { "name": "Namespace", "value": namespace,        "inline": true },
+                { "name": "Count",     "value": processes.len().to_string(), "inline": true },
+                { "name": "Processes", "value": names.join(", "), "inline": false },
+            ],
+            "footer": { "text": "alter-pm2" },
+            "timestamp": Utc::now().to_rfc3339(),
+        }]
+    });
+    if let Err(e) = client.post(&dc.webhook_url).json(&payload).send().await {
+        tracing::warn!("Discord namespace notification failed for ns '{}': {e}", namespace);
     }
 }
 

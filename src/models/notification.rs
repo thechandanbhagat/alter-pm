@@ -46,12 +46,21 @@ pub struct TeamsTarget {
     pub enabled: bool,
 }
 
+// @group Types > DiscordTarget : Discord incoming webhook target
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DiscordTarget {
+    pub webhook_url: String,
+    #[serde(default)]
+    pub enabled: bool,
+}
+
 // @group Types > NotificationConfig : Full notification configuration for one scope (global / namespace / process)
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct NotificationConfig {
     pub webhook: Option<WebhookTarget>,
     pub slack:   Option<SlackTarget>,
     pub teams:   Option<TeamsTarget>,
+    pub discord: Option<DiscordTarget>,
     #[serde(default)]
     pub events: NotificationEvents,
 }
