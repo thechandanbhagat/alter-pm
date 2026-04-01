@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { FolderOpen, Save, Bell, ChevronDown, ChevronRight } from 'lucide-react'
+import { NamespaceInput } from '@/components/NamespaceInput'
 import { api } from '@/lib/api'
 import { parseArgs, parseDotEnv, envToString } from '@/lib/utils'
 import { FormCard, FormField, FormRow } from '@/components/FormLayout'
@@ -263,7 +264,7 @@ export default function EditPage({ onDone }: Props) {
 
         <FormRow>
           <FormField label="Namespace">
-            <input style={inputStyle} value={namespace} onChange={e => setNamespace(e.target.value)} />
+            <NamespaceInput style={inputStyle} value={namespace} onChange={setNamespace} />
           </FormField>
           <FormField label="Max Restarts">
             <input style={inputStyle} type="number" value={maxRestarts} onChange={e => setMaxRestarts(parseInt(e.target.value) || 10)} />

@@ -3,6 +3,7 @@
 import { useState, useRef, useCallback } from 'react'
 import { api } from '@/lib/api'
 import { parseEnvString } from '@/lib/utils'
+import { NamespaceInput } from '@/components/NamespaceInput'
 import { CronExpressionInput } from '@/components/CronExpressionInput'
 import { CodeEditor } from '@/components/CodeEditor'
 import { RunOutput } from '@/components/RunOutput'
@@ -418,12 +419,7 @@ export default function CreateCronJobPage({ onDone, settings }: Props) {
             {/* Namespace */}
             <div>
               <label style={fieldLabel}>Namespace</label>
-              <input
-                style={inputStyle}
-                value={namespace}
-                onChange={e => setNamespace(e.target.value)}
-                placeholder="default"
-              />
+              <NamespaceInput style={inputStyle} value={namespace} onChange={setNamespace} placeholder="default" />
             </div>
 
             {/* Submit */}
