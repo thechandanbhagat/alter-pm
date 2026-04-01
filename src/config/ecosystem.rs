@@ -99,4 +99,141 @@ impl EcosystemConfig {
                 .with_context(|| "failed to parse TOML config"),
         }
     }
+
+    // @group Utilities : Parse an EcosystemConfig directly from a JSON string (test helper)
+    #[cfg(test)]
+    fn from_json(s: &str) -> Result<Self> {
+        serde_json::from_str(s).with_context(|| "failed to parse JSON")
+    }
+
+    // @group Utilities : Parse an EcosystemConfig directly from a TOML string (test helper)
+    #[cfg(test)]
+    fn from_toml(s: &str) -> Result<Self> {
+        toml::from_str(s).with_context(|| "failed to parse TOML")
+    }
+}
+
+// @group UnitTests : EcosystemConfig — JSON + TOML parsing and default field values
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // @group UnitTests > JSON : Minimal valid JSON config round-trips correctly
+    #[test]
+    fn test_parse_json_minimal() {
+        let cfg = EcosystemConfig::from_json(r#"{"apps":[{"name":"api","script":"node index.js"}]}"#).unwrap();
+        assert_eq!(cfg.apps.len(), 1);
+        assert_eq!(cfg.apps[0].name, "api");
+        assert_eq!(cfg.apps[0].script, "node index.js");
+    }
+
+    // @group UnitTests > JSON : Default field values are applied when fields are absent
+    #[test]
+    fn test_json_defaults() {
+        let cfg = EcosystemConfig::from_json(r#"{"apps":[{"name":"svc","script":"run.sh"}]}"#).unwrap();
+        let app = &cfg.apps[0];
+        assert_eq!(app.instances,          1);
+        assert!(app.autorestart);
+        assert_eq!(app.max_restarts,       10);
+        assert_eq!(app.restart_delay_ms,   1000);
+        assert!(!app.watch);
+        assert_eq!(app.namespace,          "default");
+        assert_eq!(app.max_log_size_mb,    10);
+        assert!(app.args.is_empty());
+        assert!(app.env.is_empty());
+        assert!(app.cwd.is_none());
+        assert!(app.cron.is_none());
+    }
+
+    // @group UnitTests > JSON : Explicit field values override defaults
+    #[test]
+    fn test_json_explicit_fields() {
+        let json = r#"{
+            "apps": [{
+                "name": "worker",
+                "script": "python worker.py",
+                "instances": 4,
+                "autorestart": false,
+                "max_restarts": 3,
+                "namespace": "jobs",
+                "watch": true
+            }]
+        }"#;
+        let app = &EcosystemConfig::from_json(json).unwrap().apps[0];
+        assert_eq!(app.instances,  4);
+        assert!(!app.autorestart);
+        assert_eq!(app.max_restarts, 3);
+        assert_eq!(app.namespace, "jobs");
+        assert!(app.watch);
+    }
+
+    // @group UnitTests > JSON : Empty apps list is valid
+    #[test]
+    fn test_json_empty_apps() {
+        let cfg = EcosystemConfig::from_json(r#"{"apps":[]}"#).unwrap();
+        assert!(cfg.apps.is_empty());
+        assert!(cfg.daemon.is_none());
+    }
+
+    // @group UnitTests > JSON : Multiple apps are all parsed
+    #[test]
+    fn test_json_multiple_apps() {
+        let json = r#"{"apps":[{"name":"a","script":"a.js"},{"name":"b","script":"b.js"}]}"#;
+        let cfg = EcosystemConfig::from_json(json).unwrap();
+        assert_eq!(cfg.apps.len(), 2);
+        assert_eq!(cfg.apps[0].name, "a");
+        assert_eq!(cfg.apps[1].name, "b");
+    }
+
+    // @group UnitTests > TOML : Minimal valid TOML config round-trips correctly
+    #[test]
+    fn test_parse_toml_minimal() {
+        let toml = r#"
+[[apps]]
+name   = "api"
+script = "node index.js"
+"#;
+        let cfg = EcosystemConfig::from_toml(toml).unwrap();
+        assert_eq!(cfg.apps.len(), 1);
+        assert_eq!(cfg.apps[0].name, "api");
+    }
+
+    // @group UnitTests > TOML : Default field values are applied when fields are absent
+    #[test]
+    fn test_toml_defaults() {
+        let toml = "[[apps]]\nname = \"svc\"\nscript = \"run.sh\"\n";
+        let app = &EcosystemConfig::from_toml(toml).unwrap().apps[0];
+        assert_eq!(app.instances, 1);
+        assert!(app.autorestart);
+        assert_eq!(app.namespace, "default");
+    }
+
+    // @group UnitTests > TOML : Env vars are captured as a map
+    #[test]
+    fn test_toml_env_vars() {
+        let toml = r#"
+[[apps]]
+name   = "api"
+script = "node server.js"
+[apps.env]
+PORT = "3000"
+NODE_ENV = "production"
+"#;
+        let app = &EcosystemConfig::from_toml(toml).unwrap().apps[0];
+        assert_eq!(app.env.get("PORT").map(|s| s.as_str()),     Some("3000"));
+        assert_eq!(app.env.get("NODE_ENV").map(|s| s.as_str()), Some("production"));
+    }
+
+    // @group UnitTests > EdgeCases : Missing required field "script" returns an error
+    #[test]
+    fn test_json_missing_required_field() {
+        let result = EcosystemConfig::from_json(r#"{"apps":[{"name":"oops"}]}"#);
+        assert!(result.is_err());
+    }
+
+    // @group UnitTests > EdgeCases : Malformed JSON returns an error
+    #[test]
+    fn test_json_malformed() {
+        assert!(EcosystemConfig::from_json("not json at all").is_err());
+    }
 }
