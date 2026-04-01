@@ -31,17 +31,30 @@ pub async fn run(config: DaemonConfig) -> Result<()> {
         }
     }
 
-    // Set up daemon-level tracing to file
-    let daemon_log = crate::config::paths::daemon_log_file();
-    let file_appender = tracing_appender::rolling::never(
-        daemon_log.parent().unwrap_or(std::path::Path::new(".")),
-        daemon_log.file_name().unwrap_or(std::ffi::OsStr::new("daemon.log")),
-    );
-    let (non_blocking, _guard) = tracing_appender::non_blocking(file_appender);
-    tracing_subscriber::fmt()
-        .with_writer(non_blocking)
-        .with_ansi(false)
-        .init();
+    // @group Configuration > Tracing : tokio-console mode (feature-gated, requires --cfg tokio_unstable)
+    // Enable with: RUSTFLAGS="--cfg tokio_unstable" cargo run --features tokio-console
+    // Then run `tokio-console` in a separate terminal to inspect async tasks live.
+    #[cfg(feature = "tokio-console")]
+    {
+        console_subscriber::init();
+        tracing::info!("tokio-console subscriber active — connect with `tokio-console`");
+    }
+
+    // @group Configuration > Tracing : Standard file-based tracing (production default)
+    #[cfg(not(feature = "tokio-console"))]
+    let _guard = {
+        let daemon_log = crate::config::paths::daemon_log_file();
+        let file_appender = tracing_appender::rolling::never(
+            daemon_log.parent().unwrap_or(std::path::Path::new(".")),
+            daemon_log.file_name().unwrap_or(std::ffi::OsStr::new("daemon.log")),
+        );
+        let (non_blocking, guard) = tracing_appender::non_blocking(file_appender);
+        tracing_subscriber::fmt()
+            .with_writer(non_blocking)
+            .with_ansi(false)
+            .init();
+        guard
+    };
 
     tracing::info!("alter daemon starting on {}:{}", config.host, config.port);
 
