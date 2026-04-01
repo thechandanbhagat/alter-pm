@@ -19,7 +19,6 @@ interface NotificationTrayProps {
 
 // @group Utilities > Styles : Tray style tokens
 const trayWidth = 320
-const sidebarWidth = 220
 
 const iconBtn: React.CSSProperties = {
   display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
@@ -64,20 +63,20 @@ export function NotificationTray({
         />
       )}
 
-      {/* Tray panel — slides in from left edge of main content area */}
+      {/* Tray panel — slides in from right, same as AI panel */}
       <div style={{
         position: 'fixed',
         top: 0,
-        left: sidebarWidth,
+        right: 0,
         width: trayWidth,
         height: '100vh',
         zIndex: 200,
         background: 'var(--color-card)',
-        borderRight: '1px solid var(--color-border)',
+        borderLeft: '1px solid var(--color-border)',
         display: 'flex',
         flexDirection: 'column',
-        boxShadow: '4px 0 24px rgba(0,0,0,0.4)',
-        transform: open ? 'translateX(0)' : `translateX(-${trayWidth + 4}px)`,
+        boxShadow: '-4px 0 24px rgba(0,0,0,0.4)',
+        transform: open ? 'translateX(0)' : `translateX(${trayWidth + 4}px)`,
         transition: 'transform 220ms cubic-bezier(0.25, 0.46, 0.45, 0.94)',
         pointerEvents: open ? 'auto' : 'none',
       }}>
