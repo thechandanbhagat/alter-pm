@@ -2,6 +2,7 @@
 
 pub mod ai;
 pub mod auth;
+pub mod git;
 pub mod ecosystem;
 pub mod log_alerts;
 pub mod logs;
@@ -12,4 +13,6 @@ pub mod processes;
 pub mod scripts;
 pub mod system;
 pub mod telegram;
+pub mod terminal;
+pub mod tunnels;
 pub mod update;

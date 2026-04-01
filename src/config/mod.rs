@@ -8,3 +8,4 @@ pub mod log_alert_config;
 pub mod notification_store;
 pub mod paths;
 pub mod telegram_config;
+pub mod tunnel_config;

@@ -19,9 +19,12 @@ pub fn router(state: Arc<DaemonState>) -> Router {
         .nest("/ai", routes::ai::router(Arc::clone(&state)))
         .nest("/telegram", routes::telegram::router(Arc::clone(&state)))
         .nest("/ports", routes::ports::router())
+        .nest("/tunnels", routes::tunnels::router(Arc::clone(&state)))
+        .nest("/terminals", routes::terminal::router(Arc::clone(&state)))
         .merge(routes::metrics::router(Arc::clone(&state)))
         .merge(routes::log_alerts::router())
         .nest("/system/update", routes::update::router(Arc::clone(&state)))
+        .merge(routes::git::router(Arc::clone(&state)))
         .route_layer(axum_middleware::from_fn_with_state(
             Arc::clone(&state),
             middleware::require_auth,
