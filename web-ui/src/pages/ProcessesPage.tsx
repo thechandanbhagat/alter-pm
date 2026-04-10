@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   Play, Square, RotateCcw, ScrollText, Pencil, Trash2, FileKey, Bell, Copy, SquareTerminal,
-  ChevronUp, ChevronDown, ChevronsUpDown, LayoutGrid, List,
+  ChevronUp, ChevronDown, ChevronsUpDown, LayoutGrid, List, GitBranch, Power, PowerOff,
 } from 'lucide-react'
 import { api } from '@/lib/api'
 import { useDialog } from '@/hooks/useDialog'
@@ -33,9 +33,14 @@ export default function ProcessesPage({ processes, reload, settings, namespaceFi
   const [nsFilter, setNsFilter]       = useState<string>('all')
   const [sortCol, setSortCol]         = useState<SortCol>(null)
   const [sortDir, setSortDir]         = useState<SortDir>('asc')
-  const [viewMode, setViewMode]       = useState<ViewMode>(
-    () => (localStorage.getItem('alter-view-mode') as ViewMode) ?? 'table'
-  )
+  const [viewMode, setViewMode]       = useState<ViewMode>('table')
+
+  // @group BusinessLogic > ViewMode : Load persisted view-mode from daemon on mount
+  useEffect(() => {
+    api.getUiSettings().then(s => {
+      if (s.viewMode === 'card' || s.viewMode === 'table') setViewMode(s.viewMode as ViewMode)
+    }).catch(() => {})
+  }, [])
 
   function handleSort(col: SortCol) {
     if (sortCol === col) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
@@ -43,7 +48,7 @@ export default function ProcessesPage({ processes, reload, settings, namespaceFi
   }
   function setView(mode: ViewMode) {
     setViewMode(mode)
-    localStorage.setItem('alter-view-mode', mode)
+    api.saveUiSettings({ viewMode: mode }).catch(() => {})
   }
 
 
@@ -387,32 +392,43 @@ function ProcessCard({ p, reload, confirmDelete, onConfirm, onDanger, onOpenDeta
     setTimeout(reload, 300)
   }
   async function doClone() { await api.cloneProcess(p.id).catch(() => {}); setTimeout(reload, 400) }
+  async function doToggleEnabled() { await api.setProcessEnabled(p.id, !p.enabled).catch(() => {}); setTimeout(reload, 200) }
 
   const [hovered, setHovered] = useState(false)
+  const isDisabled = p.enabled === false
 
   return (
     <div
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       style={{
-        background: 'var(--color-card)',
-        border: `1px solid ${hovered ? color + '60' : 'var(--color-border)'}`,
-        borderLeft: `4px solid ${color}`,
+        background: isDisabled ? 'color-mix(in srgb, var(--color-muted-foreground) 5%, var(--color-card))' : 'var(--color-card)',
+        border: `1px solid ${hovered ? (isDisabled ? 'var(--color-muted-foreground)' : color + '60') : 'var(--color-border)'}`,
+        borderLeft: `4px solid ${isDisabled ? 'var(--color-muted-foreground)' : color}`,
         borderRadius: 8,
         padding: '12px 14px',
         display: 'flex',
         flexDirection: 'column',
         gap: 8,
         transition: 'border-color 0.15s, box-shadow 0.15s',
-        boxShadow: hovered ? `0 2px 12px ${color}18` : 'none',
+        boxShadow: hovered && !isDisabled ? `0 2px 12px ${color}18` : 'none',
+        opacity: isDisabled ? 0.7 : 1,
       }}
     >
       {/* Name + status badge */}
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 }}>
-        <strong
-          style={{ fontSize: 14, cursor: 'pointer', wordBreak: 'break-word', lineHeight: 1.3 }}
-          onClick={() => onOpenDetail(p)}
-        >{p.name}</strong>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
+          <strong
+            style={{ fontSize: 14, cursor: 'pointer', wordBreak: 'break-word', lineHeight: 1.3 }}
+            onClick={() => onOpenDetail(p)}
+          >{p.name}</strong>
+          {p.git_branch && (
+            <span style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: 10, color: 'var(--color-muted-foreground)' }}>
+              <GitBranch size={10} />
+              {p.git_branch}
+            </span>
+          )}
+        </div>
         <span style={{
           fontSize: 10, fontWeight: 700, whiteSpace: 'nowrap', flexShrink: 0,
           padding: '2px 8px', borderRadius: 10,
@@ -472,6 +488,7 @@ function ProcessCard({ p, reload, confirmDelete, onConfirm, onDanger, onOpenDeta
           { key: 'edit',     label: 'Edit',     icon: Pencil,        onClick: () => onEdit(p),                                        color: '#34d399' },
           { key: 'terminal', label: 'Terminal', icon: SquareTerminal, onClick: () => p.cwd && onOpenTerminal(p.cwd, p.name),           color: '#22d3ee', disabled: !p.cwd },
           { key: 'env',      label: '.env',     icon: FileKey,       onClick: () => onOpenEnv(p),                                     color: '#fbbf24' },
+          { key: 'enable',   label: isDisabled ? 'Enable' : 'Disable', icon: isDisabled ? Power : PowerOff, onClick: doToggleEnabled, color: isDisabled ? '#4ade80' : 'var(--color-muted-foreground)' },
           { key: 'notify',   label: 'Notify',   icon: Bell,          onClick: () => onOpenNotif(p),                                   color: '#a78bfa', badge: hasNotify ? '●' : undefined },
           { key: 'clone',    label: 'Clone',    icon: Copy,          onClick: doClone,                                                color: '#94a3b8' },
           { key: 'delete',   label: 'Delete',   icon: Trash2,        onClick: doDelete,                                               danger: true },
@@ -482,7 +499,7 @@ function ProcessCard({ p, reload, confirmDelete, onConfirm, onDanger, onOpenDeta
           <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', paddingTop: 2, borderTop: '1px solid var(--color-border)' }}>
             {isActive
               ? <><ActionBtn label="Restart" icon={RotateCcw} onClick={doRestart} color="#fb923c" /><ActionBtn label="Stop" icon={Square} onClick={doStop} color="#f87171" /></>
-              : <ActionBtn label="Start" icon={Play} onClick={doStart} color="#4ade80" />
+              : <ActionBtn label="Start" icon={Play} onClick={isDisabled ? undefined : doStart} color={isDisabled ? 'var(--color-muted-foreground)' : '#4ade80'} disabled={isDisabled} title={isDisabled ? 'Process is disabled — enable it first' : 'Start'} />
             }
             {inline.map(a => <ActionBtn key={a.key} label={a.label} icon={a.icon} onClick={a.onClick} color={a.color} danger={a.danger} badge={a.badge} />)}
             <RowOverflowMenu actions={overflow} />
@@ -535,17 +552,30 @@ function ProcessRow({ p, reload, confirmDelete, onConfirm, onDanger, onOpenDetai
     setTimeout(reload, 300)
   }
   async function doClone() { await api.cloneProcess(p.id).catch(() => {}); setTimeout(reload, 400) }
+  async function doToggleEnabled() { await api.setProcessEnabled(p.id, !p.enabled).catch(() => {}); setTimeout(reload, 200) }
+
+  const isDisabled = p.enabled === false
 
   return (
-    <tr style={{ borderBottom: '1px solid var(--color-border)' }}
-      onMouseEnter={e => (e.currentTarget.style.background = 'var(--color-accent)')}
-      onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+    <tr style={{ borderBottom: '1px solid var(--color-border)', background: isDisabled ? 'color-mix(in srgb, var(--color-muted-foreground) 5%, transparent)' : 'transparent' }}
+      onMouseEnter={e => (e.currentTarget.style.background = isDisabled ? 'color-mix(in srgb, var(--color-muted-foreground) 9%, transparent)' : 'var(--color-accent)')}
+      onMouseLeave={e => (e.currentTarget.style.background = isDisabled ? 'color-mix(in srgb, var(--color-muted-foreground) 5%, transparent)' : 'transparent')}
     >
       <Td>
         <code style={{ fontSize: 11, color: 'var(--color-muted-foreground)', cursor: 'pointer' }}
           title={p.id} onClick={() => onOpenDetail(p)}>{p.id.slice(0, 8)}</code>
       </Td>
-      <Td><strong style={{ cursor: 'pointer' }} onClick={() => onOpenDetail(p)}>{p.name}</strong></Td>
+      <Td>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+          <strong style={{ cursor: 'pointer' }} onClick={() => onOpenDetail(p)}>{p.name}</strong>
+          {p.git_branch && (
+            <span style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: 10, color: 'var(--color-muted-foreground)' }}>
+              <GitBranch size={10} />
+              {p.git_branch}
+            </span>
+          )}
+        </div>
+      </Td>
       <Td>
         <span style={{ color: statusColor(p.status), display: 'flex', alignItems: 'center', gap: 4, fontSize: 12 }}>
           ● {p.status}
@@ -585,6 +615,7 @@ function ProcessRow({ p, reload, confirmDelete, onConfirm, onDanger, onOpenDetai
             { key: 'edit',     label: 'Edit',     icon: Pencil,        onClick: () => onEdit(p),                                        color: '#34d399' },
             { key: 'terminal', label: 'Terminal', icon: SquareTerminal, onClick: () => p.cwd && onOpenTerminal(p.cwd, p.name),           color: '#22d3ee', disabled: !p.cwd },
             { key: 'env',      label: '.env',     icon: FileKey,       onClick: () => onOpenEnv(p),                                     color: '#fbbf24' },
+            { key: 'enable',   label: isDisabled ? 'Enable' : 'Disable', icon: isDisabled ? Power : PowerOff, onClick: doToggleEnabled, color: isDisabled ? '#4ade80' : 'var(--color-muted-foreground)' },
             { key: 'notify',   label: 'Notify',   icon: Bell,          onClick: () => onOpenNotif(p),                                   color: '#a78bfa', badge: hasNotify ? '●' : undefined },
             { key: 'clone',    label: 'Clone',    icon: Copy,          onClick: doClone,                                                color: '#94a3b8' },
             { key: 'delete',   label: 'Delete',   icon: Trash2,        onClick: doDelete,                                               danger: true },
@@ -595,7 +626,7 @@ function ProcessRow({ p, reload, confirmDelete, onConfirm, onDanger, onOpenDetai
             <div style={{ display: 'flex', gap: 3, flexWrap: 'nowrap' }}>
               {isActive
                 ? <><ActionBtn label="Restart" icon={RotateCcw} onClick={doRestart} color="#fb923c" /><ActionBtn label="Stop" icon={Square} onClick={doStop} color="#f87171" /></>
-                : <ActionBtn label="Start" icon={Play} onClick={doStart} color="#4ade80" />
+                : <ActionBtn label="Start" icon={Play} onClick={isDisabled ? undefined : doStart} color={isDisabled ? 'var(--color-muted-foreground)' : '#4ade80'} disabled={isDisabled} title={isDisabled ? 'Process is disabled — enable it first' : 'Start'} />
               }
               {inline.map(a => <ActionBtn key={a.key} label={a.label} icon={a.icon} onClick={a.onClick} color={a.color} danger={a.danger} badge={a.badge} />)}
               <RowOverflowMenu actions={overflow} />
@@ -721,16 +752,18 @@ function RowOverflowMenu({ actions }: { actions: { label: string; icon: React.El
   )
 }
 
-function ActionBtn({ label, icon: Icon, onClick, danger, color, badge }: {
-  label: string; icon: React.ElementType; onClick: () => void; danger?: boolean; color?: string; badge?: string
+function ActionBtn({ label, icon: Icon, onClick, danger, color, badge, disabled, title }: {
+  label: string; icon: React.ElementType; onClick?: () => void; danger?: boolean; color?: string; badge?: string; disabled?: boolean; title?: string
 }) {
-  const iconColor = danger ? 'var(--color-destructive)' : (color ?? 'var(--color-muted-foreground)')
+  const iconColor = disabled ? 'var(--color-muted-foreground)' : danger ? 'var(--color-destructive)' : (color ?? 'var(--color-muted-foreground)')
   return (
-    <button title={label} onClick={onClick} style={{
+    <button title={title ?? label} onClick={disabled ? undefined : onClick} disabled={disabled} style={{
       position: 'relative', padding: 0, width: 26, height: 26,
       display: 'flex', alignItems: 'center', justifyContent: 'center',
-      background: 'var(--color-secondary)', border: '1px solid var(--color-border)',
-      borderRadius: 4, cursor: 'pointer', flexShrink: 0, color: iconColor,
+      background: disabled ? 'color-mix(in srgb, var(--color-secondary) 60%, transparent)' : 'var(--color-secondary)',
+      border: '1px solid var(--color-border)',
+      borderRadius: 4, cursor: disabled ? 'not-allowed' : 'pointer', flexShrink: 0, color: iconColor,
+      opacity: disabled ? 0.45 : 1,
     }}>
       <Icon size={13} strokeWidth={1.75} />
       {badge && <span style={{ position: 'absolute', top: -3, right: -3, fontSize: 8, color: iconColor, lineHeight: 1 }}>{badge}</span>}
