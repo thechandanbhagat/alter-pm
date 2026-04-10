@@ -38,9 +38,12 @@ Download the latest `alter-x.x.x-windows-x64-setup.exe` from [Releases](https://
 - **Single binary** — no runtime dependencies
 - **Dashboard authentication** — password-protect the web UI with Argon2id hashing, session tokens, and a PIN quick-unlock
 - **Telegram bot** — control your processes from Telegram: list, start, stop, restart, tail logs, and receive crash/restart alerts
-- **AI assistant** — built-in chat panel powered by GitHub Models with streaming responses and process-aware context
+- **AI assistant** — multi-provider chat panel (Ollama, GitHub Models, Claude, OpenAI-compatible) with streaming responses and process-aware context
 - **Port Finder** — scan all open TCP/UDP ports, see owning processes, and kill by PID from the dashboard
 - **Notifications** — Slack, Discord, Microsoft Teams, and webhook alerts on crash, restart, cron events, and more
+- **Process enable/disable** — exclude individual processes from Start All without removing them
+- **Terminal history** — per-process command history persisted across sessions
+- **Sidebar namespace groups** — active processes grouped by namespace with collapsible sections and bulk stop/restart
 
 ### Build from source
 

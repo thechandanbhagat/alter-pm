@@ -6,6 +6,51 @@ Format: `[version] — YYYY-MM-DD` with sections: **Added**, **Changed**, **Fixe
 
 ---
 
+## [1.1.0] — 2026-04-10
+
+### Added
+
+**Multi-Provider AI Assistant**
+- AI chat panel now supports four providers: Ollama (local), GitHub Models, Anthropic Claude, and OpenAI-compatible APIs (Groq, Together, local vLLM, etc.)
+- New `provider` field in AI settings selects active backend; each provider's credentials stored independently
+- Ollama: configurable base URL (`http://localhost:11434` default); no API key required
+- Claude: Anthropic API key stored in `ai-settings.json`; key hint masked in API responses
+- OpenAI-compatible: configurable API key and base URL (`https://api.openai.com/v1` default)
+- Optional `GH_OAUTH_CLIENT_ID` env var baked in at compile time via `build.rs` — removes need for users to supply their own OAuth App Client ID
+- Updated `GET/PUT /api/v1/ai/settings` to expose per-provider fields
+
+**Process Enable/Disable**
+- New `enabled` boolean flag per process — disabled processes are excluded from Start All
+- `PATCH /api/v1/processes/:id/enabled` — toggle enabled state; state persisted to disk
+- Card and table views dim disabled processes with visual indicator (Power/PowerOff icons)
+- `enabled` flag preserved by clone and update operations; defaults to `true` for backward compatibility
+
+**Terminal Command History**
+- `GET /api/v1/terminal-history/:key` and `PUT /api/v1/terminal-history/:key` — per-process terminal history API
+- History persisted to `%APPDATA%\alter-pm2\terminal-history.json` across daemon restarts
+- Deduplication and frequency tracking per command
+
+**Daemon-side UI Settings**
+- `GET /api/v1/ui-settings` and `PUT /api/v1/ui-settings` — store UI preferences on the daemon
+- `GET/PUT /api/v1/ui-settings/view-mode` — view mode (table/card) now persisted server-side
+- Settings stored in `%APPDATA%\alter-pm2\ui-settings.json`
+
+**Sidebar Namespace Groups**
+- Active process sidebar now groups processes by namespace with collapsible sections
+- Bulk Stop All / Restart All actions available per namespace group in the sidebar
+- Default namespace always shown first; count badge reflects total active processes
+
+### Changed
+
+- AI Panel revamped with provider-selector tabs and per-provider configuration forms
+- Settings → AI tab updated for multi-provider layout
+- `ProcessInfo` and `ProcessConfig` models gain `enabled` field
+- View mode preference migrated from `localStorage` to daemon-side UI settings
+- Terminal Panel resize and keyboard shortcut handling improved
+- Sidebar process list refactored into `SidebarNsGroup` component
+
+---
+
 ## [0.6.0] — 2026-03-11
 
 ### Added
