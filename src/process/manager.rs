@@ -372,6 +372,14 @@ impl ProcessManager {
         Ok(guard.to_info())
     }
 
+    // @group BusinessLogic > Enabled : Toggle enabled flag for a process (persisted via caller's save_to_disk)
+    pub async fn set_enabled(&self, id: Uuid, enabled: bool) -> Result<ProcessInfo> {
+        let arc = self.get_arc(id)?;
+        let mut guard = arc.write().await;
+        guard.config.enabled = enabled;
+        Ok(guard.to_info())
+    }
+
     // @group BusinessLogic > Namespace : Start all stopped/crashed processes in a namespace (bulk — one Telegram notification)
     pub async fn start_namespace(&self, namespace: &str) -> Vec<ProcessInfo> {
         let ids: Vec<Uuid> = {
@@ -379,6 +387,7 @@ impl ProcessManager {
             for entry in self.registry.iter() {
                 let proc = entry.value().read().await;
                 if proc.config.namespace == namespace
+                    && proc.config.enabled
                     && matches!(proc.status, ProcessStatus::Stopped | ProcessStatus::Crashed | ProcessStatus::Errored)
                 {
                     result.push(proc.id);
