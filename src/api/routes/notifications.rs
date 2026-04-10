@@ -135,6 +135,8 @@ async fn test_notification(
         notify: None,
         log_alert: None,
         health_status: None,
+        git_branch: None,
+        enabled: true,
     };
 
     fire_event(&store, &proc, ProcessEvent::Started).await;

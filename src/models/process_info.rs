@@ -49,4 +49,8 @@ pub struct ProcessInfo {
     pub log_alert: Option<crate::config::log_alert_config::LogAlertOverride>,
     /// Health check probe result — None if no health check is configured
     pub health_status: Option<HealthCheckStatus>,
+    /// Active git branch in the process working directory — None if not a git repo or no cwd
+    pub git_branch: Option<String>,
+    /// Whether this process participates in bulk start (Start All) operations
+    pub enabled: bool,
 }

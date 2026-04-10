@@ -48,6 +48,10 @@ pub fn scripts_dir() -> PathBuf {
     data_dir().join("scripts")
 }
 
+pub fn terminal_history_file() -> PathBuf {
+    data_dir().join("terminal-history.json")
+}
+
 pub fn process_log_dir(name: &str) -> PathBuf {
     log_dir().join(sanitize_name(name))
 }

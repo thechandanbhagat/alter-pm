@@ -58,6 +58,8 @@ jobs:
           npm run build
 
       - name: Build release binary
+        env:
+          GH_OAUTH_CLIENT_ID: ${{ secrets.GH_OAUTH_CLIENT_ID }}
         run: cargo build --release --target x86_64-pc-windows-msvc
 
       # Copy binary to target/release/ where Inno Setup script expects it

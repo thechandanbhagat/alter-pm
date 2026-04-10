@@ -248,5 +248,6 @@ fn build_app_config(info: &ProcessInfo) -> AppConfig {
         pre_start: None,
         post_start: None,
         pre_stop: None,
+        enabled: info.enabled,
     }
 }

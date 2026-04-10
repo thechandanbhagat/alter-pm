@@ -1,4 +1,4 @@
-// @group BusinessLogic : AI assistant panel — slide-in chat powered by GitHub Models API
+// @group BusinessLogic : AI assistant panel — slide-in chat with markdown rendering
 
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
@@ -14,7 +14,6 @@ interface AiPanelProps {
   onClose: () => void
 }
 
-// @group Utilities > Styles : Panel style tokens
 const panelWidth = 360
 
 const iconBtn: React.CSSProperties = {
@@ -22,6 +21,114 @@ const iconBtn: React.CSSProperties = {
   width: 28, height: 28,
   background: 'transparent', border: 'none', cursor: 'pointer',
   color: 'var(--color-muted-foreground)', borderRadius: 5,
+}
+
+// @group Utilities > Markdown : Lightweight markdown-to-JSX renderer for AI responses
+function MarkdownBlock({ text }: { text: string }) {
+  const lines = text.split('\n')
+  const elements: React.ReactNode[] = []
+  let i = 0
+
+  function renderInline(raw: string): React.ReactNode[] {
+    // Bold (**text** or __text__), italic (*text* or _text_), inline code (`code`)
+    const parts: React.ReactNode[] = []
+    const re = /(`[^`]+`|\*\*[^*]+\*\*|__[^_]+__|(?<!\*)\*(?!\*)([^*]+)(?<!\*)\*(?!\*)|_([^_]+)_)/g
+    let last = 0
+    let m: RegExpExecArray | null
+    while ((m = re.exec(raw)) !== null) {
+      if (m.index > last) parts.push(raw.slice(last, m.index))
+      const token = m[0]
+      if (token.startsWith('`')) {
+        parts.push(<code key={m.index} style={{ fontFamily: 'monospace', fontSize: '0.9em', background: 'rgba(255,255,255,0.08)', padding: '1px 4px', borderRadius: 3 }}>{token.slice(1, -1)}</code>)
+      } else if (token.startsWith('**') || token.startsWith('__')) {
+        parts.push(<strong key={m.index} style={{ fontWeight: 600 }}>{token.slice(2, -2)}</strong>)
+      } else {
+        parts.push(<em key={m.index}>{token.slice(1, -1)}</em>)
+      }
+      last = m.index + token.length
+    }
+    if (last < raw.length) parts.push(raw.slice(last))
+    return parts
+  }
+
+  while (i < lines.length) {
+    const line = lines[i]
+
+    // Heading: ### / ## / #
+    const hm = line.match(/^(#{1,3})\s+(.+)$/)
+    if (hm) {
+      const level = hm[1].length
+      const sizes = [15, 13, 12]
+      elements.push(
+        <div key={i} style={{ fontWeight: 700, fontSize: sizes[level - 1], marginTop: level === 1 ? 10 : 7, marginBottom: 3, color: 'var(--color-foreground)' }}>
+          {renderInline(hm[2])}
+        </div>
+      )
+      i++; continue
+    }
+
+    // Horizontal rule
+    if (/^(-{3,}|\*{3,})$/.test(line.trim())) {
+      elements.push(<hr key={i} style={{ border: 'none', borderTop: '1px solid var(--color-border)', margin: '8px 0' }} />)
+      i++; continue
+    }
+
+    // Unordered list: - item or * item
+    if (/^[\s]*[-*]\s/.test(line)) {
+      const listItems: React.ReactNode[] = []
+      while (i < lines.length && /^[\s]*[-*]\s/.test(lines[i])) {
+        listItems.push(
+          <li key={i} style={{ marginBottom: 2 }}>{renderInline(lines[i].replace(/^[\s]*[-*]\s/, ''))}</li>
+        )
+        i++
+      }
+      elements.push(<ul key={`ul-${i}`} style={{ margin: '4px 0', paddingLeft: 18, listStyle: 'disc' }}>{listItems}</ul>)
+      continue
+    }
+
+    // Ordered list: 1. item
+    if (/^\d+\.\s/.test(line)) {
+      const listItems: React.ReactNode[] = []
+      while (i < lines.length && /^\d+\.\s/.test(lines[i])) {
+        listItems.push(
+          <li key={i} style={{ marginBottom: 2 }}>{renderInline(lines[i].replace(/^\d+\.\s/, ''))}</li>
+        )
+        i++
+      }
+      elements.push(<ol key={`ol-${i}`} style={{ margin: '4px 0', paddingLeft: 18 }}>{listItems}</ol>)
+      continue
+    }
+
+    // Code block: ```
+    if (line.startsWith('```')) {
+      const codeLines: string[] = []
+      i++
+      while (i < lines.length && !lines[i].startsWith('```')) {
+        codeLines.push(lines[i]); i++
+      }
+      i++ // consume closing ```
+      elements.push(
+        <pre key={i} style={{
+          background: 'rgba(0,0,0,0.3)', borderRadius: 5, padding: '8px 10px',
+          fontSize: 11, fontFamily: 'monospace', overflowX: 'auto',
+          margin: '4px 0', whiteSpace: 'pre-wrap', wordBreak: 'break-all',
+        }}>{codeLines.join('\n')}</pre>
+      )
+      continue
+    }
+
+    // Blank line — small gap
+    if (line.trim() === '') {
+      elements.push(<div key={i} style={{ height: 6 }} />)
+      i++; continue
+    }
+
+    // Regular paragraph
+    elements.push(<div key={i} style={{ marginBottom: 1 }}>{renderInline(line)}</div>)
+    i++
+  }
+
+  return <>{elements}</>
 }
 
 // @group BusinessLogic > AiPanel : Main chat panel component
@@ -33,18 +140,23 @@ export function AiPanel({ open, processId, processName, onClose }: AiPanelProps)
   const abortRef = useRef<AbortController | null>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
+  const [aiModel, setAiModel] = useState<string | undefined>(undefined)
+  const [aiProvider, setAiProvider] = useState<string | undefined>(undefined)
 
-  // Auto-scroll to bottom when new content arrives
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
 
-  // Focus input when panel opens
+  // Load current model/provider and focus input each time the panel opens
   useEffect(() => {
-    if (open) setTimeout(() => inputRef.current?.focus(), 80)
+    if (!open) return
+    api.aiGetSettings().then(s => {
+      setAiModel(s.model)
+      setAiProvider(s.provider)
+    }).catch(() => {})
+    setTimeout(() => inputRef.current?.focus(), 80)
   }, [open])
 
-  // Close on Escape
   useEffect(() => {
     if (!open) return
     const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
@@ -66,24 +178,19 @@ export function AiPanel({ open, processId, processName, onClose }: AiPanelProps)
 
     const userMsg: AiChatMessage = { role: 'user', content: text }
     setMessages(prev => [...prev, userMsg])
-
-    // Placeholder for the assistant reply that we stream into
     const assistantMsg: AiChatMessage = { role: 'assistant', content: '' }
     setMessages(prev => [...prev, assistantMsg])
     setStreaming(true)
 
-    // Build history from all but the last empty placeholder we just added
     const history = messages.concat(userMsg)
 
     const abort = api.aiChat(
-      { message: text, process_id: processId ?? undefined, history },
+      { message: text, process_id: processId ?? undefined, history, model: aiModel, provider: aiProvider },
       (delta) => {
         setMessages(prev => {
           const copy = [...prev]
           const last = copy[copy.length - 1]
-          if (last?.role === 'assistant') {
-            copy[copy.length - 1] = { ...last, content: last.content + delta }
-          }
+          if (last?.role === 'assistant') copy[copy.length - 1] = { ...last, content: last.content + delta }
           return copy
         })
       },
@@ -94,78 +201,41 @@ export function AiPanel({ open, processId, processName, onClose }: AiPanelProps)
   }
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault()
-      sendMessage()
-    }
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage() }
   }
+
+  const providerLabel = aiProvider ? ({ ollama: 'Ollama', copilot: 'GitHub Copilot', github: 'GitHub Models', claude: 'Claude', openai: 'OpenAI' }[aiProvider] ?? aiProvider) : null
 
   const panel = (
     <>
-      {/* Backdrop */}
-      {open && (
-        <div
-          onClick={onClose}
-          style={{ position: 'fixed', inset: 0, zIndex: 199 }}
-        />
-      )}
+      {open && <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 199 }} />}
 
-      {/* Panel — slides in from right */}
       <div style={{
-        position: 'fixed',
-        top: 0,
-        right: 0,
-        width: panelWidth,
-        height: '100vh',
-        zIndex: 200,
-        background: 'var(--color-card)',
-        borderLeft: '1px solid var(--color-border)',
-        display: 'flex',
-        flexDirection: 'column',
-        boxShadow: '-4px 0 24px rgba(0,0,0,0.35)',
+        position: 'fixed', top: 0, right: 0, width: panelWidth, height: 'calc(100vh - 22px)', zIndex: 200,
+        background: 'var(--color-card)', borderLeft: '1px solid var(--color-border)',
+        display: 'flex', flexDirection: 'column', boxShadow: '-4px 0 24px rgba(0,0,0,0.35)',
         transform: open ? 'translateX(0)' : `translateX(${panelWidth + 4}px)`,
         transition: 'transform 0.22s cubic-bezier(0.4,0,0.2,1)',
       }}>
 
         {/* Header */}
-        <div style={{
-          display: 'flex', alignItems: 'center', gap: 8,
-          padding: '12px 14px',
-          borderBottom: '1px solid var(--color-border)',
-          flexShrink: 0,
-        }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '12px 14px', borderBottom: '1px solid var(--color-border)', flexShrink: 0 }}>
           <Bot size={15} style={{ color: 'var(--color-primary)', flexShrink: 0 }} />
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-foreground)' }}>
-              AI Assistant
+            <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-foreground)' }}>AI Assistant</div>
+            <div style={{ fontSize: 10, color: 'var(--color-muted-foreground)', marginTop: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {processName ? `Context: ${processName}` : (providerLabel ?? 'AI')}
+              {providerLabel && processName ? ` · ${providerLabel}` : ''}
             </div>
-            {processName && (
-              <div style={{ fontSize: 10, color: 'var(--color-muted-foreground)', marginTop: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                Context: {processName}
-              </div>
-            )}
-            {!processName && (
-              <div style={{ fontSize: 10, color: 'var(--color-muted-foreground)', marginTop: 1 }}>
-                GitHub Copilot · GitHub Models
-              </div>
-            )}
           </div>
-          <button
-            title="Clear chat"
-            onClick={clearChat}
-            style={{ ...iconBtn }}
+          <button title="Clear chat" onClick={clearChat} style={iconBtn}
             onMouseEnter={e => { e.currentTarget.style.color = 'var(--color-foreground)' }}
-            onMouseLeave={e => { e.currentTarget.style.color = 'var(--color-muted-foreground)' }}
-          >
+            onMouseLeave={e => { e.currentTarget.style.color = 'var(--color-muted-foreground)' }}>
             <Trash2 size={13} />
           </button>
-          <button
-            title="Close"
-            onClick={onClose}
-            style={{ ...iconBtn }}
+          <button title="Close" onClick={onClose} style={iconBtn}
             onMouseEnter={e => { e.currentTarget.style.color = 'var(--color-foreground)' }}
-            onMouseLeave={e => { e.currentTarget.style.color = 'var(--color-muted-foreground)' }}
-          >
+            onMouseLeave={e => { e.currentTarget.style.color = 'var(--color-muted-foreground)' }}>
             <X size={14} />
           </button>
         </div>
@@ -173,21 +243,13 @@ export function AiPanel({ open, processId, processName, onClose }: AiPanelProps)
         {/* Messages */}
         <div style={{ flex: 1, overflowY: 'auto', padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 10 }}>
           {messages.length === 0 && !error && (
-            <div style={{
-              flex: 1, display: 'flex', flexDirection: 'column',
-              alignItems: 'center', justifyContent: 'center',
-              color: 'var(--color-muted-foreground)', gap: 8, paddingBottom: 40,
-            }}>
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: 'var(--color-muted-foreground)', gap: 8, paddingBottom: 40 }}>
               <Bot size={28} style={{ opacity: 0.35 }} />
               <div style={{ fontSize: 12, textAlign: 'center', lineHeight: 1.5 }}>
                 Ask about your processes,<br />logs, crashes, or config.
               </div>
               {processName && (
-                <div style={{
-                  fontSize: 11, marginTop: 4, padding: '4px 10px',
-                  background: 'var(--color-accent)', borderRadius: 12,
-                  color: 'var(--color-primary)', fontWeight: 500,
-                }}>
+                <div style={{ fontSize: 11, marginTop: 4, padding: '4px 10px', background: 'var(--color-accent)', borderRadius: 12, color: 'var(--color-primary)', fontWeight: 500 }}>
                   Process context: {processName}
                 </div>
               )}
@@ -195,55 +257,40 @@ export function AiPanel({ open, processId, processName, onClose }: AiPanelProps)
           )}
 
           {messages.map((msg, i) => (
-            <div
-              key={i}
-              style={{
-                display: 'flex',
-                justifyContent: msg.role === 'user' ? 'flex-end' : 'flex-start',
-              }}
-            >
+            <div key={i} style={{ display: 'flex', justifyContent: msg.role === 'user' ? 'flex-end' : 'flex-start' }}>
               <div style={{
-                maxWidth: '85%',
+                maxWidth: '88%',
                 padding: '8px 11px',
                 borderRadius: msg.role === 'user' ? '12px 12px 3px 12px' : '12px 12px 12px 3px',
                 background: msg.role === 'user' ? 'var(--color-primary)' : 'var(--color-secondary)',
                 color: msg.role === 'user' ? '#fff' : 'var(--color-foreground)',
-                fontSize: 12,
-                lineHeight: 1.55,
-                whiteSpace: 'pre-wrap',
-                wordBreak: 'break-word',
+                fontSize: 12, lineHeight: 1.6, wordBreak: 'break-word',
               }}>
-                {msg.content}
-                {msg.role === 'assistant' && msg.content === '' && streaming && (
-                  <span style={{ opacity: 0.5 }}>●</span>
-                )}
+                {msg.role === 'assistant'
+                  ? <>
+                      <MarkdownBlock text={msg.content} />
+                      {msg.content === '' && streaming && <span style={{ opacity: 0.5 }}>●</span>}
+                    </>
+                  : msg.content
+                }
               </div>
             </div>
           ))}
 
           {error && (
             <div style={{
-              fontSize: 11, color: 'var(--color-destructive)',
-              padding: '8px 10px',
+              fontSize: 11, color: 'var(--color-destructive)', padding: '8px 10px',
               background: 'color-mix(in srgb, var(--color-destructive) 10%, transparent)',
               borderRadius: 6, border: '1px solid color-mix(in srgb, var(--color-destructive) 30%, transparent)',
             }}>
               {error}
             </div>
           )}
-
           <div ref={bottomRef} />
         </div>
 
         {/* Input bar */}
-        <div style={{
-          padding: '10px 12px',
-          borderTop: '1px solid var(--color-border)',
-          flexShrink: 0,
-          display: 'flex',
-          gap: 8,
-          alignItems: 'flex-end',
-        }}>
+        <div style={{ padding: '10px 12px', borderTop: '1px solid var(--color-border)', flexShrink: 0, display: 'flex', gap: 8, alignItems: 'flex-end' }}>
           <textarea
             ref={inputRef}
             value={input}
@@ -253,20 +300,11 @@ export function AiPanel({ open, processId, processName, onClose }: AiPanelProps)
             rows={1}
             disabled={streaming}
             style={{
-              flex: 1,
-              resize: 'none',
-              padding: '7px 10px',
-              fontSize: 12,
-              borderRadius: 6,
-              border: '1px solid var(--color-border)',
-              background: 'var(--color-background)',
-              color: 'var(--color-foreground)',
-              fontFamily: 'inherit',
-              outline: 'none',
-              lineHeight: 1.5,
-              maxHeight: 100,
-              overflowY: 'auto',
-              opacity: streaming ? 0.6 : 1,
+              flex: 1, resize: 'none', padding: '7px 10px', fontSize: 12,
+              borderRadius: 6, border: '1px solid var(--color-border)',
+              background: 'var(--color-background)', color: 'var(--color-foreground)',
+              fontFamily: 'inherit', outline: 'none', lineHeight: 1.5,
+              maxHeight: 100, overflowY: 'auto', opacity: streaming ? 0.6 : 1,
             }}
             onInput={e => {
               const el = e.currentTarget
@@ -279,19 +317,16 @@ export function AiPanel({ open, processId, processName, onClose }: AiPanelProps)
             disabled={!input.trim() || streaming}
             title="Send (Enter)"
             style={{
-              width: 32, height: 32, flexShrink: 0,
-              borderRadius: 6, border: 'none', cursor: 'pointer',
+              width: 32, height: 32, flexShrink: 0, borderRadius: 6, border: 'none', cursor: 'pointer',
               background: (!input.trim() || streaming) ? 'var(--color-secondary)' : 'var(--color-primary)',
               color: (!input.trim() || streaming) ? 'var(--color-muted-foreground)' : '#fff',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              transition: 'background 0.15s',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'background 0.15s',
             }}
           >
             {streaming ? <Loader size={13} style={{ animation: 'spin 1s linear infinite' }} /> : <Send size={13} />}
           </button>
         </div>
       </div>
-
       <style>{`@keyframes spin { to { transform: rotate(360deg) } }`}</style>
     </>
   )

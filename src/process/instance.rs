@@ -53,6 +53,8 @@ pub struct ManagedProcess {
     pub health_status: Option<HealthCheckStatus>,
     /// Handle to the running health check task — aborted on process stop
     pub health_check_handle: Option<tokio::task::JoinHandle<()>>,
+    /// Cached git branch from the process cwd — populated at creation time
+    pub git_branch: Option<String>,
     // @group BusinessLogic > LogStats : Rolling 5-minute log volume buckets (stdout + stderr counts)
     pub log_stats: Arc<Mutex<LogStatsState>>,
 }
@@ -65,6 +67,7 @@ impl ManagedProcess {
     /// Restore a process with its persisted UUID so IDs remain stable across daemon restarts.
     pub fn new_with_id(id: Uuid, config: AppConfig) -> Self {
         let (log_tx, _) = broadcast::channel(1024);
+        let git_branch = config.cwd.as_deref().and_then(read_git_branch);
         Self {
             id,
             config,
@@ -84,6 +87,7 @@ impl ManagedProcess {
             health_status: None,
             health_check_handle: None,
             log_stats: Arc::new(Mutex::new(LogStatsState::new())),
+            git_branch,
         }
     }
 
@@ -122,6 +126,28 @@ impl ManagedProcess {
             notify: self.config.notify.clone(),
             log_alert: self.config.log_alert.clone(),
             health_status: self.health_status.clone(),
+            git_branch: self.git_branch.clone(),
+            enabled: self.config.enabled,
         }
     }
+}
+
+// @group Utilities > Git : Read the active git branch from a directory path
+fn read_git_branch(cwd: &str) -> Option<String> {
+    let mut cmd = std::process::Command::new("git");
+    cmd.args(["rev-parse", "--abbrev-ref", "HEAD"])
+        .current_dir(cwd)
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null());
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
+    }
+    cmd.output()
+        .ok()
+        .filter(|o| o.status.success())
+        .and_then(|o| String::from_utf8(o.stdout).ok())
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty() && s != "HEAD")
 }
