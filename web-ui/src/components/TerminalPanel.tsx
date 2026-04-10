@@ -6,6 +6,7 @@ import { FitAddon } from '@xterm/addon-fit'
 import { Maximize2, Minimize2, X, Plus, SquareTerminal, ChevronDown, SquareSplitHorizontal, History } from 'lucide-react'
 import { getSessionToken } from '@/lib/auth'
 import { getActiveServer, serverBaseUrl } from '@/lib/servers'
+import { api, type CmdEntry as ApiCmdEntry } from '@/lib/api'
 import '@xterm/xterm/css/xterm.css'
 
 // @group Types : Panel visibility states
@@ -29,6 +30,7 @@ interface TerminalTab {
   title: string
   cwd: string
   splitPaneId?: string // if set, a second pane exists side-by-side with the primary
+  processKey?: string  // stable key for history persistence (e.g. "proc:api-server")
 }
 
 // @group Types : Live xterm + WebSocket instance, stored outside React state
@@ -39,8 +41,27 @@ interface TerminalInstance {
   connected: boolean
 }
 
-// @group Types : Command history entry per pane
-interface CmdEntry { cmd: string; count: number }
+// @group Types : Command history entry per pane (matches Rust CmdEntry)
+type CmdEntry = ApiCmdEntry
+
+// @group Utilities > Terminal > History : Debounce map — one pending timer per storage key
+const saveTimers = new Map<string, ReturnType<typeof setTimeout>>()
+
+// @group Utilities > Terminal > History : Load history from daemon data directory (non-blocking)
+async function loadPersistedHistory(key: string): Promise<CmdEntry[]> {
+  try { return await api.getTerminalHistory(key) } catch { return [] }
+}
+
+// @group Utilities > Terminal > History : Debounced save — coalesces rapid saves to one API call per key
+function savePersistedHistory(key: string, entries: CmdEntry[]): void {
+  const existing = saveTimers.get(key)
+  if (existing) clearTimeout(existing)
+  const t = setTimeout(() => {
+    saveTimers.delete(key)
+    api.saveTerminalHistory(key, entries.slice(0, 150)).catch(() => { /* non-critical */ })
+  }, 800)
+  saveTimers.set(key, t)
+}
 
 interface TerminalPanelProps {
   panelState: TerminalPanelState
@@ -92,6 +113,8 @@ export const TerminalPanel = forwardRef<TerminalPanelHandle, TerminalPanelProps>
 
   // Command history per pane: map of pane ID → sorted CmdEntry[]
   const commandHistoryRef = useRef<Map<string, CmdEntry[]>>(new Map())
+  // Maps pane ID → daemon storage key for history persistence
+  const paneToKeyRef = useRef<Map<string, string>>(new Map())
 
   // Stale-closure-safe refs
   const shortcutsRef    = useRef(shortcuts)
@@ -109,7 +132,7 @@ export const TerminalPanel = forwardRef<TerminalPanelHandle, TerminalPanelProps>
   useEffect(() => { tabsRef.current = tabs }, [tabs])
   useEffect(() => { activeIdRef.current = activeId }, [activeId])
 
-  // @group BusinessLogic > Terminal : Add a new tab
+  // @group BusinessLogic > Terminal : Add a new tab and restore persisted command history
   const addTab = useCallback((cwd?: string, name?: string) => {
     const id = crypto.randomUUID()
     const resolvedCwd = cwd ?? ''
@@ -118,12 +141,28 @@ export const TerminalPanel = forwardRef<TerminalPanelHandle, TerminalPanelProps>
       : resolvedCwd
         ? resolvedCwd.split(/[\\/]/).filter(Boolean).pop() ?? 'terminal'
         : 'terminal'
+    // Stable key: prefer process name, fall back to cwd, skip generic tabs
+    const processKey = name
+      ? `proc:${name}`
+      : resolvedCwd ? `cwd:${resolvedCwd}` : undefined
+
     setTabs(prev => {
-      const next = [...prev, { id, title: label, cwd: resolvedCwd }]
+      const next = [...prev, { id, title: label, cwd: resolvedCwd, processKey }]
       onTabCountChange(next.length)
       return next
     })
     setActiveId(id)
+
+    // Register key and restore saved history from daemon storage
+    if (processKey) {
+      paneToKeyRef.current.set(id, processKey)
+      loadPersistedHistory(processKey).then(saved => {
+        if (saved.length > 0) {
+          commandHistoryRef.current.set(id, saved)
+          setHistoryTick(n => n + 1)
+        }
+      })
+    }
   }, [onTabCountChange])
 
   // @group BusinessLogic > Terminal : Split the active tab's primary pane
@@ -132,7 +171,14 @@ export const TerminalPanel = forwardRef<TerminalPanelHandle, TerminalPanelProps>
     if (!aid) return
     setTabs(prev => prev.map(t => {
       if (t.id !== aid || t.splitPaneId) return t
-      return { ...t, splitPaneId: crypto.randomUUID() }
+      const splitId = crypto.randomUUID()
+      // Propagate processKey and seed history so split pane starts with same history
+      if (t.processKey) {
+        paneToKeyRef.current.set(splitId, t.processKey)
+        const existing = commandHistoryRef.current.get(t.id)
+        if (existing?.length) commandHistoryRef.current.set(splitId, [...existing])
+      }
+      return { ...t, splitPaneId: splitId }
     }))
   }, [])
 
@@ -165,6 +211,7 @@ export const TerminalPanel = forwardRef<TerminalPanelHandle, TerminalPanelProps>
           instances.current.delete(pid)
           containerRefs.current.delete(pid)
           commandHistoryRef.current.delete(pid)
+          paneToKeyRef.current.delete(pid)
         })
       }
       const next = prev.filter(t => t.id !== id)
@@ -188,6 +235,7 @@ export const TerminalPanel = forwardRef<TerminalPanelHandle, TerminalPanelProps>
       instances.current.delete(sid)
       containerRefs.current.delete(sid)
       commandHistoryRef.current.delete(sid)
+      paneToKeyRef.current.delete(sid)
       return { ...t, splitPaneId: undefined }
     }))
   }, [])
@@ -268,8 +316,11 @@ export const TerminalPanel = forwardRef<TerminalPanelHandle, TerminalPanelProps>
             const hist = commandHistoryRef.current.get(id) ?? []
             const ex   = hist.find(h => h.cmd === cmd)
             if (ex) { ex.count++ } else { hist.unshift({ cmd, count: 1 }) }
-            commandHistoryRef.current.set(id, hist.slice(0, 150))
+            const trimmed = hist.slice(0, 150)
+            commandHistoryRef.current.set(id, trimmed)
             setHistoryTick(n => n + 1)
+            const key = paneToKeyRef.current.get(id)
+            if (key) savePersistedHistory(key, trimmed)
           }
           inputBuf = ''
         } else if (ch === '\x7f' || ch === '\b') {

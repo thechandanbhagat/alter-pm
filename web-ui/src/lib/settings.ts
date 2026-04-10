@@ -1,7 +1,7 @@
-// @group Configuration : User settings schema — persisted to localStorage
+// @group Configuration : User settings schema — persisted to daemon data directory via REST API
 
-// @group Constants : Storage key for localStorage
-const STORAGE_KEY = 'alter-pm2:settings'
+import { getSessionToken } from '@/lib/auth'
+import { getActiveServer, serverBaseUrl } from '@/lib/servers'
 
 // @group Types : Full settings schema with defaults
 export interface AppSettings {
@@ -63,33 +63,42 @@ export const DEFAULT_SETTINGS: AppSettings = {
   },
 }
 
-// @group Utilities > Load : Read and merge settings from localStorage
-export function loadSettings(): AppSettings {
+// @group Utilities > API : Base fetch helper for settings (can't import api.ts — circular dep risk)
+function settingsUrl(): string {
+  return `${serverBaseUrl(getActiveServer())}/system/ui-settings`
+}
+
+function authHeader(): Record<string, string> {
+  const token = getSessionToken()
+  return token ? { Authorization: `Bearer ${token}` } : {}
+}
+
+// @group Utilities > Load : Fetch settings from daemon — merges with defaults for forward-compat
+export async function loadSettings(): Promise<AppSettings> {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY)
-    if (!raw) return { ...DEFAULT_SETTINGS }
-    const parsed = JSON.parse(raw) as Partial<AppSettings>
-    // Merge with defaults so any new fields added in future versions are present
-    return { ...DEFAULT_SETTINGS, ...parsed }
+    const res = await fetch(settingsUrl(), { headers: authHeader() })
+    if (!res.ok) return { ...DEFAULT_SETTINGS }
+    const raw = await res.json() as Partial<AppSettings>
+    return { ...DEFAULT_SETTINGS, ...raw }
   } catch {
     return { ...DEFAULT_SETTINGS }
   }
 }
 
-// @group Utilities > Save : Write settings to localStorage
-export function saveSettings(settings: AppSettings): void {
+// @group Utilities > Save : Write settings to daemon data directory
+export async function saveSettings(settings: AppSettings): Promise<void> {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(settings))
-  } catch {
-    // Storage full or blocked — silently ignore
-  }
+    await fetch(settingsUrl(), {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', ...authHeader() },
+      body: JSON.stringify(settings),
+    })
+  } catch { /* non-critical — UI still works */ }
 }
 
-// @group Utilities > Reset : Clear settings and restore defaults
-export function resetSettings(): AppSettings {
-  try {
-    localStorage.removeItem(STORAGE_KEY)
-  } catch { /* ignore */ }
+// @group Utilities > Reset : Persist defaults, return them
+export async function resetSettings(): Promise<AppSettings> {
+  await saveSettings(DEFAULT_SETTINGS)
   return { ...DEFAULT_SETTINGS }
 }
 

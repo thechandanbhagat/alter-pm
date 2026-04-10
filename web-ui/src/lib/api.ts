@@ -14,15 +14,29 @@ export interface AiChatRequest {
   message: string
   process_id?: string
   history: AiChatMessage[]
+  model?: string
+  provider?: string
 }
 
 export interface AiSettingsInfo {
+  provider: string
+  enabled: boolean
+  model: string
+  // GitHub
   github_token_set: boolean
   github_token_hint: string
-  model: string
-  enabled: boolean
   github_username: string
   client_id_set: boolean
+  client_id_builtin: boolean
+  // Claude
+  anthropic_key_set: boolean
+  anthropic_key_hint: string
+  // OpenAI
+  openai_key_set: boolean
+  openai_key_hint: string
+  openai_base_url: string
+  // Ollama
+  ollama_base_url: string
 }
 
 export interface AiAuthStartResponse {
@@ -41,9 +55,8 @@ export interface AiAuthStatusResponse {
 
 export interface AiModelInfo {
   id: string
-  name: string
+  label: string
   publisher: string
-  summary: string
 }
 
 function getBase(): string { return serverBaseUrl(getActiveServer()) }
@@ -119,6 +132,9 @@ export const api = {
 
   updateProcess: (id: string, body: StartProcessBody): Promise<ProcessInfo> =>
     request(`/processes/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
+
+  setProcessEnabled: (id: string, enabled: boolean): Promise<ProcessInfo> =>
+    request(`/processes/${id}/enabled`, { method: 'PATCH', body: JSON.stringify({ enabled }) }),
 
   resetProcess: (id: string): Promise<ProcessInfo> =>
     request(`/processes/${id}/reset`, { method: 'POST' }),
@@ -268,8 +284,18 @@ export const api = {
   aiGetSettings: (): Promise<AiSettingsInfo> =>
     request('/ai/settings'),
 
-  // @group APIEndpoints > AI : Persist AI settings (send empty string to keep existing token/client_id)
-  aiSaveSettings: (body: { github_token?: string; model?: string; enabled?: boolean; client_id?: string }): Promise<{ success: boolean }> =>
+  // @group APIEndpoints > AI : Persist AI settings (send empty string to keep existing secrets)
+  aiSaveSettings: (body: {
+    provider?: string
+    enabled?: boolean
+    model?: string
+    client_id?: string
+    github_token?: string
+    anthropic_key?: string
+    openai_key?: string
+    openai_base_url?: string
+    ollama_base_url?: string
+  }): Promise<{ success: boolean }> =>
     request('/ai/settings', { method: 'PUT', body: JSON.stringify(body) }),
 
   // @group APIEndpoints > AI : Begin GitHub OAuth Device Flow — returns user_code to display
@@ -300,7 +326,7 @@ export const api = {
       try {
         const res = await fetch(`${getBase()}/ai/chat`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', ...authHeaders() },
           body: JSON.stringify(req),
           signal: abort.signal,
         })
@@ -496,4 +522,25 @@ export const api = {
     const qs = new URLSearchParams({ provider, ...(token ? { token } : {}) })
     return new EventSource(`${getBase()}/tunnels/settings/install/stream?${qs}`)
   },
+
+  // @group APIEndpoints > UiSettings : Load persisted UI settings blob from daemon
+  getUiSettings: (): Promise<Record<string, unknown>> =>
+    request('/system/ui-settings'),
+
+  // @group APIEndpoints > UiSettings : Persist a partial UI settings blob to daemon
+  saveUiSettings: (patch: Record<string, unknown>): Promise<void> =>
+    request('/system/ui-settings', { method: 'PUT', body: JSON.stringify(patch) }),
+
+  // @group APIEndpoints > TerminalHistory : Load saved command history for a key (e.g. "proc:api-server")
+  getTerminalHistory: (key: string): Promise<CmdEntry[]> =>
+    request(`/terminals/history/${encodeURIComponent(key)}`),
+
+  // @group APIEndpoints > TerminalHistory : Persist command history for a key
+  saveTerminalHistory: (key: string, entries: CmdEntry[]): Promise<void> =>
+    request(`/terminals/history/${encodeURIComponent(key)}`, {
+      method: 'PUT', body: JSON.stringify(entries),
+    }),
 }
+
+// @group Types > TerminalHistory : Mirrored from Rust CmdEntry
+export interface CmdEntry { cmd: string; count: number }
