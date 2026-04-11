@@ -38,9 +38,12 @@ Download the latest `alter-x.x.x-windows-x64-setup.exe` from [Releases](https://
 - **Single binary** — no runtime dependencies
 - **Dashboard authentication** — password-protect the web UI with Argon2id hashing, session tokens, and a PIN quick-unlock
 - **Telegram bot** — control your processes from Telegram: list, start, stop, restart, tail logs, and receive crash/restart alerts
-- **AI assistant** — built-in chat panel powered by GitHub Models with streaming responses and process-aware context
+- **AI assistant** — multi-provider chat panel (Ollama, GitHub Models, Claude, OpenAI-compatible) with streaming responses and process-aware context
 - **Port Finder** — scan all open TCP/UDP ports, see owning processes, and kill by PID from the dashboard
 - **Notifications** — Slack, Discord, Microsoft Teams, and webhook alerts on crash, restart, cron events, and more
+- **Process enable/disable** — exclude individual processes from Start All without removing them
+- **Terminal history** — per-process command history persisted across sessions
+- **Sidebar namespace groups** — active processes grouped by namespace with collapsible sections and bulk stop/restart
 
 ### Build from source
 
@@ -52,6 +55,29 @@ cd alter-pm
 cargo build --release
 # Binary: target\release\alter.exe
 ```
+
+---
+
+## Screenshots
+
+<table>
+  <tr>
+    <td align="center" width="50%">
+      <img src="./userguide/screenshots/processes.png" alt="Process list dashboard" /><br/>
+      <sub>Process list — namespace groups, status, CPU &amp; memory</sub>
+    </td>
+    <td align="center" width="50%">
+      <img src="./userguide/screenshots/terminal-history.png" alt="Built-in terminal with command history" /><br/>
+      <sub>Built-in terminal — multi-tab, split pane, persistent history</sub>
+    </td>
+  </tr>
+  <tr>
+    <td align="center" colspan="2">
+      <img src="./userguide/screenshots/ai-assistant.png" alt="AI assistant panel" style="max-width:640px" /><br/>
+      <sub>AI assistant — ask about crashes, logs, or config (Ollama, Claude, OpenAI, Copilot)</sub>
+    </td>
+  </tr>
+</table>
 
 ---
 
@@ -125,6 +151,7 @@ Full documentation is in [`docs/`](./docs/):
 
 | Document | Description |
 |----------|-------------|
+| [User Guide](./docs/USER_GUIDE.md) | Complete guide — installation, dashboard, all features |
 | [README](./docs/README.md) | Full project overview and setup guide |
 | [CLI Reference](./docs/CLI.md) | All commands, flags, and examples |
 | [API Reference](./docs/API.md) | Full REST API documentation |

@@ -30,6 +30,7 @@ pub fn router(state: Arc<DaemonState>) -> Router {
         .route("/{id}/metrics/history", get(get_metrics_history))
         .route("/{id}/logs/stats", get(get_log_stats))
         .route("/{id}/cron/history", get(get_cron_history))
+        .route("/{id}/enabled", patch(set_process_enabled))
         .route("/{id}/clone", post(clone_process))
         .route("/{id}/envfiles", get(list_envfiles))
         .route("/{id}/envfile", get(get_envfile).put(put_envfile))
@@ -100,6 +101,7 @@ async fn start_process(
         pre_start: None,
         post_start: None,
         pre_stop: None,
+        enabled: true,
     };
 
     let info = state.manager.start(config).await.map_err(ApiError::from)?;
@@ -168,6 +170,21 @@ async fn reset_process(
 ) -> Result<Json<Value>, ApiError> {
     let id = resolve(&state, &id_str).await?;
     let info = state.manager.reset(id).await.map_err(ApiError::from)?;
+    Ok(Json(json!(info)))
+}
+
+// @group APIEndpoints > Process : PATCH /processes/:id/enabled — toggle enabled flag (affects Start All)
+async fn set_process_enabled(
+    State(state): State<Arc<DaemonState>>,
+    Path(id_str): Path<String>,
+    Json(body): Json<serde_json::Value>,
+) -> Result<Json<Value>, ApiError> {
+    let id = resolve(&state, &id_str).await?;
+    let enabled = body.get("enabled")
+        .and_then(|v| v.as_bool())
+        .ok_or_else(|| ApiError::bad_request("missing 'enabled' boolean field"))?;
+    let info = state.manager.set_enabled(id, enabled).await.map_err(ApiError::from)?;
+    let s = state.clone(); tokio::spawn(async move { if let Err(e) = s.save_to_disk().await { tracing::warn!("auto-save failed: {e}"); } });
     Ok(Json(json!(info)))
 }
 
@@ -308,6 +325,7 @@ async fn update_process(
         pre_start: None,
         post_start: None,
         pre_stop: None,
+        enabled: existing.enabled,
     };
 
     let info = state.manager.update(id, config).await.map_err(ApiError::from)?;
@@ -616,6 +634,7 @@ async fn clone_process(
         pre_start: src_config.pre_start,
         post_start: src_config.post_start,
         pre_stop: src_config.pre_stop,
+        enabled: src_config.enabled,
     };
 
     let info = state.manager.start(clone_config).await.map_err(ApiError::from)?;

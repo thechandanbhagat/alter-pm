@@ -74,6 +74,10 @@ pub struct AppConfig {
     pub post_start: Option<String>,
     #[serde(default)]
     pub pre_stop: Option<String>,
+
+    // @group Configuration > Enabled : Whether this process is included in bulk start operations
+    #[serde(default = "default_true")]
+    pub enabled: bool,
 }
 
 fn default_namespace() -> String { "default".to_string() }

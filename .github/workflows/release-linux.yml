@@ -82,6 +82,8 @@ jobs:
           restore-keys: linux-amd64-cargo-
 
       - name: Build release binary
+        env:
+          GH_OAUTH_CLIENT_ID: ${{ secrets.GH_OAUTH_CLIENT_ID }}
         run: cargo build --release --target x86_64-unknown-linux-gnu
 
       - name: Upload binary artifact
@@ -131,6 +133,7 @@ jobs:
       - name: Build release binary
         env:
           CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
+          GH_OAUTH_CLIENT_ID: ${{ secrets.GH_OAUTH_CLIENT_ID }}
         run: cargo build --release --target aarch64-unknown-linux-gnu
 
       - name: Upload binary artifact

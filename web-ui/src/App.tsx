@@ -15,6 +15,7 @@ import { useDialog } from '@/hooks/useDialog'
 import { useNotificationTray } from '@/hooks/useNotificationTray'
 import { Dialog } from '@/components/Dialog'
 import { DiscordIcon } from '@/components/DiscordIcon'
+import { GitHubStarBanner, GitHubStarWidget } from '@/components/GitHubStarBanner'
 import { NotificationTray } from '@/components/NotificationTray'
 import { AiPanel } from '@/components/AiPanel'
 import { TerminalPanel, TerminalStatusBarBtn, type TerminalPanelHandle, type TerminalPanelState, type TerminalShortcuts } from '@/components/TerminalPanel'
@@ -98,16 +99,33 @@ function Layout({ onLock }: { onLock: () => void }) {
     setTimeout(() => terminalPanelRef.current?.openTab(cwd, name), 50)
   }
 
-  // @group BusinessLogic > SidebarList : Active processes only (running/watching/sleeping/starting)
+  // @group BusinessLogic > SidebarList : Active processes grouped by namespace
   const [sidebarSearch, setSidebarSearch] = useState('')
-  const activeProcesses = useMemo(() => {
-    const active = processes.filter(p =>
+  const [collapsedNs, setCollapsedNs] = useState<Set<string>>(new Set())
+
+  function toggleSidebarNs(ns: string) {
+    setCollapsedNs(prev => { const next = new Set(prev); if (next.has(ns)) next.delete(ns); else next.add(ns); return next })
+  }
+
+  const sidebarNsGroups = useMemo(() => {
+    let active = processes.filter(p =>
       p.status === 'running' || p.status === 'watching' || p.status === 'sleeping' || p.status === 'starting'
-    ).sort((a, b) => a.name.localeCompare(b.name))
-    if (!sidebarSearch.trim()) return active
-    const q = sidebarSearch.toLowerCase()
-    return active.filter(p => p.name.toLowerCase().includes(q))
+    )
+    if (sidebarSearch.trim()) {
+      const q = sidebarSearch.toLowerCase()
+      active = active.filter(p => p.name.toLowerCase().includes(q))
+    }
+    active.sort((a, b) => a.name.localeCompare(b.name))
+    const map = new Map<string, ProcessInfo[]>()
+    for (const p of active) {
+      const ns = p.namespace || 'default'
+      if (!map.has(ns)) map.set(ns, [])
+      map.get(ns)!.push(p)
+    }
+    return [...map.entries()].sort(([a], [b]) => a === 'default' ? -1 : b === 'default' ? 1 : a.localeCompare(b))
   }, [processes, sidebarSearch])
+
+  const totalActive = useMemo(() => sidebarNsGroups.reduce((s, [, procs]) => s + procs.length, 0), [sidebarNsGroups])
 
   async function handleSave() {
     await api.saveState().catch(() => {})
@@ -284,20 +302,24 @@ function Layout({ onLock }: { onLock: () => void }) {
           </div>
           <div style={{ padding: '2px 0', flex: 1, overflow: 'auto' }}>
             <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--color-muted-foreground)', padding: '4px 16px 6px', letterSpacing: '0.08em' }}>
-              ACTIVE {activeProcesses.length > 0 && <span style={{ fontWeight: 400, opacity: 0.7 }}>({activeProcesses.length})</span>}
+              ACTIVE {totalActive > 0 && <span style={{ fontWeight: 400, opacity: 0.7 }}>({totalActive})</span>}
             </div>
-            {activeProcesses.length === 0
+            {sidebarNsGroups.length === 0
               ? <div style={{ fontSize: 12, color: 'var(--color-muted-foreground)', padding: '4px 16px' }}>
                   {sidebarSearch ? 'No match' : 'No active processes'}
                 </div>
-              : activeProcesses.map(p => (
-                  <SidebarProc
-                    key={p.id} p={p}
-                    onNavigate={() => navigate(`/processes/${p.id}`)}
-                    onTerminal={() => p.cwd && openTerminalAtCwd(p.cwd, p.name)}
-                    onExplorer={() => p.cwd && api.openFolder(p.cwd)}
-                    onStop={() => api.stopProcess(p.id).then(reload)}
-                    onRestart={() => api.restartProcess(p.id).then(reload)}
+              : sidebarNsGroups.map(([ns, procs]) => (
+                  <SidebarNsGroup
+                    key={ns} ns={ns} procs={procs}
+                    collapsed={collapsedNs.has(ns)}
+                    onToggle={() => toggleSidebarNs(ns)}
+                    onNavigate={p => navigate(`/processes/${p.id}`)}
+                    onTerminal={p => p.cwd && openTerminalAtCwd(p.cwd, p.name)}
+                    onExplorer={p => p.cwd && api.openFolder(p.cwd)}
+                    onStop={p => api.stopProcess(p.id).then(reload)}
+                    onRestart={p => api.restartProcess(p.id).then(reload)}
+                    onStopAll={() => api.stopNamespace(ns).then(reload)}
+                    onRestartAll={() => api.restartNamespace(ns).then(reload)}
                   />
                 ))
             }
@@ -623,14 +645,76 @@ function NavBtn({ to, icon: Icon, label, active }: { to: string; icon: LucideIco
 
 
 
+// @group BusinessLogic > SidebarNsGroup : Namespace group header + collapsible process list
+function SidebarNsGroup({ ns, procs, collapsed, onToggle, onNavigate, onTerminal, onExplorer, onStop, onRestart, onStopAll, onRestartAll }: {
+  ns: string
+  procs: ProcessInfo[]
+  collapsed: boolean
+  onToggle: () => void
+  onNavigate: (p: ProcessInfo) => void
+  onTerminal: (p: ProcessInfo) => void
+  onExplorer: (p: ProcessInfo) => void
+  onStop: (p: ProcessInfo) => void
+  onRestart: (p: ProcessInfo) => void
+  onStopAll: () => void
+  onRestartAll: () => void
+}) {
+  const [hovered, setHovered] = useState(false)
+  const hasRunning = procs.some(p => p.status === 'running' || p.status === 'watching' || p.status === 'sleeping' || p.status === 'starting')
+
+  return (
+    <>
+      <div
+        style={{ position: 'relative', display: 'flex', alignItems: 'center' }}
+        onMouseEnter={() => setHovered(true)}
+        onMouseLeave={() => setHovered(false)}
+      >
+        <button
+          onClick={onToggle}
+          style={{
+            display: 'flex', alignItems: 'center', gap: 5,
+            flex: 1, minWidth: 0,
+            paddingTop: 3, paddingBottom: 3,
+            paddingLeft: 16, paddingRight: hovered ? 4 : 16,
+            background: hovered ? 'var(--color-accent)' : 'transparent',
+            border: 'none', cursor: 'pointer', textAlign: 'left',
+          }}
+        >
+          <span style={{ fontSize: 8, color: 'var(--color-muted-foreground)', opacity: 0.6, transition: 'transform 0.12s', display: 'inline-block', transform: collapsed ? 'rotate(-90deg)' : 'rotate(0deg)' }}>▼</span>
+          <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--color-muted-foreground)', letterSpacing: '0.05em', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{ns}</span>
+          {!hovered && <span style={{ fontSize: 9, color: 'var(--color-muted-foreground)', opacity: 0.5 }}>{procs.length}</span>}
+        </button>
+        {hovered && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 1, paddingRight: 6, flexShrink: 0, background: 'var(--color-accent)' }}>
+            {hasRunning && <SidebarActionBtn icon={Square} title={`Stop all in ${ns}`} onClick={onStopAll} color="#f87171" />}
+            <SidebarActionBtn icon={RotateCcw} title={`Restart all in ${ns}`} onClick={onRestartAll} color="#4ade80" />
+          </div>
+        )}
+      </div>
+      {!collapsed && procs.map(p => (
+        <SidebarProc
+          key={p.id} p={p}
+          onNavigate={() => onNavigate(p)}
+          onTerminal={() => onTerminal(p)}
+          onExplorer={() => onExplorer(p)}
+          onStop={() => onStop(p)}
+          onRestart={() => onRestart(p)}
+          indent
+        />
+      ))}
+    </>
+  )
+}
+
 // @group BusinessLogic > SidebarProc : Process pill in sidebar — status dot, name, hover action buttons
-function SidebarProc({ p, onNavigate, onTerminal, onExplorer, onStop, onRestart }: {
+function SidebarProc({ p, onNavigate, onTerminal, onExplorer, onStop, onRestart, indent }: {
   p: ProcessInfo
   onNavigate: () => void
   onTerminal: () => void
   onExplorer: () => void
   onStop: () => void
   onRestart: () => void
+  indent?: boolean
 }) {
   const [hovered, setHovered] = useState(false)
   const isActive = p.status === 'running' || p.status === 'watching' || p.status === 'sleeping'
@@ -648,11 +732,14 @@ function SidebarProc({ p, onNavigate, onTerminal, onExplorer, onStop, onRestart 
         title={`${p.name} — ${p.status}${isCron ? ' (cron)' : ''}`}
         style={{
           display: 'flex', alignItems: 'center', gap: 7,
-          flex: 1, minWidth: 0, padding: '4px 16px', background: hovered ? 'var(--color-accent)' : 'transparent',
+          flex: 1, minWidth: 0,
+          paddingTop: 4, paddingBottom: 4,
+          paddingLeft: indent ? 24 : 16,
+          paddingRight: hovered ? 6 : 16,
+          background: hovered ? 'var(--color-accent)' : 'transparent',
           border: 'none', cursor: 'pointer',
           color: isActive ? 'var(--color-foreground)' : 'var(--color-muted-foreground)',
           fontSize: 12, textAlign: 'left',
-          paddingRight: hovered ? 6 : 16,
         }}
       >
         <span style={{ color: statusColor(p.status), fontSize: 9, flexShrink: 0 }}>●</span>
@@ -957,9 +1044,12 @@ function StatusBar({ connected, processes, statsOpen, onToggleStats, updateInfo,
         </div>
       )}
 
+      {/* GitHub star widget */}
+      <GitHubStarWidget />
+
       {/* Discord community link */}
       <a
-        href="https://discord.gg/nbRSJNQ6"
+        href="https://discord.gg/vxerDZgHJg"
         target="_blank"
         rel="noreferrer"
         title="Join us on Discord"
@@ -1435,6 +1525,7 @@ export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <BrowserRouter><AuthGuard /></BrowserRouter>
+      <GitHubStarBanner />
     </QueryClientProvider>
   )
 }

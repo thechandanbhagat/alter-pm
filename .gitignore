@@ -1,8 +1,10 @@
 /target
 Cargo.lock
+.env.build
 *.pdb
 *.exe
 
+node_modules/
 
 excluded/
 .claude

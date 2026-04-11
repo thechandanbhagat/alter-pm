@@ -91,6 +91,10 @@ export interface ProcessInfo {
   env: Record<string, string>
   /** Process-level notification override */
   notify?: NotificationConfig
+  /** Active git branch in the process working directory */
+  git_branch?: string
+  /** Whether this process participates in bulk Start All operations (default: true) */
+  enabled: boolean
 }
 
 export interface DaemonHealth {

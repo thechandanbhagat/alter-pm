@@ -14,5 +14,7 @@ pub mod scripts;
 pub mod system;
 pub mod telegram;
 pub mod terminal;
+pub mod terminal_history;
+pub mod ui_settings;
 pub mod tunnels;
 pub mod update;

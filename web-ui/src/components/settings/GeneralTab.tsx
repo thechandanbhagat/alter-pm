@@ -382,7 +382,7 @@ export default function GeneralTab({ settings, onUpdate }: Props) {
       )}
 
       <p style={{ fontSize: 11, color: 'var(--color-muted-foreground)', textAlign: 'center', marginTop: 8 }}>
-        Settings are stored in your browser's localStorage and apply to this machine only.
+        Settings are stored in the daemon data directory and persist across sessions.
         {' '}Changes take effect immediately.
       </p>
     </>
