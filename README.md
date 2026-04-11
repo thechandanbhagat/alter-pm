@@ -151,6 +151,7 @@ Full documentation is in [`docs/`](./docs/):
 
 | Document | Description |
 |----------|-------------|
+| [User Guide](./docs/USER_GUIDE.md) | Complete guide — installation, dashboard, all features |
 | [README](./docs/README.md) | Full project overview and setup guide |
 | [CLI Reference](./docs/CLI.md) | All commands, flags, and examples |
 | [API Reference](./docs/API.md) | Full REST API documentation |
