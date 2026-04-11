@@ -58,6 +58,29 @@ cargo build --release
 
 ---
 
+## Screenshots
+
+<table>
+  <tr>
+    <td align="center" width="50%">
+      <img src="./userguide/screenshots/processes.png" alt="Process list dashboard" /><br/>
+      <sub>Process list — namespace groups, status, CPU &amp; memory</sub>
+    </td>
+    <td align="center" width="50%">
+      <img src="./userguide/screenshots/terminal-history.png" alt="Built-in terminal with command history" /><br/>
+      <sub>Built-in terminal — multi-tab, split pane, persistent history</sub>
+    </td>
+  </tr>
+  <tr>
+    <td align="center" colspan="2">
+      <img src="./userguide/screenshots/ai-assistant.png" alt="AI assistant panel" style="max-width:640px" /><br/>
+      <sub>AI assistant — ask about crashes, logs, or config (Ollama, Claude, OpenAI, Copilot)</sub>
+    </td>
+  </tr>
+</table>
+
+---
+
 ## Quick Start
 
 ```powershell
