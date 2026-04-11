@@ -4,6 +4,7 @@ Cargo.lock
 *.pdb
 *.exe
 
+node_modules/
 
 excluded/
 .claude
