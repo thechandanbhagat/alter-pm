@@ -8,6 +8,9 @@
 //   GH_OAUTH_CLIENT_ID=Ov23liXXXXXXXXXXXXXX cargo build --release
 
 fn main() {
+    // @group Configuration : Tauri code-gen — must run before tauri::generate_context!()
+    tauri_build::build();
+
     // Re-run this script only when GH_OAUTH_CLIENT_ID changes (not on every build)
     println!("cargo:rerun-if-env-changed=GH_OAUTH_CLIENT_ID");
 }
