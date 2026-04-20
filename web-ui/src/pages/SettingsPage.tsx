@@ -11,6 +11,7 @@ import TelegramTab from '@/components/settings/TelegramTab'
 import LogAlertsTab from '@/components/settings/LogAlertsTab'
 import TunnelsTab from '@/components/settings/TunnelsTab'
 import TerminalTab from '@/components/settings/TerminalTab'
+import SystemTab from '@/components/settings/SystemTab'
 
 interface Props {
   settings: AppSettings
@@ -18,7 +19,7 @@ interface Props {
   onReset: () => void
 }
 
-type TabId = 'general' | 'ui' | 'security' | 'ai' | 'telegram' | 'log-alerts' | 'tunnels' | 'terminal'
+type TabId = 'general' | 'ui' | 'security' | 'ai' | 'telegram' | 'log-alerts' | 'tunnels' | 'terminal' | 'system'
 
 const TABS: { id: TabId; label: string }[] = [
   { id: 'general',    label: 'General'    },
@@ -29,6 +30,7 @@ const TABS: { id: TabId; label: string }[] = [
   { id: 'log-alerts', label: 'Log Alerts' },
   { id: 'tunnels',    label: 'Tunnels'    },
   { id: 'terminal',   label: 'Terminal'   },
+  { id: 'system',     label: 'System'     },
 ]
 
 // @group BusinessLogic > SettingsPage : Main settings page — tab bar + active tab routing
@@ -94,6 +96,7 @@ export default function SettingsPage({ settings, onUpdate, onReset }: Props) {
       {activeTab === 'log-alerts' && <LogAlertsTab  />}
       {activeTab === 'tunnels'    && <TunnelsTab    />}
       {activeTab === 'terminal'   && <TerminalTab   settings={settings} onUpdate={onUpdate} />}
+      {activeTab === 'system'     && <SystemTab     />}
 
       <style>{`@keyframes spin { to { transform: rotate(360deg) } }`}</style>
     </div>
