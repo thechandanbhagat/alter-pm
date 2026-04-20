@@ -49,10 +49,13 @@ pub async fn run(config: DaemonConfig) -> Result<()> {
             daemon_log.file_name().unwrap_or(std::ffi::OsStr::new("daemon.log")),
         );
         let (non_blocking, guard) = tracing_appender::non_blocking(file_appender);
-        tracing_subscriber::fmt()
+        // try_init instead of init — when daemon::run() is called from within the
+        // Tauri GUI binary a subscriber may already be set; init() would panic and
+        // silently kill the spawned task, leaving the HTTP server never started.
+        let _ = tracing_subscriber::fmt()
             .with_writer(non_blocking)
             .with_ansi(false)
-            .init();
+            .try_init();
         guard
     };
 
