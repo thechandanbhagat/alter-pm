@@ -53,4 +53,17 @@ pub struct ProcessInfo {
     pub git_branch: Option<String>,
     /// Whether this process participates in bulk start (Start All) operations
     pub enabled: bool,
+    /// Number of instances (cluster mode)
+    pub instances: u32,
+    /// Delay between restart attempts in milliseconds
+    pub restart_delay_ms: u64,
+    /// HTTP or TCP health check URL
+    pub health_check_url: Option<String>,
+    pub health_check_interval_secs: u64,
+    pub health_check_timeout_secs: u64,
+    pub health_check_retries: u32,
+    /// Lifecycle hooks
+    pub pre_start: Option<String>,
+    pub post_start: Option<String>,
+    pub pre_stop: Option<String>,
 }
