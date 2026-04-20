@@ -16,5 +16,7 @@ pub mod telegram;
 pub mod terminal;
 pub mod terminal_history;
 pub mod ui_settings;
+pub mod startup;
+pub mod remote_servers;
 pub mod tunnels;
 pub mod update;
