@@ -2,6 +2,13 @@
 
 > A fast, lightweight process manager for Windows (and cross-platform). Run and manage any application — Python, Node.js, Go, Rust, .NET, PHP — from a single binary with a built-in web dashboard.
 
+> [!WARNING]
+> **For Developer Use Only**
+>
+> alter is a **local developer tool** designed to run on your personal development machine. It is **not intended for production use**. The daemon binds to `127.0.0.1` (localhost) and has not been hardened for public-facing or multi-user environments.
+>
+> If you choose to use alter in a production or publicly exposed environment, you do so **entirely at your own risk**. No security guarantees are made for such deployments.
+
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](./LICENSE)
 [![Built with Rust](https://img.shields.io/badge/Built%20with-Rust-orange.svg)](https://www.rust-lang.org/)
 [![Platform: Windows](https://img.shields.io/badge/Platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey.svg)]()
@@ -158,6 +165,7 @@ Full documentation is in [`docs/`](./docs/):
 | [Ecosystem Config](./docs/ECOSYSTEM_CONFIG.md) | Config file format reference |
 | [Architecture](./docs/ARCHITECTURE.md) | How alter works under the hood |
 | [Changelog](./docs/CHANGELOG.md) | Version history |
+| [Security](./docs/SECURITY.md) | Security |
 
 ---
 
