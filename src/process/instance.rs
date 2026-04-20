@@ -128,6 +128,15 @@ impl ManagedProcess {
             health_status: self.health_status.clone(),
             git_branch: self.git_branch.clone(),
             enabled: self.config.enabled,
+            instances: self.config.instances,
+            restart_delay_ms: self.config.restart_delay_ms,
+            health_check_url: self.config.health_check_url.clone(),
+            health_check_interval_secs: self.config.health_check_interval_secs,
+            health_check_timeout_secs: self.config.health_check_timeout_secs,
+            health_check_retries: self.config.health_check_retries,
+            pre_start: self.config.pre_start.clone(),
+            post_start: self.config.post_start.clone(),
+            pre_stop: self.config.pre_stop.clone(),
         }
     }
 }

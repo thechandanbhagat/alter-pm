@@ -4,6 +4,8 @@ use crate::api::error::ApiError;
 use crate::config::ecosystem::AppConfig;
 use crate::daemon::state::DaemonState;
 use crate::models::api_types::StartRequest;
+use crate::process::rolling_restart::rolling_restart;
+use serde::Deserialize;
 use axum::{
     extract::{Path, State},
     http::StatusCode,
@@ -38,6 +40,8 @@ pub fn router(state: Arc<DaemonState>) -> Router {
         .route("/namespace/{ns}/start", post(start_namespace_processes))
         .route("/namespace/{ns}/stop", post(stop_namespace_processes))
         .route("/namespace/{ns}/restart", post(restart_namespace_processes))
+        // Rolling restart for multi-instance groups
+        .route("/group/{name}/rolling-restart", post(rolling_restart_group))
         .with_state(state)
 }
 
@@ -76,7 +80,7 @@ async fn start_process(
         script: req.script,
         args: req.args.unwrap_or_default(),
         cwd: req.cwd,
-        instances: 1,
+        instances: req.instances.unwrap_or(1),
         autorestart,
         max_restarts: req.max_restarts.unwrap_or(10),
         restart_delay_ms: req.restart_delay_ms.unwrap_or(1000),
@@ -94,13 +98,13 @@ async fn start_process(
         notify: req.notify,
         log_alert: req.log_alert,
         env_file: None,
-        health_check_url: None,
-        health_check_interval_secs: 30,
-        health_check_timeout_secs: 5,
-        health_check_retries: 3,
-        pre_start: None,
-        post_start: None,
-        pre_stop: None,
+        health_check_url: req.health_check_url,
+        health_check_interval_secs: req.health_check_interval_secs.unwrap_or(30),
+        health_check_timeout_secs: req.health_check_timeout_secs.unwrap_or(5),
+        health_check_retries: req.health_check_retries.unwrap_or(3),
+        pre_start: req.pre_start,
+        post_start: req.post_start,
+        pre_stop: req.pre_stop,
         enabled: true,
     };
 
@@ -300,10 +304,10 @@ async fn update_process(
         script: req.script,
         args: req.args.unwrap_or_default(),
         cwd: req.cwd,
-        instances: 1,
+        instances: req.instances.unwrap_or(existing.instances),
         autorestart,
         max_restarts: req.max_restarts.unwrap_or(10),
-        restart_delay_ms: req.restart_delay_ms.unwrap_or(1000),
+        restart_delay_ms: req.restart_delay_ms.unwrap_or(existing.restart_delay_ms),
         namespace,
         watch: req.watch.unwrap_or(false),
         watch_paths: req.watch_paths.unwrap_or_default(),
@@ -318,13 +322,13 @@ async fn update_process(
         notify: req.notify,
         log_alert: req.log_alert,
         env_file: None,
-        health_check_url: None,
-        health_check_interval_secs: 30,
-        health_check_timeout_secs: 5,
-        health_check_retries: 3,
-        pre_start: None,
-        post_start: None,
-        pre_stop: None,
+        health_check_url: req.health_check_url.or(existing.health_check_url),
+        health_check_interval_secs: req.health_check_interval_secs.unwrap_or(existing.health_check_interval_secs),
+        health_check_timeout_secs: req.health_check_timeout_secs.unwrap_or(existing.health_check_timeout_secs),
+        health_check_retries: req.health_check_retries.unwrap_or(existing.health_check_retries),
+        pre_start: req.pre_start.or(existing.pre_start),
+        post_start: req.post_start.or(existing.post_start),
+        pre_stop: req.pre_stop.or(existing.pre_stop),
         enabled: existing.enabled,
     };
 
@@ -650,3 +654,22 @@ async fn resolve(state: &DaemonState, id_str: &str) -> Result<Uuid, ApiError> {
         .await
         .map_err(|_| ApiError::not_found(format!("process not found: {id_str}")))
 }
+
+// @group Types > RollingRestart : Request body carrying new config for a group rolling restart
+#[derive(Deserialize)]
+struct RollingRestartRequest {
+    config: AppConfig,
+}
+
+// @group APIEndpoints > RollingRestart : POST /processes/group/:name/rolling-restart
+async fn rolling_restart_group(
+    Path(name):   Path<String>,
+    State(state): State<Arc<DaemonState>>,
+    Json(req):    Json<RollingRestartRequest>,
+) -> Result<Json<Value>, ApiError> {
+    let restarted = rolling_restart(&state.manager, &name, req.config)
+        .await
+        .map_err(ApiError::from)?;
+    Ok(Json(json!({ "restarted": restarted })))
+}
+
