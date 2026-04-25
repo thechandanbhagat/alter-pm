@@ -95,6 +95,19 @@ export interface ProcessInfo {
   git_branch?: string
   /** Whether this process participates in bulk Start All operations (default: true) */
   enabled: boolean
+  /** Number of instances (cluster mode) */
+  instances: number
+  /** Restart delay in milliseconds */
+  restart_delay_ms: number
+  /** Health check probe URL */
+  health_check_url: string | null
+  health_check_interval_secs: number
+  health_check_timeout_secs: number
+  health_check_retries: number
+  /** Lifecycle hooks */
+  pre_start: string | null
+  post_start: string | null
+  pre_stop: string | null
 }
 
 export interface DaemonHealth {
@@ -132,6 +145,15 @@ export interface StartProcessBody {
   watch_paths?: string[]
   cron?: string
   notify?: NotificationConfig
+  // Advanced
+  instances?: number
+  health_check_url?: string
+  health_check_interval_secs?: number
+  health_check_timeout_secs?: number
+  health_check_retries?: number
+  pre_start?: string
+  post_start?: string
+  pre_stop?: string
 }
 
 // @group Types > EnvFiles : Env file descriptor from the API

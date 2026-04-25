@@ -1,5 +1,5 @@
 [package]
-name    = "alter"
+name    = "alter-gui"
 version = "1.1.0"
 edition = "2021"
 description = "A process manager for your developers — run and manage any application"
@@ -11,6 +11,10 @@ path = "src/lib.rs"
 [[bin]]
 name = "alter"
 path = "src/main.rs"
+
+[[bin]]
+name = "alter-gui"
+path = "src/bin/alter_gui.rs"
 
 [dependencies]
 tokio              = { version = "1", features = ["full"] }
@@ -47,6 +51,10 @@ argon2 = "0.5"
 rand   = "0.8"
 portable-pty = "0.8"
 console-subscriber = { version = "0.4", optional = true }
+tauri              = { version = "2", features = ["tray-icon"] }
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
 
 [features]
 tokio-console = ["dep:console-subscriber"]
@@ -59,6 +67,9 @@ windows = { version = "0.58", features = [
     "Win32_System_Threading",
     "Win32_Foundation",
 ] }
+
+[dev-dependencies]
+tempfile = "3"
 
 [profile.release]
 opt-level     = 3

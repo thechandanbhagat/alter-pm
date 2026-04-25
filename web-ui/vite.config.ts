@@ -17,6 +17,8 @@ export default defineConfig({
     environment: 'jsdom',
     setupFiles: ['./src/test/setup.ts'],
     css: false,
+    // Use threads pool: has full Node.js globals (unlike vmThreads), no fork overhead (unlike forks)
+    pool: 'threads',
     alias: { '@': path.resolve(__dirname, './src') },
   },
   build: {

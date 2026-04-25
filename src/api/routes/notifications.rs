@@ -137,6 +137,15 @@ async fn test_notification(
         health_status: None,
         git_branch: None,
         enabled: true,
+        instances: 1,
+        restart_delay_ms: 1000,
+        health_check_url: None,
+        health_check_interval_secs: 30,
+        health_check_timeout_secs: 5,
+        health_check_retries: 3,
+        pre_start: None,
+        post_start: None,
+        pre_stop: None,
     };
 
     fire_event(&store, &proc, ProcessEvent::Started).await;

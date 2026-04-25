@@ -6,8 +6,8 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import LoginPage from '@/pages/LoginPage'
 import { isAuthenticated } from '@/lib/auth'
 import { BrowserRouter, Link, Route, Routes, useLocation, useNavigate, useParams } from 'react-router-dom'
-import { LayoutGrid, Plus, Clock, ScrollText, Settings, Bell, Bot, Network, BarChart2, Server, Save, Lock, Power, Globe, SquareTerminal, FolderOpen, RotateCcw, Square, type LucideIcon } from 'lucide-react'
-import { getActiveServer, getActiveServerId, getServers, LOCAL_SERVER, saveServers, setActiveServerId, sshTunnelCommand, type RemoteServer } from '@/lib/servers'
+import { LayoutGrid, Plus, Clock, ScrollText, Settings, Bell, Bot, Network, BarChart2, Server, Save, Lock, Power, Globe, SquareTerminal, FolderOpen, RotateCcw, Square, FileCode, type LucideIcon } from 'lucide-react'
+import { getActiveServer, getActiveServerId, LOCAL_SERVER, setActiveServerId, sshTunnelCommand, fetchRemoteServers, persistRemoteServers, _setRemoteServerCache, type RemoteServer } from '@/lib/servers'
 import { useDaemonHealth } from '@/hooks/useDaemonHealth'
 import { useProcesses } from '@/hooks/useProcesses'
 import { useSettings } from '@/hooks/useSettings'
@@ -34,6 +34,7 @@ import LogVolumePage from '@/pages/LogVolumePage'
 import NotificationsPage from '@/pages/NotificationsPage'
 import PortFinderPage from '@/pages/PortFinderPage'
 import TunnelsPage from '@/pages/TunnelsPage'
+import ScriptsPage from '@/pages/ScriptsPage'
 import type { ProcessInfo, UpdateInfo } from '@/types'
 import type { AppSettings } from '@/lib/settings'
 
@@ -280,8 +281,10 @@ function Layout({ onLock }: { onLock: () => void }) {
           </button>
           {toolsOpen && (
             <>
-              <NavBtn to="/ports"    icon={Network} label="Port Finder" active={isPortsActive} />
-              <NavBtn to="/tunnels"  icon={Globe}   label="Tunnels"     active={isTunnelsActive} />
+              <NavBtn to="/ports"         icon={Network}   label="Port Finder"   active={isPortsActive} />
+              <NavBtn to="/tunnels"       icon={Globe}     label="Tunnels"       active={isTunnelsActive} />
+              <NavBtn to="/scripts"       icon={FileCode}  label="Scripts"       active={location.pathname === '/scripts'} />
+              <NavBtn to="/notifications" icon={Bell}      label="Notifications" active={location.pathname === '/notifications'} />
             </>
           )}
         </nav>
@@ -359,6 +362,7 @@ function Layout({ onLock }: { onLock: () => void }) {
           <Route path="/notifications" element={<NotificationsPage />} />
           <Route path="/ports"    element={<PortFinderPage />} />
           <Route path="/tunnels"  element={<TunnelsPage />} />
+          <Route path="/scripts"  element={<ScriptsPage />} />
           <Route path="/settings/:tab?" element={<SettingsPage settings={settings} onUpdate={updateSettings} onReset={resetToDefaults} />} />
         </Routes>
       </div>
@@ -1124,8 +1128,16 @@ function StatusBar({ connected, processes, statsOpen, onToggleStats, updateInfo,
 // @group BusinessLogic > ServerSwitcher : Sidebar panel for switching between local + remote alter daemons
 function ServerSwitcher() {
   const [open, setOpen] = useState(false)
-  const [remotes, setRemotes] = useState<RemoteServer[]>(() => getServers())
+  const [remotes, setRemotes] = useState<RemoteServer[]>([])
   const [activeId, setActiveId] = useState(() => getActiveServerId())
+
+  // Load remote servers from daemon on mount and keep cache in sync
+  useEffect(() => {
+    fetchRemoteServers().then(store => {
+      setRemotes(store.servers)
+      _setRemoteServerCache(store.servers)
+    })
+  }, [])
   const [addMode, setAddMode] = useState(false)
   const [connType, setConnType] = useState<'direct' | 'ssh'>('direct')
   const [form, setForm] = useState({
@@ -1173,7 +1185,8 @@ function ServerSwitcher() {
       }
     }
     const updated = [...remotes, newServer]
-    saveServers(updated)
+    persistRemoteServers({ servers: updated, active_id: activeId })
+    _setRemoteServerCache(updated)
     setRemotes(updated)
     resetForm()
     setAddMode(false)
@@ -1181,7 +1194,8 @@ function ServerSwitcher() {
 
   function removeServer(id: string) {
     const updated = remotes.filter(s => s.id !== id)
-    saveServers(updated)
+    persistRemoteServers({ servers: updated, active_id: activeId === id ? 'local' : activeId })
+    _setRemoteServerCache(updated)
     setRemotes(updated)
     if (activeId === id) {
       setActiveServerId('local')
