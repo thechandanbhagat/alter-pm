@@ -416,6 +416,7 @@ impl ProcessManager {
             for entry in self.registry.iter() {
                 let proc = entry.value().read().await;
                 if proc.config.namespace == namespace
+                    && proc.config.enabled
                     && matches!(proc.status, ProcessStatus::Running | ProcessStatus::Watching | ProcessStatus::Sleeping)
                 {
                     result.push(proc.id);
@@ -435,31 +436,29 @@ impl ProcessManager {
         infos
     }
 
-    // @group BusinessLogic > Namespace : Restart all processes in a namespace (bulk — one Telegram notification)
+    // @group BusinessLogic > Namespace : Restart all running processes in a namespace (bulk — one Telegram notification)
     pub async fn restart_namespace(&self, namespace: &str) -> Vec<ProcessInfo> {
-        // Collect ids paired with whether the process is currently active.
-        // Active processes will emit stop + start (2 events); inactive ones only start (1 event).
-        // Setting the wrong count leaves a stale suppress entry that silently eats a future
-        // individual notification (e.g. the next manual stop).
-        let ids: Vec<(Uuid, bool)> = {
+        // Only restart currently-running processes (Running/Watching/Sleeping).
+        // Stopped or disabled processes are intentionally excluded — use Start All to start stopped ones.
+        // Each restart emits stop + start (2 events), so suppress count is always 2.
+        let ids: Vec<Uuid> = {
             let mut result = vec![];
             for entry in self.registry.iter() {
                 let proc = entry.value().read().await;
-                if proc.config.namespace == namespace {
-                    let is_active = matches!(
-                        proc.status,
-                        ProcessStatus::Running | ProcessStatus::Watching | ProcessStatus::Sleeping
-                    );
-                    result.push((proc.id, is_active));
+                if proc.config.namespace == namespace
+                    && proc.config.enabled
+                    && matches!(proc.status, ProcessStatus::Running | ProcessStatus::Watching | ProcessStatus::Sleeping)
+                {
+                    result.push(proc.id);
                 }
             }
             result
         };
-        for &(id, is_active) in &ids {
-            self.bulk_suppress.insert(id, if is_active { 2 } else { 1 });
+        for &id in &ids {
+            self.bulk_suppress.insert(id, 2);
         }
         let mut infos = vec![];
-        for (id, _) in ids {
+        for id in ids {
             if let Ok(info) = self.restart(id).await {
                 infos.push(info);
             }
