@@ -6,6 +6,20 @@ import { X, Bot, Send, Trash2, Loader, RefreshCw, ChevronDown, ChevronUp } from 
 import { api } from '@/lib/api'
 import type { AiChatMessage, AiModelInfo } from '@/lib/api'
 
+// @group Configuration > AiPanel : Starter prompt suggestions
+const STARTER_PROMPTS_GENERIC = [
+  'Which processes are currently running?',
+  'What processes have crashed recently?',
+  'How do I add a new process?',
+  'Show me processes with high restart counts',
+]
+const STARTER_PROMPTS_PROCESS = [
+  'Why did this process crash?',
+  'Show me recent error logs',
+  'Is the config for this process correct?',
+  'How do I restart this process automatically?',
+]
+
 // @group Configuration > AiPanel : Provider labels for display
 const PROVIDER_LABELS: Record<string, string> = {
   ollama: 'Ollama',
@@ -248,6 +262,32 @@ export function AiPanel({ open, processId, processName, onClose }: AiPanelProps)
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage() }
   }
 
+  function sendStarter(prompt: string) {
+    setInput(prompt)
+    // Small delay so the state flushes before sendMessage reads it
+    setTimeout(() => {
+      setInput('')
+      setError(null)
+      const userMsg: AiChatMessage = { role: 'user', content: prompt }
+      setMessages([userMsg, { role: 'assistant', content: '' }])
+      setStreaming(true)
+      const abort = api.aiChat(
+        { message: prompt, process_id: processId ?? undefined, history: [userMsg], model: aiModel, provider: aiProvider },
+        (delta) => {
+          setMessages(prev => {
+            const copy = [...prev]
+            const last = copy[copy.length - 1]
+            if (last?.role === 'assistant') copy[copy.length - 1] = { ...last, content: last.content + delta }
+            return copy
+          })
+        },
+        () => { setStreaming(false) },
+        (err) => { setError(err); setStreaming(false) },
+      )
+      abortRef.current = abort
+    }, 0)
+  }
+
   const providerLabel = aiProvider ? (PROVIDER_LABELS[aiProvider] ?? aiProvider) : null
 
   const panel = (
@@ -334,16 +374,32 @@ export function AiPanel({ open, processId, processName, onClose }: AiPanelProps)
         {/* Messages */}
         <div style={{ flex: 1, overflowY: 'auto', padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 10 }}>
           {messages.length === 0 && !error && (
-            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: 'var(--color-muted-foreground)', gap: 8, paddingBottom: 40 }}>
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: 'var(--color-muted-foreground)', gap: 10, paddingBottom: 20 }}>
               <Bot size={28} style={{ opacity: 0.35 }} />
               <div style={{ fontSize: 12, textAlign: 'center', lineHeight: 1.5 }}>
                 Ask about your processes,<br />logs, crashes, or config.
               </div>
               {processName && (
-                <div style={{ fontSize: 11, marginTop: 4, padding: '4px 10px', background: 'var(--color-accent)', borderRadius: 12, color: 'var(--color-primary)', fontWeight: 500 }}>
+                <div style={{ fontSize: 11, padding: '4px 10px', background: 'var(--color-accent)', borderRadius: 12, color: 'var(--color-primary)', fontWeight: 500 }}>
                   Process context: {processName}
                 </div>
               )}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6, width: '100%', marginTop: 4 }}>
+                {(processName ? STARTER_PROMPTS_PROCESS : STARTER_PROMPTS_GENERIC).map(p => (
+                  <button key={p} onClick={() => sendStarter(p)} style={{
+                    width: '100%', textAlign: 'left', padding: '7px 11px',
+                    fontSize: 11, lineHeight: 1.4, cursor: 'pointer',
+                    background: 'var(--color-secondary)', color: 'var(--color-foreground)',
+                    border: '1px solid var(--color-border)', borderRadius: 8,
+                    transition: 'background 0.12s, border-color 0.12s',
+                  }}
+                    onMouseEnter={e => { e.currentTarget.style.background = 'var(--color-accent)'; e.currentTarget.style.borderColor = 'var(--color-primary)' }}
+                    onMouseLeave={e => { e.currentTarget.style.background = 'var(--color-secondary)'; e.currentTarget.style.borderColor = 'var(--color-border)' }}
+                  >
+                    {p}
+                  </button>
+                ))}
+              </div>
             </div>
           )}
 
