@@ -2,9 +2,19 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { X, Bot, Send, Trash2, Loader } from 'lucide-react'
+import { X, Bot, Send, Trash2, Loader, RefreshCw, ChevronDown, ChevronUp } from 'lucide-react'
 import { api } from '@/lib/api'
-import type { AiChatMessage } from '@/lib/api'
+import type { AiChatMessage, AiModelInfo } from '@/lib/api'
+
+// @group Configuration > AiPanel : Provider labels for display
+const PROVIDER_LABELS: Record<string, string> = {
+  ollama: 'Ollama',
+  copilot: 'GitHub Copilot',
+  github: 'GitHub Models',
+  claude: 'Claude',
+  openai: 'OpenAI',
+}
+const VISIBLE_PROVIDERS = ['ollama', 'copilot', 'claude', 'openai']
 
 // @group BusinessLogic > AiPanel : Props
 interface AiPanelProps {
@@ -142,6 +152,9 @@ export function AiPanel({ open, processId, processName, onClose }: AiPanelProps)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const [aiModel, setAiModel] = useState<string | undefined>(undefined)
   const [aiProvider, setAiProvider] = useState<string | undefined>(undefined)
+  const [models, setModels] = useState<AiModelInfo[]>([])
+  const [modelsLoading, setModelsLoading] = useState(false)
+  const [configOpen, setConfigOpen] = useState(false)
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -156,6 +169,37 @@ export function AiPanel({ open, processId, processName, onClose }: AiPanelProps)
     }).catch(() => {})
     setTimeout(() => inputRef.current?.focus(), 80)
   }, [open])
+
+  async function loadModels(provider?: string) {
+    const prov = provider ?? aiProvider
+    if (!prov) return
+    setModelsLoading(true)
+    try {
+      await api.aiSaveSettings({ provider: prov })
+      const { models: list } = await api.aiGetModels()
+      setModels(list)
+      if (list.length > 0) {
+        const keep = list.find(m => m.id === aiModel)
+        const next = keep ? aiModel : list[0].id
+        setAiModel(next)
+        await api.aiSaveSettings({ model: next })
+      }
+    } catch { /* ignore */ } finally {
+      setModelsLoading(false)
+    }
+  }
+
+  async function handleProviderChange(prov: string) {
+    setAiProvider(prov)
+    setModels([])
+    setAiModel(undefined)
+    await loadModels(prov)
+  }
+
+  async function handleModelChange(modelId: string) {
+    setAiModel(modelId)
+    await api.aiSaveSettings({ model: modelId }).catch(() => {})
+  }
 
   useEffect(() => {
     if (!open) return
@@ -204,7 +248,7 @@ export function AiPanel({ open, processId, processName, onClose }: AiPanelProps)
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage() }
   }
 
-  const providerLabel = aiProvider ? ({ ollama: 'Ollama', copilot: 'GitHub Copilot', github: 'GitHub Models', claude: 'Claude', openai: 'OpenAI' }[aiProvider] ?? aiProvider) : null
+  const providerLabel = aiProvider ? (PROVIDER_LABELS[aiProvider] ?? aiProvider) : null
 
   const panel = (
     <>
@@ -219,7 +263,7 @@ export function AiPanel({ open, processId, processName, onClose }: AiPanelProps)
       }}>
 
         {/* Header */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '12px 14px', borderBottom: '1px solid var(--color-border)', flexShrink: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '12px 14px', borderBottom: configOpen ? 'none' : '1px solid var(--color-border)', flexShrink: 0 }}>
           <Bot size={15} style={{ color: 'var(--color-primary)', flexShrink: 0 }} />
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-foreground)' }}>AI Assistant</div>
@@ -228,6 +272,14 @@ export function AiPanel({ open, processId, processName, onClose }: AiPanelProps)
               {providerLabel && processName ? ` · ${providerLabel}` : ''}
             </div>
           </div>
+          <button title={configOpen ? 'Hide settings' : 'Provider & model'} onClick={() => {
+            if (!configOpen && models.length === 0) loadModels()
+            setConfigOpen(v => !v)
+          }} style={iconBtn}
+            onMouseEnter={e => { e.currentTarget.style.color = 'var(--color-foreground)' }}
+            onMouseLeave={e => { e.currentTarget.style.color = 'var(--color-muted-foreground)' }}>
+            {configOpen ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+          </button>
           <button title="Clear chat" onClick={clearChat} style={iconBtn}
             onMouseEnter={e => { e.currentTarget.style.color = 'var(--color-foreground)' }}
             onMouseLeave={e => { e.currentTarget.style.color = 'var(--color-muted-foreground)' }}>
@@ -239,6 +291,45 @@ export function AiPanel({ open, processId, processName, onClose }: AiPanelProps)
             <X size={14} />
           </button>
         </div>
+
+        {/* Provider / model selector — collapsible */}
+        {configOpen && (
+          <div style={{ padding: '8px 14px 10px', borderBottom: '1px solid var(--color-border)', flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+              <label style={{ fontSize: 10, color: 'var(--color-muted-foreground)', width: 48, flexShrink: 0 }}>Provider</label>
+              <select
+                value={aiProvider ?? ''}
+                onChange={e => handleProviderChange(e.target.value)}
+                style={{ flex: 1, fontSize: 11, padding: '3px 6px', borderRadius: 4, border: '1px solid var(--color-border)', background: 'var(--color-background)', color: 'var(--color-foreground)', cursor: 'pointer' }}
+              >
+                {!aiProvider && <option value="">— select —</option>}
+                {VISIBLE_PROVIDERS.map(p => (
+                  <option key={p} value={p}>{PROVIDER_LABELS[p]}</option>
+                ))}
+              </select>
+            </div>
+            <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+              <label style={{ fontSize: 10, color: 'var(--color-muted-foreground)', width: 48, flexShrink: 0 }}>Model</label>
+              <select
+                value={aiModel ?? ''}
+                onChange={e => handleModelChange(e.target.value)}
+                disabled={modelsLoading || models.length === 0}
+                style={{ flex: 1, fontSize: 11, padding: '3px 6px', borderRadius: 4, border: '1px solid var(--color-border)', background: 'var(--color-background)', color: modelsLoading ? 'var(--color-muted-foreground)' : 'var(--color-foreground)', cursor: models.length > 0 ? 'pointer' : 'default' }}
+              >
+                {modelsLoading && <option value="">Loading…</option>}
+                {!modelsLoading && models.length === 0 && <option value="">{aiModel || '—'}</option>}
+                {models.map(m => (
+                  <option key={m.id} value={m.id}>{m.label}{m.publisher ? ` (${m.publisher})` : ''}</option>
+                ))}
+              </select>
+              <button title="Refresh models" onClick={() => loadModels()} disabled={modelsLoading} style={{ ...iconBtn, flexShrink: 0 }}
+                onMouseEnter={e => { e.currentTarget.style.color = 'var(--color-foreground)' }}
+                onMouseLeave={e => { e.currentTarget.style.color = 'var(--color-muted-foreground)' }}>
+                <RefreshCw size={11} style={modelsLoading ? { animation: 'spin 1s linear infinite' } : {}} />
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Messages */}
         <div style={{ flex: 1, overflowY: 'auto', padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 10 }}>
