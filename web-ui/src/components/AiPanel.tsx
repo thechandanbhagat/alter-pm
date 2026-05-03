@@ -2,9 +2,33 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { X, Bot, Send, Trash2, Loader } from 'lucide-react'
+import { X, Bot, Send, Trash2, Loader, RefreshCw, ChevronDown, ChevronUp } from 'lucide-react'
 import { api } from '@/lib/api'
-import type { AiChatMessage } from '@/lib/api'
+import type { AiChatMessage, AiModelInfo } from '@/lib/api'
+
+// @group Configuration > AiPanel : Starter prompt suggestions
+const STARTER_PROMPTS_GENERIC = [
+  'Which processes are currently running?',
+  'What processes have crashed recently?',
+  'How do I add a new process?',
+  'Show me processes with high restart counts',
+]
+const STARTER_PROMPTS_PROCESS = [
+  'Why did this process crash?',
+  'Show me recent error logs',
+  'Is the config for this process correct?',
+  'How do I restart this process automatically?',
+]
+
+// @group Configuration > AiPanel : Provider labels for display
+const PROVIDER_LABELS: Record<string, string> = {
+  ollama: 'Ollama',
+  copilot: 'GitHub Copilot',
+  github: 'GitHub Models',
+  claude: 'Claude',
+  openai: 'OpenAI',
+}
+const VISIBLE_PROVIDERS = ['ollama', 'copilot', 'claude', 'openai']
 
 // @group BusinessLogic > AiPanel : Props
 interface AiPanelProps {
@@ -142,6 +166,9 @@ export function AiPanel({ open, processId, processName, onClose }: AiPanelProps)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const [aiModel, setAiModel] = useState<string | undefined>(undefined)
   const [aiProvider, setAiProvider] = useState<string | undefined>(undefined)
+  const [models, setModels] = useState<AiModelInfo[]>([])
+  const [modelsLoading, setModelsLoading] = useState(false)
+  const [configOpen, setConfigOpen] = useState(false)
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -156,6 +183,37 @@ export function AiPanel({ open, processId, processName, onClose }: AiPanelProps)
     }).catch(() => {})
     setTimeout(() => inputRef.current?.focus(), 80)
   }, [open])
+
+  async function loadModels(provider?: string) {
+    const prov = provider ?? aiProvider
+    if (!prov) return
+    setModelsLoading(true)
+    try {
+      await api.aiSaveSettings({ provider: prov })
+      const { models: list } = await api.aiGetModels()
+      setModels(list)
+      if (list.length > 0) {
+        const keep = list.find(m => m.id === aiModel)
+        const next = keep ? aiModel : list[0].id
+        setAiModel(next)
+        await api.aiSaveSettings({ model: next })
+      }
+    } catch { /* ignore */ } finally {
+      setModelsLoading(false)
+    }
+  }
+
+  async function handleProviderChange(prov: string) {
+    setAiProvider(prov)
+    setModels([])
+    setAiModel(undefined)
+    await loadModels(prov)
+  }
+
+  async function handleModelChange(modelId: string) {
+    setAiModel(modelId)
+    await api.aiSaveSettings({ model: modelId }).catch(() => {})
+  }
 
   useEffect(() => {
     if (!open) return
@@ -204,7 +262,33 @@ export function AiPanel({ open, processId, processName, onClose }: AiPanelProps)
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage() }
   }
 
-  const providerLabel = aiProvider ? ({ ollama: 'Ollama', copilot: 'GitHub Copilot', github: 'GitHub Models', claude: 'Claude', openai: 'OpenAI' }[aiProvider] ?? aiProvider) : null
+  function sendStarter(prompt: string) {
+    setInput(prompt)
+    // Small delay so the state flushes before sendMessage reads it
+    setTimeout(() => {
+      setInput('')
+      setError(null)
+      const userMsg: AiChatMessage = { role: 'user', content: prompt }
+      setMessages([userMsg, { role: 'assistant', content: '' }])
+      setStreaming(true)
+      const abort = api.aiChat(
+        { message: prompt, process_id: processId ?? undefined, history: [userMsg], model: aiModel, provider: aiProvider },
+        (delta) => {
+          setMessages(prev => {
+            const copy = [...prev]
+            const last = copy[copy.length - 1]
+            if (last?.role === 'assistant') copy[copy.length - 1] = { ...last, content: last.content + delta }
+            return copy
+          })
+        },
+        () => { setStreaming(false) },
+        (err) => { setError(err); setStreaming(false) },
+      )
+      abortRef.current = abort
+    }, 0)
+  }
+
+  const providerLabel = aiProvider ? (PROVIDER_LABELS[aiProvider] ?? aiProvider) : null
 
   const panel = (
     <>
@@ -219,7 +303,7 @@ export function AiPanel({ open, processId, processName, onClose }: AiPanelProps)
       }}>
 
         {/* Header */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '12px 14px', borderBottom: '1px solid var(--color-border)', flexShrink: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '12px 14px', borderBottom: configOpen ? 'none' : '1px solid var(--color-border)', flexShrink: 0 }}>
           <Bot size={15} style={{ color: 'var(--color-primary)', flexShrink: 0 }} />
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-foreground)' }}>AI Assistant</div>
@@ -228,6 +312,14 @@ export function AiPanel({ open, processId, processName, onClose }: AiPanelProps)
               {providerLabel && processName ? ` · ${providerLabel}` : ''}
             </div>
           </div>
+          <button title={configOpen ? 'Hide settings' : 'Provider & model'} onClick={() => {
+            if (!configOpen && models.length === 0) loadModels()
+            setConfigOpen(v => !v)
+          }} style={iconBtn}
+            onMouseEnter={e => { e.currentTarget.style.color = 'var(--color-foreground)' }}
+            onMouseLeave={e => { e.currentTarget.style.color = 'var(--color-muted-foreground)' }}>
+            {configOpen ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+          </button>
           <button title="Clear chat" onClick={clearChat} style={iconBtn}
             onMouseEnter={e => { e.currentTarget.style.color = 'var(--color-foreground)' }}
             onMouseLeave={e => { e.currentTarget.style.color = 'var(--color-muted-foreground)' }}>
@@ -240,19 +332,74 @@ export function AiPanel({ open, processId, processName, onClose }: AiPanelProps)
           </button>
         </div>
 
+        {/* Provider / model selector — collapsible */}
+        {configOpen && (
+          <div style={{ padding: '8px 14px 10px', borderBottom: '1px solid var(--color-border)', flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+              <label style={{ fontSize: 10, color: 'var(--color-muted-foreground)', width: 48, flexShrink: 0 }}>Provider</label>
+              <select
+                value={aiProvider ?? ''}
+                onChange={e => handleProviderChange(e.target.value)}
+                style={{ flex: 1, fontSize: 11, padding: '3px 6px', borderRadius: 4, border: '1px solid var(--color-border)', background: 'var(--color-background)', color: 'var(--color-foreground)', cursor: 'pointer' }}
+              >
+                {!aiProvider && <option value="">— select —</option>}
+                {VISIBLE_PROVIDERS.map(p => (
+                  <option key={p} value={p}>{PROVIDER_LABELS[p]}</option>
+                ))}
+              </select>
+            </div>
+            <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+              <label style={{ fontSize: 10, color: 'var(--color-muted-foreground)', width: 48, flexShrink: 0 }}>Model</label>
+              <select
+                value={aiModel ?? ''}
+                onChange={e => handleModelChange(e.target.value)}
+                disabled={modelsLoading || models.length === 0}
+                style={{ flex: 1, fontSize: 11, padding: '3px 6px', borderRadius: 4, border: '1px solid var(--color-border)', background: 'var(--color-background)', color: modelsLoading ? 'var(--color-muted-foreground)' : 'var(--color-foreground)', cursor: models.length > 0 ? 'pointer' : 'default' }}
+              >
+                {modelsLoading && <option value="">Loading…</option>}
+                {!modelsLoading && models.length === 0 && <option value="">{aiModel || '—'}</option>}
+                {models.map(m => (
+                  <option key={m.id} value={m.id}>{m.label}{m.publisher ? ` (${m.publisher})` : ''}</option>
+                ))}
+              </select>
+              <button title="Refresh models" onClick={() => loadModels()} disabled={modelsLoading} style={{ ...iconBtn, flexShrink: 0 }}
+                onMouseEnter={e => { e.currentTarget.style.color = 'var(--color-foreground)' }}
+                onMouseLeave={e => { e.currentTarget.style.color = 'var(--color-muted-foreground)' }}>
+                <RefreshCw size={11} style={modelsLoading ? { animation: 'spin 1s linear infinite' } : {}} />
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Messages */}
         <div style={{ flex: 1, overflowY: 'auto', padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 10 }}>
           {messages.length === 0 && !error && (
-            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: 'var(--color-muted-foreground)', gap: 8, paddingBottom: 40 }}>
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: 'var(--color-muted-foreground)', gap: 10, paddingBottom: 20 }}>
               <Bot size={28} style={{ opacity: 0.35 }} />
               <div style={{ fontSize: 12, textAlign: 'center', lineHeight: 1.5 }}>
                 Ask about your processes,<br />logs, crashes, or config.
               </div>
               {processName && (
-                <div style={{ fontSize: 11, marginTop: 4, padding: '4px 10px', background: 'var(--color-accent)', borderRadius: 12, color: 'var(--color-primary)', fontWeight: 500 }}>
+                <div style={{ fontSize: 11, padding: '4px 10px', background: 'var(--color-accent)', borderRadius: 12, color: 'var(--color-primary)', fontWeight: 500 }}>
                   Process context: {processName}
                 </div>
               )}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6, width: '100%', marginTop: 4 }}>
+                {(processName ? STARTER_PROMPTS_PROCESS : STARTER_PROMPTS_GENERIC).map(p => (
+                  <button key={p} onClick={() => sendStarter(p)} style={{
+                    width: '100%', textAlign: 'left', padding: '7px 11px',
+                    fontSize: 11, lineHeight: 1.4, cursor: 'pointer',
+                    background: 'var(--color-secondary)', color: 'var(--color-foreground)',
+                    border: '1px solid var(--color-border)', borderRadius: 8,
+                    transition: 'background 0.12s, border-color 0.12s',
+                  }}
+                    onMouseEnter={e => { e.currentTarget.style.background = 'var(--color-accent)'; e.currentTarget.style.borderColor = 'var(--color-primary)' }}
+                    onMouseLeave={e => { e.currentTarget.style.background = 'var(--color-secondary)'; e.currentTarget.style.borderColor = 'var(--color-border)' }}
+                  >
+                    {p}
+                  </button>
+                ))}
+              </div>
             </div>
           )}
 

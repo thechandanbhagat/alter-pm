@@ -18,3 +18,5 @@ no/
 nul
 winget/manifests
 manifests/
+.scannerwork
+.vscode

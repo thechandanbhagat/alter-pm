@@ -424,7 +424,7 @@ async fn run_script(
 }
 
 // @group Configuration : Map file extension back to interpreter command
-fn interpreter_for_ext(ext: &str) -> &'static str {
+pub(crate) fn interpreter_for_ext(ext: &str) -> &'static str {
     match ext {
         "py" => "python",
         "js" => "node",
@@ -453,5 +453,123 @@ fn interpreter_for_ext(ext: &str) -> &'static str {
         "tcl" => "tclsh",
         "awk" => "awk",
         _ => "bash",
+    }
+}
+
+// @group UnitTests : Tests for script helper functions
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // @group UnitTests > Scripts > SanitizeName : Alphanumeric + dash + underscore pass through
+    #[test]
+    fn test_sanitize_alphanumeric_passthrough() {
+        assert_eq!(sanitize_script_name("my-script_v2"), "my-script_v2");
+        assert_eq!(sanitize_script_name("hello123"), "hello123");
+    }
+
+    // @group UnitTests > Scripts > SanitizeName : Spaces become underscores
+    #[test]
+    fn test_sanitize_spaces_to_underscore() {
+        assert_eq!(sanitize_script_name("my script"), "my_script");
+        assert_eq!(sanitize_script_name("a b c"), "a_b_c");
+    }
+
+    // @group UnitTests > Scripts > SanitizeName : Special chars become underscores
+    #[test]
+    fn test_sanitize_special_chars() {
+        assert_eq!(sanitize_script_name("foo/bar"), "foo_bar");
+        assert_eq!(sanitize_script_name("test.script"), "test_script");
+        assert_eq!(sanitize_script_name("hello world!@#"), "hello_world___");
+    }
+
+    // @group UnitTests > Scripts > SanitizeName : Empty string stays empty
+    #[test]
+    fn test_sanitize_empty_string() {
+        assert_eq!(sanitize_script_name(""), "");
+    }
+
+    // @group UnitTests > Scripts > ExtForLang : Common languages map to correct extensions
+    #[test]
+    fn test_ext_for_lang_common() {
+        assert_eq!(ext_for_lang("python"),     "py");
+        assert_eq!(ext_for_lang("python3"),    "py");
+        assert_eq!(ext_for_lang("node"),       "js");
+        assert_eq!(ext_for_lang("bun"),        "js");
+        assert_eq!(ext_for_lang("bash"),       "sh");
+        assert_eq!(ext_for_lang("sh"),         "sh");
+        assert_eq!(ext_for_lang("powershell"), "ps1");
+        assert_eq!(ext_for_lang("pwsh"),       "ps1");
+        assert_eq!(ext_for_lang("ts-node"),    "ts");
+        assert_eq!(ext_for_lang("cmd"),        "bat");
+        assert_eq!(ext_for_lang("ruby"),       "rb");
+        assert_eq!(ext_for_lang("go"),         "go");
+    }
+
+    // @group UnitTests > Scripts > ExtForLang : Unknown language falls back to txt
+    #[test]
+    fn test_ext_for_lang_unknown() {
+        assert_eq!(ext_for_lang("fortran"), "txt");
+        assert_eq!(ext_for_lang(""),        "txt");
+    }
+
+    // @group UnitTests > Scripts > ExtFromReverse : Extensions map back to language names
+    #[test]
+    fn test_ext_from_reverse_common() {
+        assert_eq!(ext_from_reverse("py"),  "python");
+        assert_eq!(ext_from_reverse("js"),  "node");
+        assert_eq!(ext_from_reverse("ts"),  "ts-node");
+        assert_eq!(ext_from_reverse("ps1"), "powershell");
+        assert_eq!(ext_from_reverse("sh"),  "bash");
+        assert_eq!(ext_from_reverse("bat"), "cmd");
+        assert_eq!(ext_from_reverse("rb"),  "ruby");
+        assert_eq!(ext_from_reverse("go"),  "go");
+    }
+
+    // @group UnitTests > Scripts > ExtFromReverse : Unknown extension maps to text
+    #[test]
+    fn test_ext_from_reverse_unknown() {
+        assert_eq!(ext_from_reverse("xyz"), "text");
+        assert_eq!(ext_from_reverse(""),    "text");
+    }
+
+    // @group UnitTests > Scripts > InterpreterForExt : Extensions map to correct interpreter
+    #[test]
+    fn test_interpreter_for_ext_common() {
+        assert_eq!(interpreter_for_ext("py"),  "python");
+        assert_eq!(interpreter_for_ext("js"),  "node");
+        assert_eq!(interpreter_for_ext("ts"),  "ts-node");
+        assert_eq!(interpreter_for_ext("ps1"), "powershell");
+        assert_eq!(interpreter_for_ext("sh"),  "bash");
+        assert_eq!(interpreter_for_ext("rb"),  "ruby");
+        assert_eq!(interpreter_for_ext("go"),  "go");
+        assert_eq!(interpreter_for_ext("php"), "php");
+    }
+
+    // @group UnitTests > Scripts > InterpreterForExt : Unknown extension falls back to bash
+    #[test]
+    fn test_interpreter_for_ext_fallback() {
+        assert_eq!(interpreter_for_ext("xyz"), "bash");
+        assert_eq!(interpreter_for_ext(""),    "bash");
+    }
+
+    // @group UnitTests > Scripts > Roundtrip : lang→ext→interpreter is consistent
+    #[test]
+    fn test_lang_ext_interpreter_roundtrip() {
+        // python → py → python (interpreter)
+        let ext = ext_for_lang("python");
+        assert_eq!(interpreter_for_ext(ext), "python");
+
+        // node → js → node
+        let ext = ext_for_lang("node");
+        assert_eq!(interpreter_for_ext(ext), "node");
+
+        // powershell → ps1 → powershell
+        let ext = ext_for_lang("powershell");
+        assert_eq!(interpreter_for_ext(ext), "powershell");
+
+        // ts-node → ts → ts-node
+        let ext = ext_for_lang("ts-node");
+        assert_eq!(interpreter_for_ext(ext), "ts-node");
     }
 }

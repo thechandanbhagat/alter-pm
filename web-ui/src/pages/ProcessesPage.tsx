@@ -256,7 +256,7 @@ export default function ProcessesPage({ processes, reload, settings, namespaceFi
                     {/* Namespace header (only when not filtered to one ns) */}
                     {(sortedNs.length > 1 || !namespaceFilter) && (
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
-                        <span style={{ fontSize: 12, fontWeight: 700, letterSpacing: '0.04em' }}>{ns}</span>
+                        <span onClick={() => navigate(`/namespace/${ns}`)} style={{ fontSize: 12, fontWeight: 700, letterSpacing: '0.04em', cursor: 'pointer', color: 'var(--color-primary)' }}>{ns}</span>
                         <span style={{ fontSize: 11, color: 'var(--color-muted-foreground)', background: 'var(--color-muted)', padding: '1px 6px', borderRadius: 8 }}>{procs.length}</span>
                         <div style={{ flex: 1, height: 1, background: 'var(--color-border)' }} />
                         <span onClick={e => e.stopPropagation()} style={{ display: 'flex', gap: 4 }}>
@@ -320,7 +320,7 @@ export default function ProcessesPage({ processes, reload, settings, namespaceFi
                         <td colSpan={12} style={{ padding: '6px 12px' }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                             <span style={{ fontSize: 10, color: 'var(--color-muted-foreground)' }}>{isCollapsed ? '▶' : '▼'}</span>
-                            <span style={{ fontWeight: 600, fontSize: 12 }}>{ns}</span>
+                            <span onClick={e => { e.stopPropagation(); navigate(`/namespace/${ns}`) }} style={{ fontWeight: 600, fontSize: 12, cursor: 'pointer', color: 'var(--color-primary)' }}>{ns}</span>
                             <span style={{ fontSize: 11, color: 'var(--color-muted-foreground)' }}>{procs.length} process{procs.length !== 1 ? 'es' : ''}</span>
                             <span onClick={e => e.stopPropagation()} style={{ marginLeft: 'auto', display: 'flex', gap: 5, alignItems: 'center' }}>
                               {!allActive  && <NsBtn label="▶ Start All"   onClick={() => startAll(ns)} />}

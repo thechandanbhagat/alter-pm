@@ -25,6 +25,19 @@ pub struct StartRequest {
     pub notify: Option<crate::models::notification::NotificationConfig>,
     /// Process-level log alert override
     pub log_alert: Option<crate::config::log_alert_config::LogAlertOverride>,
+    /// Number of instances to run (cluster mode)
+    pub instances: Option<u32>,
+    /// HTTP or TCP health check endpoint
+    pub health_check_url: Option<String>,
+    pub health_check_interval_secs: Option<u64>,
+    pub health_check_timeout_secs: Option<u64>,
+    pub health_check_retries: Option<u32>,
+    /// Shell command run before the process starts
+    pub pre_start: Option<String>,
+    /// Shell command run after the process starts
+    pub post_start: Option<String>,
+    /// Shell command run before the process stops
+    pub pre_stop: Option<String>,
 }
 
 // @group Types > Request : Load an ecosystem config file

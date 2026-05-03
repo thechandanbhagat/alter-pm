@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { useParams } from 'react-router-dom'
-import { FolderOpen, Save, Bell, ChevronDown, ChevronRight } from 'lucide-react'
+import { FolderOpen, Save, Bell, ChevronDown, ChevronRight, Cpu, Shield, Zap } from 'lucide-react'
 import { NamespaceInput } from '@/components/NamespaceInput'
 import { api } from '@/lib/api'
 import { parseArgs, parseDotEnv, envToString } from '@/lib/utils'
@@ -30,6 +30,18 @@ export default function EditPage({ onDone }: Props) {
   const [notify, setNotify]           = useState<NotificationConfig | undefined>(undefined)
   const [notifyOpen, setNotifyOpen]   = useState(false)
   const [error, setError]             = useState('')
+
+  // @group BusinessLogic > Advanced : Advanced config fields
+  const [instances, setInstances]                           = useState(1)
+  const [restartDelayMs, setRestartDelayMs]                 = useState(1000)
+  const [healthCheckUrl, setHealthCheckUrl]                 = useState('')
+  const [healthCheckInterval, setHealthCheckInterval]       = useState(30)
+  const [healthCheckTimeout, setHealthCheckTimeout]         = useState(5)
+  const [healthCheckRetries, setHealthCheckRetries]         = useState(3)
+  const [preStart, setPreStart]                             = useState('')
+  const [postStart, setPostStart]                           = useState('')
+  const [preStop, setPreStop]                               = useState('')
+  const [advancedOpen, setAdvancedOpen]                     = useState(false)
   const [loading, setLoading]         = useState(false)
   const [loaded, setLoaded]           = useState(false)
 
@@ -73,6 +85,15 @@ export default function EditPage({ onDone }: Props) {
       setCron(p.cron || '')
       setMaxRestarts(p.max_restarts ?? 10)
       setNotify(p.notify)
+      setInstances(p.instances ?? 1)
+      setRestartDelayMs(p.restart_delay_ms ?? 1000)
+      setHealthCheckUrl(p.health_check_url ?? '')
+      setHealthCheckInterval(p.health_check_interval_secs ?? 30)
+      setHealthCheckTimeout(p.health_check_timeout_secs ?? 5)
+      setHealthCheckRetries(p.health_check_retries ?? 3)
+      setPreStart(p.pre_start ?? '')
+      setPostStart(p.post_start ?? '')
+      setPreStop(p.pre_stop ?? '')
       setLoaded(true)
       // Check .env existence for the loaded cwd immediately
       if (cwdVal.trim()) {
@@ -136,8 +157,18 @@ export default function EditPage({ onDone }: Props) {
         autorestart,
         watch,
         max_restarts: maxRestarts,
+        restart_delay_ms: restartDelayMs,
         ...(cronVal && { cron: cronVal }),
         ...(notify && { notify }),
+        // Advanced
+        instances,
+        ...(healthCheckUrl.trim() && { health_check_url: healthCheckUrl.trim() }),
+        health_check_interval_secs: healthCheckInterval,
+        health_check_timeout_secs: healthCheckTimeout,
+        health_check_retries: healthCheckRetries,
+        ...(preStart.trim()  && { pre_start: preStart.trim() }),
+        ...(postStart.trim() && { post_start: postStart.trim() }),
+        ...(preStop.trim()   && { pre_stop: preStop.trim() }),
       })
       if (saveToFile && envStr.trim()) {
         await api.saveEnvFile(id, envStr).catch(() => {})
@@ -416,6 +447,118 @@ export default function EditPage({ onDone }: Props) {
                     }}
                   />
                 </div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* @group BusinessLogic > Advanced : Collapsible advanced config — instances, health check, hooks */}
+        <div style={{ display: 'contents' }}>
+          <div style={{ border: '1px solid var(--color-border)', borderRadius: 6, padding: '10px 14px' }}>
+            <div
+              style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', userSelect: 'none' }}
+              onClick={() => setAdvancedOpen(o => !o)}
+            >
+              {advancedOpen ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
+              <Zap size={13} style={{ opacity: 0.6 }} />
+              <span style={{ fontSize: 13, fontWeight: 500 }}>Advanced</span>
+              <span style={{ fontSize: 11, color: 'var(--color-muted-foreground)', marginLeft: 4 }}>
+                cluster mode, health checks, lifecycle hooks
+              </span>
+            </div>
+
+            {advancedOpen && (
+              <div style={{ marginTop: 14, display: 'flex', flexDirection: 'column', gap: 16 }}>
+
+                {/* Cluster + restart delay */}
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+                    <Cpu size={12} style={{ opacity: 0.5 }} />
+                    <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.07em', color: 'var(--color-muted-foreground)', textTransform: 'uppercase' }}>Cluster</span>
+                  </div>
+                  <div style={{ display: 'flex', gap: 12 }}>
+                    <FormField label="Instances">
+                      <input
+                        style={{ ...inputStyle, width: 90 }}
+                        type="number" min={1} max={32}
+                        value={instances}
+                        onChange={e => setInstances(Math.max(1, parseInt(e.target.value) || 1))}
+                      />
+                    </FormField>
+                    <FormField label="Restart Delay (ms)">
+                      <input
+                        style={{ ...inputStyle, width: 120 }}
+                        type="number" min={0}
+                        value={restartDelayMs}
+                        onChange={e => setRestartDelayMs(Math.max(0, parseInt(e.target.value) || 0))}
+                      />
+                    </FormField>
+                  </div>
+                  {instances > 1 && (
+                    <p style={{ fontSize: 11, color: 'var(--color-muted-foreground)', marginTop: 4 }}>
+                      {instances} separate processes will be started with names <code style={{ fontFamily: 'monospace' }}>{(name || 'app') + '-0'}</code> … <code style={{ fontFamily: 'monospace' }}>{(name || 'app') + '-' + (instances - 1)}</code>
+                    </p>
+                  )}
+                </div>
+
+                {/* Health check */}
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+                    <Shield size={12} style={{ opacity: 0.5 }} />
+                    <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.07em', color: 'var(--color-muted-foreground)', textTransform: 'uppercase' }}>Health Check</span>
+                  </div>
+                  <FormField label={<>URL <span style={{ color: 'var(--color-muted-foreground)', fontSize: 10 }}>(http://… or host:port)</span></>}>
+                    <input
+                      style={inputStyle}
+                      type="text"
+                      placeholder="http://localhost:3000/health"
+                      value={healthCheckUrl}
+                      onChange={e => setHealthCheckUrl(e.target.value)}
+                    />
+                  </FormField>
+                  {healthCheckUrl.trim() && (
+                    <div style={{ display: 'flex', gap: 12, marginTop: 10 }}>
+                      <FormField label="Interval (s)">
+                        <input style={{ ...inputStyle, width: 90 }} type="number" min={5}
+                          value={healthCheckInterval}
+                          onChange={e => setHealthCheckInterval(Math.max(5, parseInt(e.target.value) || 30))} />
+                      </FormField>
+                      <FormField label="Timeout (s)">
+                        <input style={{ ...inputStyle, width: 90 }} type="number" min={1}
+                          value={healthCheckTimeout}
+                          onChange={e => setHealthCheckTimeout(Math.max(1, parseInt(e.target.value) || 5))} />
+                      </FormField>
+                      <FormField label="Retries">
+                        <input style={{ ...inputStyle, width: 90 }} type="number" min={1}
+                          value={healthCheckRetries}
+                          onChange={e => setHealthCheckRetries(Math.max(1, parseInt(e.target.value) || 3))} />
+                      </FormField>
+                    </div>
+                  )}
+                </div>
+
+                {/* Lifecycle hooks */}
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+                    <Zap size={12} style={{ opacity: 0.5 }} />
+                    <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.07em', color: 'var(--color-muted-foreground)', textTransform: 'uppercase' }}>Lifecycle Hooks</span>
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                    <FormField label={<><code style={{ fontFamily: 'monospace', fontSize: 11 }}>pre_start</code> — runs before process starts</>}>
+                      <input style={inputStyle} type="text" placeholder='echo "starting..."'
+                        value={preStart} onChange={e => setPreStart(e.target.value)} />
+                    </FormField>
+                    <FormField label={<><code style={{ fontFamily: 'monospace', fontSize: 11 }}>post_start</code> — runs after process starts</>}>
+                      <input style={inputStyle} type="text" placeholder='curl http://localhost/warmup'
+                        value={postStart} onChange={e => setPostStart(e.target.value)} />
+                    </FormField>
+                    <FormField label={<><code style={{ fontFamily: 'monospace', fontSize: 11 }}>pre_stop</code> — runs before process stops</>}>
+                      <input style={inputStyle} type="text" placeholder='curl -X POST http://localhost/drain'
+                        value={preStop} onChange={e => setPreStop(e.target.value)} />
+                    </FormField>
+                  </div>
+                </div>
+
               </div>
             )}
           </div>

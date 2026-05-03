@@ -20,8 +20,8 @@ export interface RemoteServer {
   remoteDaemonPort?: number // daemon port on the remote machine (default 2999)
 }
 
-const LOCAL_ID = 'local'
-const SERVERS_KEY = 'alter_servers'
+const LOCAL_ID   = 'local'
+// Active server ID stays in localStorage — it's needed before any API call can be made
 const ACTIVE_KEY = 'alter_active_server'
 
 // @group Configuration > Server : Built-in local server — always present, cannot be removed
@@ -31,21 +31,6 @@ export const LOCAL_SERVER: RemoteServer = {
   host: '127.0.0.1',
   port: 2999,
   connectionType: 'direct',
-}
-
-// @group Configuration > Server : Load remote servers from localStorage
-export function getServers(): RemoteServer[] {
-  try {
-    const raw = localStorage.getItem(SERVERS_KEY)
-    return raw ? (JSON.parse(raw) as RemoteServer[]) : []
-  } catch {
-    return []
-  }
-}
-
-// @group Configuration > Server : Persist remote servers to localStorage
-export function saveServers(servers: RemoteServer[]): void {
-  localStorage.setItem(SERVERS_KEY, JSON.stringify(servers))
 }
 
 // @group Configuration > Server : Get the active server ID (defaults to 'local')
@@ -62,15 +47,21 @@ export function setActiveServerId(id: string): void {
 export function getActiveServer(): RemoteServer {
   const id = getActiveServerId()
   if (id === LOCAL_ID) return LOCAL_SERVER
-  const remotes = getServers()
-  return remotes.find(s => s.id === id) ?? LOCAL_SERVER
+  // Remote servers are loaded async via useRemoteServers — fall back to local if not yet loaded
+  const cached = _remoteServerCache.find(s => s.id === id)
+  return cached ?? LOCAL_SERVER
+}
+
+// @group Configuration > Server : In-memory cache populated by useRemoteServers hook
+export let _remoteServerCache: RemoteServer[] = []
+export function _setRemoteServerCache(servers: RemoteServer[]): void {
+  _remoteServerCache = servers
 }
 
 // @group Configuration > Server : Build the API base URL for a server
 export function serverBaseUrl(server: RemoteServer): string {
   if (server.id === LOCAL_ID) return '/api/v1'
   if (server.connectionType === 'ssh') {
-    // SSH tunnel: connect to the locally-forwarded port on localhost
     return `http://127.0.0.1:${server.port}/api/v1`
   }
   return `http://${server.host}:${server.port}/api/v1`
@@ -91,4 +82,32 @@ export function sshTunnelCommand(server: RemoteServer): string {
   const keyFlag = server.sshKeyPath ? ` -i "${server.sshKeyPath}"` : ''
   const portFlag = sshPort !== 22 ? ` -p ${sshPort}` : ''
   return `ssh -L ${localPort}:localhost:${remotePort}${keyFlag}${portFlag} -N ${user}${sshHost}`
+}
+
+// @group Utilities > Server : API helpers for remote-server persistence (called by useRemoteServers)
+import { getSessionToken } from '@/lib/auth'
+
+function localApiBase(): string { return '/api/v1' }
+function authHdr(): Record<string, string> {
+  const t = getSessionToken(); return t ? { Authorization: `Bearer ${t}` } : {}
+}
+
+export interface RemoteServerStore { servers: RemoteServer[]; active_id?: string }
+
+export async function fetchRemoteServers(): Promise<RemoteServerStore> {
+  try {
+    const r = await fetch(`${localApiBase()}/system/remote-servers`, { headers: authHdr() })
+    if (!r.ok) return { servers: [] }
+    return await r.json() as RemoteServerStore
+  } catch { return { servers: [] } }
+}
+
+export async function persistRemoteServers(store: RemoteServerStore): Promise<void> {
+  try {
+    await fetch(`${localApiBase()}/system/remote-servers`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', ...authHdr() },
+      body: JSON.stringify(store),
+    })
+  } catch { /* non-critical */ }
 }

@@ -68,7 +68,7 @@ fn cmd_output(program: &str, args: &[&str], dir: &FsPath) -> anyhow::Result<Stri
 }
 
 // @group Utilities > Git : Detect package manager from working directory
-fn detect_pkg_manager(dir: &FsPath) -> &'static str {
+pub(crate) fn detect_pkg_manager(dir: &FsPath) -> &'static str {
     if dir.join("package.json").exists() {
         if dir.join("pnpm-lock.yaml").exists() { return "pnpm" }
         if dir.join("yarn.lock").exists() { return "yarn" }
@@ -194,4 +194,99 @@ async fn git_pull(
         "deps_output": deps_output,
         "pkg_manager": pkg_manager,
     })))
+}
+
+// @group UnitTests : Tests for git route helper functions
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use tempfile::TempDir;
+
+    // @group TestHelpers : Create a temp dir and write a file into it
+    fn tmp_with_files(files: &[&str]) -> TempDir {
+        let dir = TempDir::new().unwrap();
+        for f in files {
+            fs::write(dir.path().join(f), "").unwrap();
+        }
+        dir
+    }
+
+    // @group UnitTests > Git > PkgManager : npm (has package.json, no lockfile)
+    #[test]
+    fn test_detect_npm() {
+        let dir = tmp_with_files(&["package.json"]);
+        assert_eq!(detect_pkg_manager(dir.path()), "npm");
+    }
+
+    // @group UnitTests > Git > PkgManager : pnpm wins over npm when pnpm-lock.yaml present
+    #[test]
+    fn test_detect_pnpm() {
+        let dir = tmp_with_files(&["package.json", "pnpm-lock.yaml"]);
+        assert_eq!(detect_pkg_manager(dir.path()), "pnpm");
+    }
+
+    // @group UnitTests > Git > PkgManager : yarn wins when yarn.lock present
+    #[test]
+    fn test_detect_yarn() {
+        let dir = tmp_with_files(&["package.json", "yarn.lock"]);
+        assert_eq!(detect_pkg_manager(dir.path()), "yarn");
+    }
+
+    // @group UnitTests > Git > PkgManager : cargo detected via Cargo.toml
+    #[test]
+    fn test_detect_cargo() {
+        let dir = tmp_with_files(&["Cargo.toml"]);
+        assert_eq!(detect_pkg_manager(dir.path()), "cargo");
+    }
+
+    // @group UnitTests > Git > PkgManager : pip detected via requirements.txt
+    #[test]
+    fn test_detect_pip_requirements() {
+        let dir = tmp_with_files(&["requirements.txt"]);
+        assert_eq!(detect_pkg_manager(dir.path()), "pip");
+    }
+
+    // @group UnitTests > Git > PkgManager : pip detected via pyproject.toml
+    #[test]
+    fn test_detect_pip_pyproject() {
+        let dir = tmp_with_files(&["pyproject.toml"]);
+        assert_eq!(detect_pkg_manager(dir.path()), "pip");
+    }
+
+    // @group UnitTests > Git > PkgManager : pip detected via Pipfile
+    #[test]
+    fn test_detect_pip_pipfile() {
+        let dir = tmp_with_files(&["Pipfile"]);
+        assert_eq!(detect_pkg_manager(dir.path()), "pip");
+    }
+
+    // @group UnitTests > Git > PkgManager : go detected via go.mod
+    #[test]
+    fn test_detect_go() {
+        let dir = tmp_with_files(&["go.mod"]);
+        assert_eq!(detect_pkg_manager(dir.path()), "go");
+    }
+
+    // @group UnitTests > Git > PkgManager : unknown project returns "none"
+    #[test]
+    fn test_detect_none() {
+        let dir = tmp_with_files(&["main.c", "Makefile"]);
+        assert_eq!(detect_pkg_manager(dir.path()), "none");
+    }
+
+    // @group EdgeCases > Git > PkgManager : empty directory returns "none"
+    #[test]
+    fn test_detect_empty_dir() {
+        let dir = TempDir::new().unwrap();
+        assert_eq!(detect_pkg_manager(dir.path()), "none");
+    }
+
+    // @group EdgeCases > Git > PkgManager : pnpm takes priority over yarn when both present
+    #[test]
+    fn test_detect_pnpm_over_yarn() {
+        let dir = tmp_with_files(&["package.json", "pnpm-lock.yaml", "yarn.lock"]);
+        // pnpm check comes before yarn check in detect_pkg_manager
+        assert_eq!(detect_pkg_manager(dir.path()), "pnpm");
+    }
 }

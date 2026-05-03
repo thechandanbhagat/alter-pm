@@ -523,6 +523,18 @@ export const api = {
     return new EventSource(`${getBase()}/tunnels/settings/install/stream?${qs}`)
   },
 
+  // @group APIEndpoints > Startup : Get OS autostart registration status
+  getStartupStatus: (): Promise<{ enabled: boolean; method: string }> =>
+    request('/system/startup'),
+
+  // @group APIEndpoints > Startup : Register daemon as OS autostart entry
+  enableStartup: (): Promise<void> =>
+    request('/system/startup', { method: 'POST' }),
+
+  // @group APIEndpoints > Startup : Remove daemon OS autostart entry
+  disableStartup: (): Promise<void> =>
+    request('/system/startup', { method: 'DELETE' }),
+
   // @group APIEndpoints > UiSettings : Load persisted UI settings blob from daemon
   getUiSettings: (): Promise<Record<string, unknown>> =>
     request('/system/ui-settings'),
