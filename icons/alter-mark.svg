@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128" fill="none">
+  <title>alter mark</title>
+  <defs>
+    <linearGradient id="alter-hex-gradient" x1="30" y1="24" x2="98" y2="104" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#4f9cf9"/>
+      <stop offset="0.56" stop-color="#5fa8ff"/>
+      <stop offset="1" stop-color="#3ddc84"/>
+    </linearGradient>
+  </defs>
+  <rect x="10" y="10" width="108" height="108" rx="28" fill="#0b1117"/>
+  <rect x="11" y="11" width="106" height="106" rx="27" stroke="#263244" stroke-width="2"/>
+  <path d="M64 24 99 44.5v39L64 104 29 83.5v-39L64 24Z" stroke="url(#alter-hex-gradient)" stroke-width="7" stroke-linejoin="round"/>
+  <rect x="43" y="42" width="42" height="44" rx="12" fill="#132033" stroke="#304158" stroke-width="2"/>
+  <rect x="50" y="49" width="28" height="28" rx="7" fill="#17263a" stroke="#243750" stroke-width="1.5"/>
+  <path d="M54 57 64 63 54 69" stroke="#ffd166" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M66 72h11" stroke="#80deea" stroke-width="5" stroke-linecap="round"/>
+  <circle cx="64" cy="24" r="7.5" fill="#0b1117" stroke="#ffd166" stroke-width="4"/>
+  <circle cx="29" cy="83.5" r="7.5" fill="#0b1117" stroke="#80deea" stroke-width="4"/>
+  <circle cx="99" cy="83.5" r="7.5" fill="#0b1117" stroke="#3ddc84" stroke-width="4"/>
+</svg>

@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { Fingerprint, KeyRound, Eye, EyeOff } from 'lucide-react'
 import { loginWithPasskey, registerPasskey, setSessionToken } from '@/lib/auth'
 import { api } from '@/lib/api'
+import { AlterLogo } from '@/components/AlterLogo'
 
 interface LoginPageProps {
   onAuthenticated: () => void
@@ -133,8 +134,7 @@ export default function LoginPage({ onAuthenticated, subtitle }: LoginPageProps)
 
   const logo = (
     <div style={{ textAlign: 'center', marginBottom: 24 }}>
-      <span style={{ fontWeight: 700, fontSize: 28, letterSpacing: '-0.5px', color: 'var(--color-primary)' }}>alter</span>
-      <span style={{ fontSize: 14, color: 'var(--color-muted-foreground)', fontWeight: 500 }}>pm</span>
+      <AlterLogo size="login" />
       <p style={{ margin: '8px 0 0', fontSize: 13, color: 'var(--color-muted-foreground)' }}>
         {subtitle ?? (mode === 'setup' ? 'Set a password to secure your dashboard' : 'Sign in to continue')}
       </p>
