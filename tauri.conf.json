@@ -1,6 +1,6 @@
 {
   "productName": "alter",
-  "version": "1.1.0",
+  "version": "1.3.0",
   "identifier": "io.alter.daemon",
   "build": {
     "devUrl": "http://localhost:2999",
@@ -10,10 +10,10 @@
     "active": true,
     "targets": ["msi", "nsis"],
     "icon": [
-      "icons/32x32.png",
-      "icons/128x128.png",
-      "icons/128x128@2x.png",
-      "icons/icon.ico"
+      "icons/alter-32x32.png",
+      "icons/alter-128x128.png",
+      "icons/alter-128x128@2x.png",
+      "icons/alter-icon.ico"
     ],
     "windows": {
       "webviewInstallMode": {
