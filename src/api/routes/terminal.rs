@@ -53,7 +53,7 @@ enum ClientMsg {
     Resize { cols: u16, rows: u16 },
 }
 
-// @group APIEndpoints > Terminal : GET /terminals/ws — upgrade to WebSocket, spawn PTY
+// @group APIEndpoints > Terminal : GET /terminals/ws — upgrade to WebSocket, spawn PTY (silent — no visible window; all sessions logged to terminal-activity.log)
 async fn ws_handler(
     ws:                WebSocketUpgrade,
     Query(q):          Query<WsQuery>,
@@ -155,15 +155,26 @@ async fn handle_terminal(
     };
     drop(pair.slave);
 
+    let opened_at = Utc::now();
+
     // Register the session so the status bar can show the count
     state.terminal_manager.sessions.insert(
         id.clone(),
         TerminalInfo {
             id: id.clone(),
             cwd: cwd.clone(),
-            created_at: Utc::now(),
+            created_at: opened_at,
         },
     );
+
+    // Log session open — written to terminal-activity.log for auditing
+    {
+        let id_log = id.clone();
+        let cwd_log = cwd.clone();
+        tokio::task::spawn_blocking(move || {
+            crate::logging::terminal_log::log_open(&id_log, &cwd_log);
+        });
+    }
 
     let master = pair.master;
 
@@ -254,4 +265,14 @@ async fn handle_terminal(
     drop(child);
     drop(master);
     state.terminal_manager.sessions.remove(&id);
+
+    // Log session close with duration for audit trail
+    {
+        let id_log = id.clone();
+        let cwd_log = cwd.clone();
+        let duration = (Utc::now() - opened_at).num_seconds();
+        tokio::task::spawn_blocking(move || {
+            crate::logging::terminal_log::log_close(&id_log, &cwd_log, duration);
+        });
+    }
 }
