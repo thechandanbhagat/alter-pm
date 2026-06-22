@@ -21,6 +21,7 @@ interface Props {
   settings: AppSettings
   namespaceFilter?: string
   onOpenTerminal?: (cwd: string, name?: string) => void
+  favorites?: Set<string>
 }
 
 type SortCol = 'name' | 'status' | 'cpu' | 'memory' | 'restarts' | 'uptime' | null

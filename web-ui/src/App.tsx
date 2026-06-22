@@ -13,11 +13,13 @@ import { useProcesses } from '@/hooks/useProcesses'
 import { useSettings } from '@/hooks/useSettings'
 import { useDialog } from '@/hooks/useDialog'
 import { useNotificationTray } from '@/hooks/useNotificationTray'
+import { useFavoriteNamespaces } from '@/hooks/useFavoriteNamespaces'
 import { Dialog } from '@/components/Dialog'
 import { DiscordIcon } from '@/components/DiscordIcon'
 import { GitHubStarBanner, GitHubStarWidget } from '@/components/GitHubStarBanner'
 import { NotificationTray } from '@/components/NotificationTray'
 import { AiPanel } from '@/components/AiPanel'
+import { AlterLogo } from '@/components/AlterLogo'
 import { TerminalPanel, TerminalStatusBarBtn, type TerminalPanelHandle, type TerminalPanelState, type TerminalShortcuts } from '@/components/TerminalPanel'
 import { api } from '@/lib/api'
 import { statusColor } from '@/lib/utils'
@@ -39,9 +41,9 @@ import type { ProcessInfo, UpdateInfo } from '@/types'
 import type { AppSettings } from '@/lib/settings'
 
 // @group BusinessLogic > NamespaceRoute : Stable module-level wrapper — reads :name param and filters processes
-function NamespaceRoute({ processes, reload, settings, onOpenTerminal }: { processes: ProcessInfo[]; reload: () => void; settings: AppSettings; onOpenTerminal: (cwd: string, name?: string) => void }) {
+function NamespaceRoute({ processes, reload, settings, onOpenTerminal, favorites }: { processes: ProcessInfo[]; reload: () => void; settings: AppSettings; onOpenTerminal: (cwd: string, name?: string) => void; favorites: Set<string> }) {
   const { name } = useParams<{ name: string }>()
-  return <ProcessesPage processes={processes} reload={reload} settings={settings} namespaceFilter={name} onOpenTerminal={onOpenTerminal} />
+  return <ProcessesPage processes={processes} reload={reload} settings={settings} namespaceFilter={name} onOpenTerminal={onOpenTerminal} favorites={favorites} />
 }
 
 // @group BusinessLogic > Layout : Sidebar + content shell
@@ -99,6 +101,9 @@ function Layout({ onLock }: { onLock: () => void }) {
     // Small delay lets the panel mount/show before opening the tab
     setTimeout(() => terminalPanelRef.current?.openTab(cwd, name), 50)
   }
+
+  // @group BusinessLogic > Favorites : Favorite namespaces — persisted to localStorage
+  const { favorites, toggle: toggleFavorite } = useFavoriteNamespaces()
 
   // @group BusinessLogic > SidebarList : Active processes grouped by namespace
   const [sidebarSearch, setSidebarSearch] = useState('')
@@ -214,9 +219,8 @@ function Layout({ onLock }: { onLock: () => void }) {
           borderBottom: '1px solid var(--color-border)',
           display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8,
         }}>
-          <Link to="/" style={{ display: 'flex', alignItems: 'baseline', gap: 2, textDecoration: 'none' }}>
-            <span style={{ fontWeight: 700, fontSize: 18, letterSpacing: '-0.5px', color: 'var(--color-primary)' }}>alter</span>
-            <span style={{ fontSize: 11, color: 'var(--color-muted-foreground)', fontWeight: 500 }}>pm</span>
+          <Link to="/" aria-label="Go to alter dashboard" style={{ display: 'flex', alignItems: 'center', textDecoration: 'none' }}>
+            <AlterLogo size="sidebar" />
           </Link>
          
         </div>
@@ -236,7 +240,7 @@ function Layout({ onLock }: { onLock: () => void }) {
           />
 
           {/* Namespace submenu — indented list under Processes, controlled by chevron on the row */}
-          <NamespaceSubmenu processes={processes} currentNamespace={currentNamespace} open={nsOpen} />
+          <NamespaceSubmenu processes={processes} currentNamespace={currentNamespace} open={nsOpen} favorites={favorites} onToggleFavorite={toggleFavorite} />
 
           {/* Cron Jobs row with inline + button */}
           <NavRowWithAdd
@@ -255,7 +259,7 @@ function Layout({ onLock }: { onLock: () => void }) {
 
           <div style={{ height: 4 }} />
           <NavBtn to="/logs" icon={ScrollText} label="Log Library" active={location.pathname === '/logs'} />
-          <NavBtn to="/log-volume" icon={BarChart2} label="Log Volume" active={location.pathname === '/log-volume'} />
+          <NavBtn to="/log-volume" icon={BarChart2} label="Log Analytics" active={location.pathname === '/log-volume'} />
 
           {/* Tools section — collapsible */}
           <button
@@ -350,11 +354,11 @@ function Layout({ onLock }: { onLock: () => void }) {
       <div style={{ flex: 1, overflow: 'auto', display: 'flex', flexDirection: 'column' }}>
         <Routes>
           <Route path="/" element={<AnalyticsPage processes={processes} settings={settings} reload={reload} />} />
-          <Route path="/processes" element={<ProcessesPage processes={processes} reload={reload} settings={settings} onOpenTerminal={openTerminalAtCwd} />} />
-          <Route path="/namespace/:name" element={<NamespaceRoute processes={processes} reload={reload} settings={settings} onOpenTerminal={openTerminalAtCwd} />} />
+          <Route path="/processes" element={<ProcessesPage processes={processes} reload={reload} settings={settings} onOpenTerminal={openTerminalAtCwd} favorites={favorites} />} />
+          <Route path="/namespace/:name" element={<NamespaceRoute processes={processes} reload={reload} settings={settings} onOpenTerminal={openTerminalAtCwd} favorites={favorites} />} />
           <Route path="/start" element={<StartPage onDone={() => { reload(); navigate('/processes') }} settings={settings} />} />
           <Route path="/edit/:id" element={<EditPage onDone={() => { reload(); navigate('/processes') }} />} />
-          <Route path="/processes/:id" element={<ProcessDetailPage reload={reload} settings={settings} onOpenTerminal={openTerminalAtCwd} />} />
+          <Route path="/processes/:id" element={<ProcessDetailPage reload={reload} settings={settings} onOpenTerminal={openTerminalAtCwd} favorites={favorites} onToggleFavorite={toggleFavorite} />} />
           <Route path="/cron-jobs" element={<CronJobsPage processes={processes} reload={reload} settings={settings} />} />
           <Route path="/cron-jobs/new" element={<CreateCronJobPage onDone={() => { reload(); navigate('/cron-jobs') }} settings={settings} />} />
           <Route path="/logs" element={<LogLibraryPage processes={processes} reload={reload} />} />
@@ -416,23 +420,35 @@ function Layout({ onLock }: { onLock: () => void }) {
 }
 
 // @group BusinessLogic > NamespaceSubmenu : Controlled namespace list under Processes — toggled by chevron on the row
-function NamespaceSubmenu({ processes, currentNamespace, open }: {
+function NamespaceSubmenu({ processes, currentNamespace, open, favorites, onToggleFavorite }: {
   processes: ProcessInfo[]
   currentNamespace: string | null
   open: boolean
+  favorites: Set<string>
+  onToggleFavorite: (ns: string) => void
 }) {
   const [filter, setFilter] = useState('')
+  const [hoveredNs, setHoveredNs] = useState<string | null>(null)
 
   const namespaces = useMemo(() =>
     [...new Set(processes.map(p => p.namespace || 'default'))].sort(),
     [processes]
   )
 
+  // Favorites pinned to top, then alphabetical
+  const sorted = useMemo(() => {
+    const fav = namespaces.filter(ns => favorites.has(ns))
+    const rest = namespaces.filter(ns => !favorites.has(ns))
+    return [...fav, ...rest]
+  }, [namespaces, favorites])
+
   const filtered = filter
-    ? namespaces.filter(ns => ns.toLowerCase().includes(filter.toLowerCase()))
-    : namespaces
+    ? sorted.filter(ns => ns.toLowerCase().includes(filter.toLowerCase()))
+    : sorted
 
   if (!open || namespaces.length === 0) return null
+
+  const favCount = filtered.filter(ns => favorites.has(ns)).length
 
   return (
     <div style={{ paddingBottom: 2 }}>
@@ -453,38 +469,66 @@ function NamespaceSubmenu({ processes, currentNamespace, open }: {
           />
         </div>
       )}
-      {filtered.map(ns => {
+      {filtered.map((ns, idx) => {
         const count = processes.filter(p => (p.namespace || 'default') === ns).length
         const isActive = currentNamespace === ns
+        const isFav = favorites.has(ns)
+        const isHovered = hoveredNs === ns
+        // Divider between favorited and non-favorited groups
+        const showDivider = favCount > 0 && idx === favCount && !filter
         return (
-          <Link
-            key={ns}
-            to={`/namespace/${ns}`}
-            style={{
-              display: 'flex', alignItems: 'center', gap: 6,
-              padding: '4px 14px 4px 34px', fontSize: 12,
-              color: isActive ? 'var(--color-primary)' : 'var(--color-muted-foreground)',
-              textDecoration: 'none',
-              fontWeight: isActive ? 600 : 400,
-              background: isActive ? 'var(--color-accent)' : 'transparent',
-              borderLeft: isActive ? '2px solid var(--color-primary)' : '2px solid transparent',
-            }}
-            onMouseEnter={e => { if (!isActive) e.currentTarget.style.background = 'var(--color-accent)' }}
-            onMouseLeave={e => { if (!isActive) e.currentTarget.style.background = 'transparent' }}
-          >
-            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
-              {ns}
-            </span>
-            <span style={{
-              fontSize: 10, flexShrink: 0,
-              background: 'var(--color-secondary)',
-              border: '1px solid var(--color-border)',
-              borderRadius: 3, padding: '0 4px',
-              opacity: 0.75,
-            }}>
-              {count}
-            </span>
-          </Link>
+          <div key={ns}>
+            {showDivider && (
+              <div style={{ height: 1, background: 'var(--color-border)', margin: '3px 14px 3px 34px', opacity: 0.5 }} />
+            )}
+            <Link
+              to={`/namespace/${encodeURIComponent(ns)}`}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 6,
+                padding: '4px 8px 4px 34px', fontSize: 12,
+                color: isActive ? 'var(--color-primary)' : 'var(--color-muted-foreground)',
+                textDecoration: 'none',
+                fontWeight: isActive ? 600 : 400,
+                background: isActive ? 'var(--color-accent)' : 'transparent',
+                borderLeft: isActive ? '2px solid var(--color-primary)' : '2px solid transparent',
+              }}
+              onMouseEnter={e => {
+                setHoveredNs(ns)
+                if (!isActive) e.currentTarget.style.background = 'var(--color-accent)'
+              }}
+              onMouseLeave={e => {
+                setHoveredNs(null)
+                if (!isActive) e.currentTarget.style.background = 'transparent'
+              }}
+            >
+              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
+                {ns}
+              </span>
+              {/* Star button — always visible when favorited, visible on hover otherwise */}
+              <button
+                onClick={e => { e.preventDefault(); e.stopPropagation(); onToggleFavorite(ns) }}
+                title={isFav ? 'Remove from favorites' : 'Add to favorites'}
+                style={{
+                  background: 'none', border: 'none', cursor: 'pointer', padding: '0 2px',
+                  fontSize: 11, lineHeight: 1, flexShrink: 0,
+                  color: isFav ? '#f59e0b' : 'var(--color-muted-foreground)',
+                  opacity: isFav || isHovered ? 1 : 0,
+                  transition: 'opacity 0.1s',
+                }}
+              >
+                {isFav ? '★' : '☆'}
+              </button>
+              <span style={{
+                fontSize: 10, flexShrink: 0,
+                background: 'var(--color-secondary)',
+                border: '1px solid var(--color-border)',
+                borderRadius: 3, padding: '0 4px',
+                opacity: 0.75,
+              }}>
+                {count}
+              </span>
+            </Link>
+          </div>
         )
       })}
     </div>
