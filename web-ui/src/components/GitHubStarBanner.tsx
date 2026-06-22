@@ -177,7 +177,7 @@ export function GitHubStarWidget() {
         if (Date.now() - ts < 3_600_000) { setStars(count); return }
       } catch { /* ignore */ }
     }
-    fetch('https://api.github.com/repos/outernet-io/alter')
+    fetch('https://api.github.com/repos/thechandanbhagat/alter-pm')
       .then(r => r.json())
       .then((data: { stargazers_count?: number }) => {
         if (typeof data.stargazers_count === 'number') {
