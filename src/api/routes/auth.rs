@@ -26,6 +26,7 @@ pub fn router(state: Arc<DaemonState>) -> Router {
         .route("/change-password", post(change_password))
         .route("/pin", post(set_pin).delete(remove_pin))
         .route("/settings", patch(update_settings))
+        .route("/rotate-token", post(rotate_token))
         // Passkey endpoints -- stubs until a ring-based WebAuthn backend is added
         .route("/passkey/register/start", post(passkey_not_supported))
         .route("/passkey/register/finish", post(passkey_not_supported))
@@ -226,6 +227,17 @@ async fn update_settings(
     auth.lock_timeout_mins = body.lock_timeout_mins;
     auth_config::save(&auth).map_err(|e| ApiError::internal(e.to_string()))?;
     Ok(Json(serde_json::json!({ "success": true })))
+}
+
+// @group Authentication > RotateToken : Regenerate master token (invalidates old one, updates in-memory state)
+async fn rotate_token(
+    State(state): State<Arc<DaemonState>>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let new_token = generate_token();
+    let mut auth = state.auth.write().await;
+    auth.master_token = new_token.clone();
+    auth_config::save(&auth).map_err(|e| ApiError::internal(e.to_string()))?;
+    Ok(Json(serde_json::json!({ "token": new_token })))
 }
 
 // @group Authentication > Passkey : Stub -- returns 501 until WebAuthn backend is added

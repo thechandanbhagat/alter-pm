@@ -11,9 +11,14 @@ pub struct DaemonClient {
 }
 
 impl DaemonClient {
+    // @group Authentication : Build client using the local master token (default, local daemon)
     pub fn new(host: &str, port: u16) -> Self {
-        // @group Authentication : Inject master token so the CLI authenticates with the daemon
         let token = crate::config::auth_config::load().master_token;
+        Self::with_token(host, port, &token)
+    }
+
+    // @group Authentication : Build client with an explicit token (used for named remote connections)
+    pub fn with_token(host: &str, port: u16, token: &str) -> Self {
         let mut headers = reqwest::header::HeaderMap::new();
         if let Ok(val) = reqwest::header::HeaderValue::from_str(&format!("Bearer {token}")) {
             headers.insert(reqwest::header::AUTHORIZATION, val);
