@@ -1,8 +1,12 @@
 // @group BusinessLogic : Process detail view — SSE log stream, date navigation, toolbar
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { SquareTerminal, Copy, Check, FolderOpen } from 'lucide-react'
+import {
+  SquareTerminal, Copy, Check, FolderOpen,
+  Play, Square, RotateCcw, Pencil, Trash2, Key, Code2,
+  Download, Search, X, ChevronDown, GitBranch,
+} from 'lucide-react'
 import { api } from '@/lib/api'
 import { useDialog } from '@/hooks/useDialog'
 import { Dialog } from '@/components/Dialog'
@@ -15,9 +19,11 @@ interface Props {
   reload: () => void
   settings: AppSettings
   onOpenTerminal?: (cwd: string, name?: string) => void
+  favorites?: Set<string>
+  onToggleFavorite?: (ns: string) => void
 }
 
-export default function ProcessDetailPage({ reload, settings, onOpenTerminal }: Props) {
+export default function ProcessDetailPage({ reload, settings, onOpenTerminal, favorites = new Set(), onToggleFavorite }: Props) {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const [process, setProcess] = useState<ProcessInfo | null>(null)
@@ -26,13 +32,15 @@ export default function ProcessDetailPage({ reload, settings, onOpenTerminal }: 
   const [dateIndex, setDateIndex] = useState(-1) // -1 = today (live)
   const [streamFilter, setStreamFilter] = useState<'all' | 'stdout' | 'stderr'>('all')
   const [textFilter, setTextFilter] = useState('')
+  // @group BusinessLogic > LogFilter : Regex mode toggle state
+  const [useRegex, setUseRegex] = useState(false)
   const [envOpen, setEnvOpen] = useState(false)
   const [logStats, setLogStats] = useState<LogStatsBucket[]>([])
   const [metricSamples, setMetricSamples] = useState<MetricSample[]>([])
-  const [sliderPos, setSliderPos] = useState(1000) // 0–1000 = 0%–100% of scroll, starts pinned to bottom
+  const [sliderPos, setSliderPos] = useState(1000)
   const logEndRef = useRef<HTMLDivElement>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
-  const atBottomRef = useRef(true) // tracks whether user is pinned to bottom
+  const atBottomRef = useRef(true)
   const esRef = useRef<EventSource | null>(null)
   const { dialogState, confirm, danger, alert, handleConfirm, handleCancel } = useDialog()
   const [cwdCopied, setCwdCopied] = useState(false)
@@ -43,18 +51,14 @@ export default function ProcessDetailPage({ reload, settings, onOpenTerminal }: 
   const [gitLog, setGitLog] = useState<string | null>(null)
   const [gitLogOpen, setGitLogOpen] = useState(false)
 
-  // Load process info + poll at configured interval
   useEffect(() => {
     if (!id) return
-    function loadProc() {
-      api.getProcess(id!).then(setProcess).catch(() => {})
-    }
+    function loadProc() { api.getProcess(id!).then(setProcess).catch(() => {}) }
     loadProc()
     const timer = setInterval(loadProc, settings.processRefreshInterval)
     return () => clearInterval(timer)
   }, [id, settings.processRefreshInterval])
 
-  // Load available log dates
   useEffect(() => {
     if (!id) return
     api.getLogDates(id).then(d => setLogDates(d.dates)).catch(() => {})
@@ -63,9 +67,7 @@ export default function ProcessDetailPage({ reload, settings, onOpenTerminal }: 
   // @group BusinessLogic > LogStats : Fetch today's log volume buckets; refresh every 5 minutes
   useEffect(() => {
     if (!id) return
-    function fetchStats() {
-      api.getLogStats(id!).then(r => setLogStats(r.buckets)).catch(() => {})
-    }
+    function fetchStats() { api.getLogStats(id!).then(r => setLogStats(r.buckets)).catch(() => {}) }
     fetchStats()
     const t = setInterval(fetchStats, 5 * 60 * 1000)
     return () => clearInterval(t)
@@ -74,9 +76,7 @@ export default function ProcessDetailPage({ reload, settings, onOpenTerminal }: 
   // @group BusinessLogic > Metrics : Fetch CPU/memory history; refresh every 60 seconds
   useEffect(() => {
     if (!id) return
-    function fetchMetrics() {
-      api.getMetricsHistory(id!).then(r => setMetricSamples(r.samples)).catch(() => {})
-    }
+    function fetchMetrics() { api.getMetricsHistory(id!).then(r => setMetricSamples(r.samples)).catch(() => {}) }
     fetchMetrics()
     const t = setInterval(fetchMetrics, 60 * 1000)
     return () => clearInterval(t)
@@ -88,25 +88,17 @@ export default function ProcessDetailPage({ reload, settings, onOpenTerminal }: 
     api.getProcessGit(id).then(setGitInfo).catch(() => {})
   }, [id])
 
-  // Load historical logs + start SSE when dateIndex changes
   useEffect(() => {
     if (!id) return
-    // Stop existing SSE
     if (esRef.current) { esRef.current.close(); esRef.current = null }
     setLogLines([])
-    atBottomRef.current = true // re-pin on every fresh load
+    atBottomRef.current = true
 
     const isToday = dateIndex === -1
     const dateParam = isToday ? undefined : logDates[dateIndex]
 
-    // Fetch historical
-    api.getLogs(id, { lines: isToday ? settings.logTailLines : Math.max(settings.logTailLines, 500), date: dateParam })
-      .then(d => setLogLines(d.lines.map(l => ({ stream: l.stream, timestamp: l.timestamp ?? '', content: l.content }))))
-      .catch(() => {})
-
-    // Live SSE for today only
-    if (isToday) {
-      const es = api.streamLogs(id)
+    function startSSE() {
+      const es = api.streamLogs(id!)
       esRef.current = es
       es.onmessage = (e) => {
         try {
@@ -117,6 +109,13 @@ export default function ProcessDetailPage({ reload, settings, onOpenTerminal }: 
       es.onerror = () => { es.close(); esRef.current = null }
     }
 
+    api.getLogs(id, { lines: isToday ? settings.logTailLines : Math.max(settings.logTailLines, 500), date: dateParam })
+      .then(d => {
+        setLogLines(d.lines.map(l => ({ stream: l.stream, timestamp: l.timestamp ?? '', content: l.content })))
+        if (isToday) startSSE()
+      })
+      .catch(() => { if (isToday) startSSE() })
+
     return () => { if (esRef.current) { esRef.current.close(); esRef.current = null } }
   }, [id, dateIndex, logDates, settings.logTailLines])
 
@@ -126,7 +125,6 @@ export default function ProcessDetailPage({ reload, settings, onOpenTerminal }: 
     if (!el) return
     const maxScroll = el.scrollHeight - el.clientHeight
     atBottomRef.current = maxScroll - el.scrollTop < 60
-    // Sync slider with manual scroll position (today only)
     if (dateIndex === -1 && maxScroll > 0) {
       setSliderPos(Math.round((el.scrollTop / maxScroll) * 1000))
     }
@@ -138,18 +136,25 @@ export default function ProcessDetailPage({ reload, settings, onOpenTerminal }: 
     setSliderPos(val)
     const el = scrollRef.current
     if (!el) return
-    const atEnd = val >= 1000
-    atBottomRef.current = atEnd
+    atBottomRef.current = val >= 1000
     el.scrollTop = (val / 1000) * (el.scrollHeight - el.clientHeight)
   }
 
-  // Auto-scroll to bottom + pin slider to right when new lines arrive and already pinned
+  // Auto-scroll to bottom + pin slider when new lines arrive and already pinned.
   useEffect(() => {
-    if (atBottomRef.current) {
-      logEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+    if (atBottomRef.current && scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight
       setSliderPos(1000)
     }
   }, [logLines])
+
+  // @group BusinessLogic > LogFilter : Compile regex when useRegex is active
+  const compiledRegex = useMemo(() => {
+    if (!useRegex || !textFilter) return null
+    try { return new RegExp(textFilter, 'i') }
+    catch { return null }
+  }, [useRegex, textFilter])
+  const regexError = useRegex && !!textFilter && compiledRegex === null
 
   if (!process) return <div style={{ padding: 24, color: 'var(--color-muted-foreground)' }}>Loading…</div>
 
@@ -160,12 +165,27 @@ export default function ProcessDetailPage({ reload, settings, onOpenTerminal }: 
   const needle = textFilter.toLowerCase()
   const visibleLines = logLines.filter(l =>
     (streamFilter === 'all' || l.stream === streamFilter) &&
-    (needle === '' || l.content.toLowerCase().includes(needle))
+    (needle === '' ? true : compiledRegex ? compiledRegex.test(l.content) : l.content.toLowerCase().includes(needle))
   )
 
   // @group BusinessLogic > LogSlider : Timestamp label at current slider seek position
   const sliderLineIdx = Math.round((sliderPos / 1000) * Math.max(0, visibleLines.length - 1))
   const sliderTimestamp = visibleLines[sliderLineIdx]?.timestamp?.slice(11, 19) ?? ''
+
+  // @group BusinessLogic > LogDownload : Download all log lines as a text file
+  function doDownloadLogs() {
+    if (!process) return
+    const text = logLines
+      .map(l => `[${l.timestamp?.slice(11, 19) ?? ''}] [${l.stream}] ${l.content}`)
+      .join('\n')
+    const blob = new Blob([text], { type: 'text/plain' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `${process.name}-${isToday ? 'today' : logDates[dateIndex]}.log`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
 
   async function doStart() {
     await api.startStopped(process!.id).catch(() => {})
@@ -191,9 +211,7 @@ export default function ProcessDetailPage({ reload, settings, onOpenTerminal }: 
     reload()
   }
   function doTerminal() {
-    if (onOpenTerminal && process?.cwd) {
-      onOpenTerminal(process.cwd, process.name)
-    }
+    if (onOpenTerminal && process?.cwd) onOpenTerminal(process.cwd, process.name)
   }
   async function doGitPull() {
     setGitStatus('pulling')
@@ -205,7 +223,6 @@ export default function ProcessDetailPage({ reload, settings, onOpenTerminal }: 
       setGitLog(log)
       setGitStatus('done')
       setGitLogOpen(true)
-      // Refresh git info + process after pull
       api.getProcessGit(process!.id).then(setGitInfo).catch(() => {})
       setTimeout(reload, 1000)
     } catch (e: unknown) {
@@ -214,12 +231,10 @@ export default function ProcessDetailPage({ reload, settings, onOpenTerminal }: 
       setGitLogOpen(true)
     }
   }
-
   async function doOpenFolder() {
     if (!process!.cwd) return
     await api.openFolder(process!.cwd).catch(() => {})
   }
-
   async function doVSCode() {
     if (!process!.cwd) {
       await alert('No working directory', 'This process has no working directory configured.')
@@ -227,6 +242,8 @@ export default function ProcessDetailPage({ reload, settings, onOpenTerminal }: 
     }
     window.open(`vscode://file/${process!.cwd.replace(/\\/g, '/')}`)
   }
+
+  const sColor = statusColor(process.status)
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
@@ -249,40 +266,102 @@ export default function ProcessDetailPage({ reload, settings, onOpenTerminal }: 
         />
       )}
 
-      {/* Toolbar */}
+      {/* ── Toolbar ─────────────────────────────────────────────────────── */}
       <div style={{
-        padding: '10px 16px',
+        padding: '0 14px',
         borderBottom: '1px solid var(--color-border)',
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        background: 'var(--color-card)', flexShrink: 0,
+        background: 'var(--color-card)', flexShrink: 0, height: 46, gap: 8,
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        {/* Left: identity */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0, flex: '1 1 0' }}>
           <button onClick={() => navigate('/processes')} style={ghostBtnStyle}>← Back</button>
-          <span style={{ color: statusColor(process.status), fontSize: 12 }}>●</span>
-          <span style={{ fontWeight: 600, fontSize: 14 }}>{process.name}</span>
-          <span style={{ fontSize: 12, color: statusColor(process.status) }}>{process.status}</span>
-        </div>
-        <div style={{ display: 'flex', gap: 6 }}>
-          {isActive
-            ? <>
-                <ToolBtn label="↺ Restart" onClick={doRestart} />
-                <ToolBtn label="■ Stop" onClick={doStop} />
-              </>
-            : <ToolBtn label="▶ Start" onClick={doStart} />
-          }
-          <ToolBtn label="✎ Edit" onClick={() => navigate(`/edit/${process.id}`)} />
-          <ToolBtn label="🔑 .env" onClick={() => setEnvOpen(true)} />
-          <ToolBtn label="✕ Delete" onClick={doDelete} danger />
 
-          {/* Terminal button group — terminal + copy path + open explorer */}
-          <div style={{ display: 'flex', gap: 0 }}>
-            {/* Open terminal — shows full cwd path on hover */}
+          <div style={vDivStyle} />
+
+          {/* Status dot */}
+          <span style={{ color: sColor, fontSize: 9, flexShrink: 0, lineHeight: 1 }}>●</span>
+
+          {/* Process name */}
+          <span style={{ fontWeight: 700, fontSize: 14, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', letterSpacing: '-0.01em' }}>
+            {process.name}
+          </span>
+
+          {/* Status pill */}
+          <span style={{
+            fontSize: 10, padding: '2px 7px', borderRadius: 10, fontWeight: 600, flexShrink: 0,
+            background: `color-mix(in srgb, ${sColor} 16%, transparent)`,
+            color: sColor,
+          }}>
+            {process.status}
+          </span>
+
+          {/* Namespace + favorite */}
+          {(() => {
+            const ns = process.namespace || 'default'
+            const isFav = favorites.has(ns)
+            return (
+              <span style={{ display: 'flex', alignItems: 'center', gap: 2, flexShrink: 0 }}>
+                <span
+                  onClick={() => navigate(`/namespace/${encodeURIComponent(ns)}`)}
+                  title={`Namespace: ${ns}`}
+                  style={{
+                    fontSize: 11, padding: '2px 7px',
+                    background: 'color-mix(in srgb, var(--color-primary) 10%, transparent)',
+                    color: 'var(--color-primary)', borderRadius: 4,
+                    cursor: 'pointer', fontWeight: 500,
+                  }}
+                >
+                  {ns}
+                </span>
+                {onToggleFavorite && (
+                  <button
+                    onClick={() => onToggleFavorite(ns)}
+                    title={isFav ? 'Remove from favorites' : 'Add to favorites'}
+                    style={{
+                      background: 'none', border: 'none', cursor: 'pointer',
+                      padding: '0 2px', fontSize: 12, lineHeight: 1,
+                      color: isFav ? '#f59e0b' : 'var(--color-muted-foreground)',
+                      opacity: isFav ? 1 : 0.45,
+                    }}
+                    onMouseEnter={e => { (e.currentTarget as HTMLElement).style.opacity = '1' }}
+                    onMouseLeave={e => { (e.currentTarget as HTMLElement).style.opacity = isFav ? '1' : '0.45' }}
+                  >
+                    {isFav ? '★' : '☆'}
+                  </button>
+                )}
+              </span>
+            )
+          })()}
+        </div>
+
+        {/* Right: actions */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 3, flexShrink: 0 }}>
+          {/* Process control */}
+          {isActive ? (
+            <>
+              <TBtn icon={<RotateCcw size={12} />} label="Restart" onClick={doRestart} />
+              <TBtn icon={<Square size={12} />} label="Stop" onClick={doStop} />
+            </>
+          ) : (
+            <TBtn icon={<Play size={12} />} label="Start" onClick={doStart} primary />
+          )}
+
+          <div style={vDivStyle} />
+
+          <TBtn icon={<Pencil size={12} />} label="Edit" onClick={() => navigate(`/edit/${process.id}`)} />
+          <TBtn icon={<Key size={12} />} label=".env" onClick={() => setEnvOpen(true)} />
+
+          <div style={vDivStyle} />
+
+          {/* Terminal compound button */}
+          <div style={{ display: 'flex' }}>
             <button
               onClick={doTerminal}
               title={process.cwd ? `Open terminal at:\n${process.cwd}` : 'Open terminal'}
               style={{
                 display: 'flex', alignItems: 'center', gap: 5,
-                padding: '4px 10px', fontSize: 12, fontWeight: 500,
+                padding: '4px 9px', fontSize: 12, fontWeight: 500,
                 background: 'var(--color-secondary)',
                 border: '1px solid var(--color-border)',
                 borderRight: 'none',
@@ -292,11 +371,8 @@ export default function ProcessDetailPage({ reload, settings, onOpenTerminal }: 
               onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'var(--color-accent)' }}
               onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'var(--color-secondary)' }}
             >
-              <SquareTerminal size={12} />
-              Terminal
+              <SquareTerminal size={12} /> Terminal
             </button>
-
-            {/* Copy path to clipboard */}
             {process.cwd && (
               <button
                 onClick={() => {
@@ -311,8 +387,7 @@ export default function ProcessDetailPage({ reload, settings, onOpenTerminal }: 
                   width: 26, padding: '4px 0',
                   background: 'var(--color-secondary)',
                   border: '1px solid var(--color-border)',
-                  borderRight: 'none',
-                  borderRadius: 0,
+                  borderRight: 'none', borderRadius: 0,
                   cursor: 'pointer',
                   color: cwdCopied ? '#4ade80' : 'var(--color-muted-foreground)',
                   transition: 'color 0.15s',
@@ -323,8 +398,6 @@ export default function ProcessDetailPage({ reload, settings, onOpenTerminal }: 
                 {cwdCopied ? <Check size={11} /> : <Copy size={11} />}
               </button>
             )}
-
-            {/* Open in Explorer */}
             {process.cwd && (
               <button
                 onClick={doOpenFolder}
@@ -335,8 +408,7 @@ export default function ProcessDetailPage({ reload, settings, onOpenTerminal }: 
                   background: 'var(--color-secondary)',
                   border: '1px solid var(--color-border)',
                   borderRadius: '0 4px 4px 0',
-                  cursor: 'pointer',
-                  color: 'var(--color-muted-foreground)',
+                  cursor: 'pointer', color: 'var(--color-muted-foreground)',
                 }}
                 onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'var(--color-accent)' }}
                 onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'var(--color-secondary)' }}
@@ -346,18 +418,22 @@ export default function ProcessDetailPage({ reload, settings, onOpenTerminal }: 
             )}
           </div>
 
-          <ToolBtn label="VS Code" onClick={doVSCode} />
+          <TBtn icon={<Code2 size={12} />} label="Code" onClick={doVSCode} />
+
+          <div style={vDivStyle} />
+
+          <TBtn icon={<Trash2 size={12} />} label="Delete" onClick={doDelete} danger />
         </div>
       </div>
 
-      {/* Git strip — shown only for git repos */}
+      {/* ── Git strip ───────────────────────────────────────────────────── */}
       {gitInfo?.is_git_repo && (
         <div style={{
-          padding: '6px 16px', borderBottom: '1px solid var(--color-border)',
+          padding: '5px 14px',
+          borderBottom: '1px solid var(--color-border)',
           background: 'var(--color-card)', flexShrink: 0,
-          display: 'flex', flexDirection: 'column', gap: 0,
         }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 7, flexWrap: 'wrap' }}>
             {/* Branch */}
             <span style={{
               display: 'inline-flex', alignItems: 'center', gap: 4,
@@ -365,46 +441,52 @@ export default function ProcessDetailPage({ reload, settings, onOpenTerminal }: 
               color: 'var(--color-primary)', borderRadius: 4,
               padding: '1px 7px', fontSize: 11, fontWeight: 600, fontFamily: 'monospace',
             }}>
-              ⎇ {gitInfo.branch ?? 'HEAD'}
+              <GitBranch size={10} /> {gitInfo.branch ?? 'HEAD'}
             </span>
 
-            {/* Short SHA */}
             {gitInfo.sha_short && (
               <code style={{ fontSize: 10, color: 'var(--color-muted-foreground)', fontFamily: 'monospace' }}>
                 {gitInfo.sha_short}
               </code>
             )}
 
-            {/* Commit message */}
             {gitInfo.message && (
-              <span style={{ fontSize: 11, color: 'var(--color-foreground)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              <span style={{
+                fontSize: 11, color: 'var(--color-foreground)',
+                flex: 1, minWidth: 0,
+                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+              }}>
                 {gitInfo.message}
               </span>
             )}
 
-            {/* Dirty indicator */}
             {gitInfo.dirty && (
-              <span style={{ fontSize: 10, color: '#f97316', fontWeight: 600 }} title="Uncommitted changes">✎ modified</span>
+              <span style={{ fontSize: 10, color: '#f97316', fontWeight: 600, flexShrink: 0 }} title="Uncommitted changes">
+                ✎ modified
+              </span>
             )}
-
-            {/* Ahead / behind */}
             {gitInfo.behind > 0 && (
-              <span style={{ fontSize: 10, color: 'var(--color-destructive)', fontWeight: 600 }}>↓{gitInfo.behind} behind</span>
+              <span style={{ fontSize: 10, color: 'var(--color-destructive)', fontWeight: 600, flexShrink: 0 }}>
+                ↓{gitInfo.behind} behind
+              </span>
             )}
             {gitInfo.ahead > 0 && (
-              <span style={{ fontSize: 10, color: 'var(--color-status-running)', fontWeight: 600 }}>↑{gitInfo.ahead} ahead</span>
+              <span style={{ fontSize: 10, color: 'var(--color-status-running)', fontWeight: 600, flexShrink: 0 }}>
+                ↑{gitInfo.ahead} ahead
+              </span>
             )}
-
-            {/* Package manager badge */}
             {gitInfo.pkg_manager !== 'none' && (
-              <span style={{ fontSize: 10, color: 'var(--color-muted-foreground)', background: 'var(--color-secondary)', borderRadius: 3, padding: '1px 5px', fontFamily: 'monospace' }}>
+              <span style={{
+                fontSize: 10, color: 'var(--color-muted-foreground)',
+                background: 'var(--color-secondary)', borderRadius: 3,
+                padding: '1px 5px', fontFamily: 'monospace', flexShrink: 0,
+              }}>
                 {gitInfo.pkg_manager}
               </span>
             )}
 
             <div style={{ flex: 1 }} />
 
-            {/* Pull & Restart button */}
             <button
               onClick={gitStatus === 'pulling' ? undefined : doGitPull}
               disabled={gitStatus === 'pulling'}
@@ -415,9 +497,7 @@ export default function ProcessDetailPage({ reload, settings, onOpenTerminal }: 
                 background: gitStatus === 'done' ? 'var(--color-status-running)'
                   : gitStatus === 'error' ? 'var(--color-destructive)'
                   : 'var(--color-primary)',
-                color: '#fff',
-                opacity: gitStatus === 'pulling' ? 0.7 : 1,
-                flexShrink: 0,
+                color: '#fff', opacity: gitStatus === 'pulling' ? 0.7 : 1, flexShrink: 0,
               }}
             >
               {gitStatus === 'pulling' ? '⟳ Pulling…'
@@ -426,7 +506,6 @@ export default function ProcessDetailPage({ reload, settings, onOpenTerminal }: 
                 : '↓ Pull & Restart'}
             </button>
 
-            {/* Reset to idle after done/error */}
             {(gitStatus === 'done' || gitStatus === 'error') && (
               <button
                 onClick={() => { setGitStatus('idle'); setGitLog(null); setGitLogOpen(false) }}
@@ -435,7 +514,6 @@ export default function ProcessDetailPage({ reload, settings, onOpenTerminal }: 
             )}
           </div>
 
-          {/* Pull output log */}
           {gitLog && gitLogOpen && (
             <pre style={{
               marginTop: 6, fontSize: 10, fontFamily: 'monospace',
@@ -458,30 +536,92 @@ export default function ProcessDetailPage({ reload, settings, onOpenTerminal }: 
         </div>
       )}
 
-      {/* Date navigation + stream filter */}
+      {/* ── Log controls (date nav + search + filter + download — one row) ── */}
       <div style={{
-        padding: '6px 16px', borderBottom: '1px solid var(--color-border)',
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0,
-        background: 'var(--color-muted)', fontSize: 12,
+        padding: '5px 14px',
+        borderBottom: '1px solid var(--color-border)',
+        display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0,
+        background: 'var(--color-muted)',
       }}>
         {/* Date pager */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <button disabled={dateIndex >= logDates.length - 1} onClick={() => setDateIndex(i => i + 1)} style={navBtnStyle}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
+          <button
+            disabled={dateIndex >= logDates.length - 1}
+            onClick={() => setDateIndex(i => i + 1)}
+            style={navBtnStyle}
+          >
             ← Older
           </button>
-          <span style={{ color: 'var(--color-muted-foreground)', minWidth: 100, textAlign: 'center' }}>
-            {isToday ? '📡 Today (live)' : logDates[dateIndex]}
+          <span style={{
+            fontSize: 11, fontWeight: 500, minWidth: 100, textAlign: 'center',
+            color: isToday ? 'var(--color-primary)' : 'var(--color-foreground)',
+          }}>
+            {isToday ? '● Live' : logDates[dateIndex]}
           </span>
-          <button disabled={isToday} onClick={() => setDateIndex(i => i - 1)} style={navBtnStyle}>
+          <button
+            disabled={isToday}
+            onClick={() => setDateIndex(i => i - 1)}
+            style={navBtnStyle}
+          >
             Newer →
           </button>
         </div>
 
-        {/* Stream filter toggle */}
-        <div style={{ display: 'flex', gap: 2, background: 'var(--color-background)', borderRadius: 6, padding: 2, border: '1px solid var(--color-border)' }}>
+        <div style={vDivStyle} />
+
+        {/* Search */}
+        <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 5, minWidth: 0 }}>
+          <Search size={12} style={{ color: 'var(--color-muted-foreground)', flexShrink: 0 }} />
+          <input
+            type="text"
+            placeholder={useRegex ? 'Regex filter…' : 'Filter logs…'}
+            value={textFilter}
+            onChange={e => setTextFilter(e.target.value)}
+            style={{
+              flex: 1, fontSize: 12, padding: '3px 6px', minWidth: 0,
+              background: 'var(--color-background)', color: 'var(--color-foreground)',
+              border: `1px solid ${regexError ? '#ef4444' : 'var(--color-border)'}`,
+              borderRadius: 4, outline: 'none',
+            }}
+          />
+          <button
+            onClick={() => setUseRegex(r => !r)}
+            title={useRegex ? 'Regex mode active — click to disable' : 'Enable regex filter mode'}
+            style={{
+              fontSize: 10, padding: '2px 6px', cursor: 'pointer', borderRadius: 3,
+              fontFamily: 'monospace', fontWeight: 700, flexShrink: 0,
+              border: '1px solid var(--color-border)',
+              background: useRegex ? 'var(--color-primary)' : 'var(--color-secondary)',
+              color: useRegex ? 'var(--color-primary-foreground)' : 'var(--color-muted-foreground)',
+            }}
+          >.*</button>
+          {textFilter && (
+            <>
+              <span style={{ fontSize: 11, color: regexError ? '#ef4444' : 'var(--color-muted-foreground)', whiteSpace: 'nowrap', flexShrink: 0 }}>
+                {regexError ? 'bad regex' : `${visibleLines.length} match${visibleLines.length !== 1 ? 'es' : ''}`}
+              </span>
+              <button
+                onClick={() => setTextFilter('')}
+                style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  width: 20, height: 20, cursor: 'pointer', flexShrink: 0,
+                  border: '1px solid var(--color-border)', borderRadius: 3,
+                  background: 'var(--color-secondary)', color: 'var(--color-foreground)',
+                }}
+              >
+                <X size={10} />
+              </button>
+            </>
+          )}
+        </div>
+
+        <div style={vDivStyle} />
+
+        {/* Stream filter pills */}
+        <div style={{ display: 'flex', gap: 1, background: 'var(--color-background)', borderRadius: 5, padding: 2, border: '1px solid var(--color-border)', flexShrink: 0 }}>
           {(['all', 'stdout', 'stderr'] as const).map(f => (
             <button key={f} onClick={() => setStreamFilter(f)} style={{
-              padding: '2px 10px', fontSize: 11, fontWeight: 500, borderRadius: 4,
+              padding: '2px 9px', fontSize: 11, fontWeight: 500, borderRadius: 3,
               border: 'none', cursor: 'pointer', transition: 'background 0.15s',
               background: streamFilter === f ? 'var(--color-primary)' : 'transparent',
               color: streamFilter === f ? 'var(--color-primary-foreground)' : 'var(--color-muted-foreground)',
@@ -490,12 +630,29 @@ export default function ProcessDetailPage({ reload, settings, onOpenTerminal }: 
             </button>
           ))}
         </div>
+
+        {/* Download */}
+        <button
+          onClick={doDownloadLogs}
+          title="Download all log lines as a text file"
+          style={{
+            display: 'flex', alignItems: 'center', gap: 4,
+            padding: '3px 8px', fontSize: 11, fontWeight: 500, flexShrink: 0,
+            background: 'var(--color-secondary)', border: '1px solid var(--color-border)',
+            borderRadius: 4, cursor: 'pointer', color: 'var(--color-muted-foreground)',
+          }}
+          onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = 'var(--color-foreground)' }}
+          onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = 'var(--color-muted-foreground)' }}
+        >
+          <Download size={11} /> Logs
+        </button>
       </div>
 
-      {/* Time scrubber — today only, shown when logs are loaded */}
+      {/* ── Time scrubber (today + has lines) ───────────────────────────── */}
       {isToday && visibleLines.length > 1 && (
         <div style={{
-          padding: '5px 16px 6px', borderBottom: '1px solid var(--color-border)',
+          padding: '4px 14px 5px',
+          borderBottom: '1px solid var(--color-border)',
           background: 'var(--color-card)', flexShrink: 0,
         }}>
           <input
@@ -505,7 +662,7 @@ export default function ProcessDetailPage({ reload, settings, onOpenTerminal }: 
           />
           <div style={{
             display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-            fontSize: 10, color: 'var(--color-muted-foreground)', marginTop: 3,
+            fontSize: 10, color: 'var(--color-muted-foreground)', marginTop: 2,
             fontVariantNumeric: 'tabular-nums',
           }}>
             <span>{visibleLines[0]?.timestamp?.slice(11, 19) ?? ''}</span>
@@ -517,55 +674,17 @@ export default function ProcessDetailPage({ reload, settings, onOpenTerminal }: 
         </div>
       )}
 
-      {/* Text search bar */}
-      <div style={{
-        padding: '5px 16px', borderBottom: '1px solid var(--color-border)',
-        display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0,
-        background: 'var(--color-card)',
-      }}>
-        <span style={{ fontSize: 12, color: 'var(--color-muted-foreground)', userSelect: 'none' }}>🔍</span>
-        <input
-          type="text"
-          placeholder="Filter logs…"
-          value={textFilter}
-          onChange={e => setTextFilter(e.target.value)}
-          style={{
-            flex: 1, fontSize: 12, padding: '3px 6px',
-            background: 'var(--color-background)', color: 'var(--color-foreground)',
-            border: '1px solid var(--color-border)', borderRadius: 4, outline: 'none',
-          }}
-        />
-        {textFilter && (
-          <>
-            <span style={{ fontSize: 11, color: 'var(--color-muted-foreground)', whiteSpace: 'nowrap' }}>
-              {visibleLines.length} match{visibleLines.length !== 1 ? 'es' : ''}
-            </span>
-            <button
-              onClick={() => setTextFilter('')}
-              style={{ fontSize: 11, padding: '1px 6px', cursor: 'pointer', border: '1px solid var(--color-border)', borderRadius: 4, background: 'var(--color-secondary)', color: 'var(--color-foreground)' }}
-            >
-              ✕
-            </button>
-          </>
-        )}
-      </div>
+      {/* ── Insights panel (metrics + analysis unified) ──────────────────── */}
+      <InsightsPanel buckets={logStats} samples={metricSamples} lines={logLines} />
 
-      {/* Unified collapsible metrics panel */}
-      <MetricsPanel buckets={logStats} samples={metricSamples} />
-
-      {/* Log output */}
-      <div ref={scrollRef} onScroll={handleLogScroll} style={{ flex: 1, overflow: 'auto', padding: '10px 16px', background: 'var(--color-background)' }}>
+      {/* ── Log output ──────────────────────────────────────────────────── */}
+      <div
+        ref={scrollRef}
+        onScroll={handleLogScroll}
+        style={{ flex: 1, overflow: 'auto', padding: '10px 16px', background: 'var(--color-background)' }}
+      >
         <div className="log-output">
-          {visibleLines.map((line, i) => (
-            <div key={i} className={line.stream === 'stderr' ? 'log-line-err' : 'log-line-out'}>
-              {line.timestamp && (
-                <span style={{ opacity: 0.45, marginRight: 8, fontSize: 11, fontVariantNumeric: 'tabular-nums' }}>
-                  {line.timestamp.slice(11, 19)}
-                </span>
-              )}
-              {needle ? <HighlightedText content={line.content} needle={needle} /> : line.content}
-            </div>
-          ))}
+          <LogRenderer lines={visibleLines} needle={needle} compiledRegex={compiledRegex ?? undefined} />
           {visibleLines.length === 0 && (
             <div style={{ color: 'var(--color-muted-foreground)' }}>
               {logLines.length === 0
@@ -583,7 +702,29 @@ export default function ProcessDetailPage({ reload, settings, onOpenTerminal }: 
 }
 
 // @group Utilities : Highlight matched search text within a log line
-function HighlightedText({ content, needle }: { content: string; needle: string }) {
+function HighlightedText({ content, needle, regex }: { content: string; needle: string; regex?: RegExp }) {
+  if (regex) {
+    const parts: { text: string; match: boolean }[] = []
+    let lastIndex = 0
+    const re = new RegExp(regex.source, regex.flags.includes('g') ? regex.flags : regex.flags + 'g')
+    let m: RegExpExecArray | null
+    while ((m = re.exec(content)) !== null) {
+      if (m.index > lastIndex) parts.push({ text: content.slice(lastIndex, m.index), match: false })
+      parts.push({ text: m[0], match: true })
+      lastIndex = re.lastIndex
+      if (m[0].length === 0) { re.lastIndex++; break }
+    }
+    if (lastIndex < content.length) parts.push({ text: content.slice(lastIndex), match: false })
+    return (
+      <>
+        {parts.map((p, i) =>
+          p.match
+            ? <mark key={i} style={{ background: 'rgba(255,200,0,0.35)', color: 'inherit', borderRadius: 2, padding: '0 1px' }}>{p.text}</mark>
+            : <span key={i}>{p.text}</span>
+        )}
+      </>
+    )
+  }
   const parts = content.split(new RegExp(`(${needle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi'))
   return (
     <>
@@ -596,14 +737,366 @@ function HighlightedText({ content, needle }: { content: string; needle: string 
   )
 }
 
-function ToolBtn({ label, onClick, danger }: { label: string; onClick: () => void; danger?: boolean }) {
+// @group BusinessLogic > LogRenderer : Renders log lines with stack trace collapsing for stderr groups
+function isTraceFollowLine(line: string): boolean {
   return (
-    <button onClick={onClick} style={{
-      padding: '4px 10px', fontSize: 12, fontWeight: 500,
-      background: 'var(--color-secondary)', border: '1px solid var(--color-border)',
-      borderRadius: 4, cursor: 'pointer',
-      color: danger ? 'var(--color-destructive)' : 'var(--color-foreground)',
-    }}>
+    /^\s{2,}at\s/.test(line) ||
+    /^\s{2,}-->/.test(line) ||
+    /^\s+\|/.test(line) ||
+    /^\s+\^/.test(line) ||
+    /^Caused by:/i.test(line) ||
+    /^\s{4,}\S/.test(line)
+  )
+}
+
+interface LogGroup {
+  mainLine: LogLine
+  mainIndex: number
+  traceLines: LogLine[]
+}
+
+function buildLogGroups(lines: LogLine[]): LogGroup[] {
+  const groups: LogGroup[] = []
+  let i = 0
+  while (i < lines.length) {
+    const line = lines[i]
+    if (line.stream === 'stderr') {
+      const traceLines: LogLine[] = []
+      let j = i + 1
+      while (j < lines.length && lines[j].stream === 'stderr' && isTraceFollowLine(lines[j].content)) {
+        traceLines.push(lines[j])
+        j++
+      }
+      groups.push({ mainLine: line, mainIndex: i, traceLines })
+      i = j
+    } else {
+      groups.push({ mainLine: line, mainIndex: i, traceLines: [] })
+      i++
+    }
+  }
+  return groups
+}
+
+function LogRenderer({ lines, needle, compiledRegex }: {
+  lines: LogLine[]
+  needle: string
+  compiledRegex?: RegExp
+}) {
+  const [expandedGroups, setExpandedGroups] = useState<Set<number>>(new Set())
+  const groups = useMemo(() => buildLogGroups(lines), [lines])
+
+  function toggleGroup(mainIndex: number) {
+    setExpandedGroups(prev => {
+      const next = new Set(prev)
+      if (next.has(mainIndex)) next.delete(mainIndex)
+      else next.add(mainIndex)
+      return next
+    })
+  }
+
+  const showHighlight = needle !== '' || compiledRegex != null
+
+  return (
+    <>
+      {groups.map(({ mainLine, mainIndex, traceLines }) => {
+        const hasTrace = traceLines.length > 0
+        const isExpanded = expandedGroups.has(mainIndex)
+        return (
+          <div key={mainIndex}>
+            <div className={mainLine.stream === 'stderr' ? 'log-line-err' : 'log-line-out'} style={{ display: 'flex', alignItems: 'baseline', gap: 0 }}>
+              {mainLine.timestamp && (
+                <span style={{ opacity: 0.45, marginRight: 8, fontSize: 11, fontVariantNumeric: 'tabular-nums', flexShrink: 0 }}>
+                  {mainLine.timestamp.slice(11, 19)}
+                </span>
+              )}
+              <span style={{ flex: 1 }}>
+                {showHighlight
+                  ? <HighlightedText content={mainLine.content} needle={needle} regex={compiledRegex} />
+                  : mainLine.content}
+              </span>
+              {hasTrace && (
+                <button
+                  onClick={() => toggleGroup(mainIndex)}
+                  style={{ marginLeft: 8, fontSize: 10, padding: '0 4px', cursor: 'pointer', background: 'none', border: 'none', color: 'var(--color-muted-foreground)', flexShrink: 0, opacity: 0.7 }}
+                >
+                  {isExpanded ? '▾' : '▸'} +{traceLines.length} {isExpanded ? 'less' : 'more'}
+                </button>
+              )}
+            </div>
+            {hasTrace && isExpanded && traceLines.map((tl, ti) => (
+              <div key={ti} className="log-line-err" style={{ paddingLeft: 16, opacity: 0.75 }}>
+                {tl.timestamp && (
+                  <span style={{ opacity: 0.45, marginRight: 8, fontSize: 11, fontVariantNumeric: 'tabular-nums' }}>
+                    {tl.timestamp.slice(11, 19)}
+                  </span>
+                )}
+                {showHighlight
+                  ? <HighlightedText content={tl.content} needle={needle} regex={compiledRegex} />
+                  : tl.content}
+              </div>
+            ))}
+          </div>
+        )
+      })}
+    </>
+  )
+}
+
+// @group BusinessLogic > InsightsPanel : Pattern normalization for log frequency analysis
+function normalizeLogLine(s: string): string {
+  return s
+    .replace(/\b\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}[^\s]*/g, '<ts>')
+    .replace(/\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}(:\d+)?\b/g, '<ip>')
+    .replace(/\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi, '<uuid>')
+    .replace(/0x[0-9a-fA-F]+/g, '<hex>')
+    .replace(/"[^"]{0,80}"/g, '<str>')
+    .replace(/'[^']{0,80}'/g, '<str>')
+    .replace(/\b\d+(\.\d+)?\b/g, '<n>')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 150)
+}
+
+interface PatternGroup {
+  pattern: string
+  count: number
+  example: string
+  stream: 'stdout' | 'stderr' | 'mixed'
+  firstTs: string
+  lastTs: string
+}
+
+// @group BusinessLogic > InsightsPanel : Unified collapsible panel — metrics + log analysis with shared tab bar
+function InsightsPanel({ buckets, samples, lines }: {
+  buckets: LogStatsBucket[]
+  samples: MetricSample[]
+  lines: LogLine[]
+}) {
+  const [open, setOpen] = useState(false)
+  const [tab, setTab] = useState<'logs' | 'cpu' | 'mem' | 'patterns' | 'errors'>('logs')
+
+  // Metrics
+  const totalOut = buckets.reduce((s, b) => s + b.stdout_count, 0)
+  const totalErr = buckets.reduce((s, b) => s + b.stderr_count, 0)
+  const todayMidnight = new Date(); todayMidnight.setHours(0, 0, 0, 0)
+  const todaySamples = samples.filter(s => new Date(s.timestamp).getTime() >= todayMidnight.getTime())
+  const latest = todaySamples[todaySamples.length - 1]
+
+  // Analysis
+  const patternGroups = useMemo((): PatternGroup[] => {
+    const map = new Map<string, { count: number; example: string; stdoutCount: number; stderrCount: number; firstTs: string; lastTs: string }>()
+    for (const line of lines) {
+      const key = normalizeLogLine(line.content)
+      const existing = map.get(key)
+      if (existing) {
+        existing.count++
+        if (line.stream === 'stdout') existing.stdoutCount++
+        else existing.stderrCount++
+        if (line.timestamp > existing.lastTs) existing.lastTs = line.timestamp
+        if (line.timestamp && line.timestamp < existing.firstTs) existing.firstTs = line.timestamp
+      } else {
+        map.set(key, { count: 1, example: line.content, stdoutCount: line.stream === 'stdout' ? 1 : 0, stderrCount: line.stream === 'stderr' ? 1 : 0, firstTs: line.timestamp ?? '', lastTs: line.timestamp ?? '' })
+      }
+    }
+    return Array.from(map.entries())
+      .map(([pattern, v]) => ({
+        pattern, count: v.count, example: v.example,
+        stream: (v.stdoutCount > 0 && v.stderrCount > 0 ? 'mixed' : v.stderrCount > 0 ? 'stderr' : 'stdout') as 'stdout' | 'stderr' | 'mixed',
+        firstTs: v.firstTs, lastTs: v.lastTs,
+      }))
+      .sort((a, b) => b.count - a.count)
+  }, [lines])
+
+  const errorGroups = useMemo(() => patternGroups.filter(g => g.stream === 'stderr'), [patternGroups])
+  const uniquePatterns = patternGroups.length
+  const totalErrors = lines.filter(l => l.stream === 'stderr').length
+
+  const hasMetrics = latest != null || buckets.length > 0
+  const hasAnalysis = lines.length > 0
+  if (!hasMetrics && !hasAnalysis) return null
+
+  type TabId = 'logs' | 'cpu' | 'mem' | 'patterns' | 'errors'
+  const allTabs: { id: TabId; label: string; available: boolean }[] = [
+    { id: 'logs', label: 'Log Volume', available: buckets.length > 0 },
+    { id: 'cpu', label: 'CPU', available: latest != null },
+    { id: 'mem', label: 'Memory', available: latest != null },
+    { id: 'patterns', label: 'Patterns', available: hasAnalysis },
+    { id: 'errors', label: 'Errors', available: hasAnalysis },
+  ]
+  const availableTabs = allTabs.filter(t => t.available)
+
+  return (
+    <div style={{ borderBottom: '1px solid var(--color-border)', background: 'var(--color-card)', flexShrink: 0 }}>
+      {/* Collapsed header */}
+      <button
+        onClick={() => setOpen(o => !o)}
+        style={{
+          width: '100%', display: 'flex', alignItems: 'center',
+          padding: '5px 14px', background: 'transparent', border: 'none',
+          cursor: 'pointer', gap: 10,
+        }}
+      >
+        <span style={{ fontSize: 10, fontWeight: 600, color: 'var(--color-muted-foreground)', letterSpacing: '0.06em', textTransform: 'uppercase', flexShrink: 0 }}>
+          Insights
+        </span>
+        {/* Inline stats pills */}
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center', flex: 1, overflow: 'hidden' }}>
+          {latest && (
+            <>
+              <span style={{ fontSize: 11, fontVariantNumeric: 'tabular-nums', color: 'var(--color-primary)', whiteSpace: 'nowrap' }}>
+                CPU {latest.cpu_percent.toFixed(1)}%
+              </span>
+              <span style={{ fontSize: 11, fontVariantNumeric: 'tabular-nums', color: '#a78bfa', whiteSpace: 'nowrap' }}>
+                {fmtBytes(latest.memory_bytes)}
+              </span>
+            </>
+          )}
+          {buckets.length > 0 && (
+            <span style={{ fontSize: 11, fontVariantNumeric: 'tabular-nums', color: 'var(--color-muted-foreground)', whiteSpace: 'nowrap' }}>
+              <span style={{ color: 'var(--color-status-running)' }}>{totalOut}</span>
+              {' / '}
+              <span style={{ color: 'var(--color-status-crashed)' }}>{totalErr}</span>
+              {' lines'}
+            </span>
+          )}
+          {hasAnalysis && uniquePatterns > 0 && (
+            <span style={{ fontSize: 11, color: 'var(--color-muted-foreground)', whiteSpace: 'nowrap' }}>
+              <span style={{ color: 'var(--color-foreground)' }}>{uniquePatterns}</span> patterns
+            </span>
+          )}
+          {totalErrors > 0 && (
+            <span style={{ fontSize: 11, color: 'var(--color-destructive)', whiteSpace: 'nowrap' }}>
+              {totalErrors} errors
+            </span>
+          )}
+        </div>
+        <ChevronDown
+          size={13}
+          style={{
+            color: 'var(--color-muted-foreground)', flexShrink: 0,
+            transition: 'transform 0.2s',
+            transform: open ? 'rotate(180deg)' : undefined,
+          }}
+        />
+      </button>
+
+      {open && (
+        <div style={{ padding: '0 14px 10px' }}>
+          {/* Tab bar */}
+          <div style={{ display: 'flex', gap: 2, marginBottom: 8, background: 'var(--color-background)', borderRadius: 6, padding: 2, border: '1px solid var(--color-border)', width: 'fit-content' }}>
+            {availableTabs.map(({ id, label }) => (
+              <button key={id} onClick={() => setTab(id)} style={{
+                padding: '3px 11px', fontSize: 11, fontWeight: 500, borderRadius: 4,
+                border: 'none', cursor: 'pointer', transition: 'background 0.15s',
+                background: tab === id ? 'var(--color-primary)' : 'transparent',
+                color: tab === id ? 'var(--color-primary-foreground)' : 'var(--color-muted-foreground)',
+              }}>
+                {label}
+                {id === 'errors' && errorGroups.length > 0 && (
+                  <span style={{
+                    marginLeft: 4, fontSize: 10, fontWeight: 700,
+                    background: tab === 'errors' ? 'rgba(255,255,255,0.25)' : 'var(--color-destructive)',
+                    color: tab === 'errors' ? 'inherit' : '#fff',
+                    borderRadius: 8, padding: '0 4px',
+                  }}>
+                    {errorGroups.length}
+                  </span>
+                )}
+              </button>
+            ))}
+          </div>
+
+          {tab === 'logs' && <LogVolumeContent buckets={buckets} />}
+          {tab === 'cpu' && latest && <CpuContent samples={todaySamples} />}
+          {tab === 'mem' && latest && <MemContent samples={todaySamples} />}
+          {(tab === 'patterns' || tab === 'errors') && hasAnalysis && (
+            <PatternList
+              displayGroups={tab === 'errors' ? errorGroups : patternGroups.slice(0, 30)}
+              tab={tab}
+            />
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// @group BusinessLogic > InsightsPanel : Pattern list for Patterns and Errors tabs
+function PatternList({ displayGroups, tab }: { displayGroups: PatternGroup[]; tab: string }) {
+  if (displayGroups.length === 0) {
+    return (
+      <div style={{ fontSize: 12, color: 'var(--color-muted-foreground)', padding: '6px 0' }}>
+        {tab === 'errors' ? 'No stderr output.' : 'No patterns.'}
+      </div>
+    )
+  }
+  return (
+    <div style={{ maxHeight: 220, overflow: 'auto' }}>
+      {displayGroups.map((g, i) => {
+        const badgeColor = g.stream === 'stderr'
+          ? 'var(--color-destructive)'
+          : g.stream === 'stdout' ? 'var(--color-status-running)'
+          : 'var(--color-muted-foreground)'
+        const streamIcon = g.stream === 'mixed' ? '·' : g.stream === 'stdout' ? '○' : '●'
+        return (
+          <div key={i} style={{
+            display: 'flex', alignItems: 'flex-start', gap: 8,
+            padding: '3px 4px',
+            background: i % 2 === 0 ? 'transparent' : 'color-mix(in srgb, var(--color-border) 25%, transparent)',
+            borderRadius: 3,
+          }}>
+            <span style={{
+              flexShrink: 0, fontSize: 10, fontWeight: 700, fontVariantNumeric: 'tabular-nums',
+              background: badgeColor, color: '#fff', borderRadius: 4,
+              padding: '0 5px', minWidth: 26, textAlign: 'center', lineHeight: '16px',
+            }}>
+              {g.count}
+            </span>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 11, color: 'var(--color-foreground)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {g.example.slice(0, 100)}
+              </div>
+              <div style={{ fontSize: 10, color: 'var(--color-muted-foreground)', fontFamily: 'monospace', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', opacity: 0.7 }}>
+                {g.pattern.slice(0, 80)}
+              </div>
+            </div>
+            <span style={{ flexShrink: 0, fontSize: 11, color: badgeColor, opacity: 0.85 }} title={g.stream}>
+              {streamIcon}
+            </span>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+// @group Utilities : Compact labeled toolbar button with icon
+function TBtn({ icon, label, onClick, primary, danger }: {
+  icon: React.ReactNode
+  label: string
+  onClick: () => void
+  primary?: boolean
+  danger?: boolean
+}) {
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        display: 'flex', alignItems: 'center', gap: 5,
+        padding: '4px 9px', fontSize: 12, fontWeight: 500,
+        background: primary ? 'var(--color-primary)' : 'var(--color-secondary)',
+        border: `1px solid ${primary ? 'transparent' : 'var(--color-border)'}`,
+        borderRadius: 4, cursor: 'pointer', fontFamily: 'inherit',
+        color: primary ? 'var(--color-primary-foreground)' : danger ? 'var(--color-destructive)' : 'var(--color-foreground)',
+      }}
+      onMouseEnter={e => {
+        if (!primary) (e.currentTarget as HTMLElement).style.background = 'var(--color-accent)'
+      }}
+      onMouseLeave={e => {
+        if (!primary) (e.currentTarget as HTMLElement).style.background = 'var(--color-secondary)'
+      }}
+    >
+      {icon}
       {label}
     </button>
   )
@@ -620,6 +1113,10 @@ const navBtnStyle: React.CSSProperties = {
   color: 'var(--color-foreground)',
 }
 
+const vDivStyle: React.CSSProperties = {
+  width: 1, height: 16, background: 'var(--color-border)', flexShrink: 0,
+}
+
 // @group Utilities : Format bytes as human-readable string
 function fmtBytes(bytes: number): string {
   if (bytes >= 1024 ** 3) return `${(bytes / 1024 ** 3).toFixed(1)} GB`
@@ -628,93 +1125,7 @@ function fmtBytes(bytes: number): string {
   return `${bytes} B`
 }
 
-// @group BusinessLogic > MetricsPanel : Collapsible panel — shows live stats in header, expands to tabbed charts
-function MetricsPanel({ buckets, samples }: {
-  buckets: LogStatsBucket[]
-  samples: MetricSample[]
-}) {
-  const [open, setOpen] = useState(false)
-  const [tab, setTab] = useState<'logs' | 'cpu' | 'mem'>('logs')
-
-  const totalOut = buckets.reduce((s, b) => s + b.stdout_count, 0)
-  const totalErr = buckets.reduce((s, b) => s + b.stderr_count, 0)
-
-  const todayMidnight = new Date(); todayMidnight.setHours(0, 0, 0, 0)
-  const todaySamples = samples.filter(s => new Date(s.timestamp).getTime() >= todayMidnight.getTime())
-  const latest = todaySamples[todaySamples.length - 1]
-
-  const hasCpu = latest != null
-  const hasMem = latest != null
-  const hasLogs = buckets.length > 0
-
-  const hasAny = hasCpu || hasMem || hasLogs
-  if (!hasAny) return null
-
-  return (
-    <div style={{ borderBottom: '1px solid var(--color-border)', background: 'var(--color-card)', flexShrink: 0 }}>
-      {/* Collapsed header — always visible, click to toggle */}
-      <button
-        onClick={() => setOpen(o => !o)}
-        style={{
-          width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          padding: '5px 16px', background: 'transparent', border: 'none', cursor: 'pointer',
-          gap: 12,
-        }}
-      >
-        <span style={{ fontSize: 10, fontWeight: 600, color: 'var(--color-muted-foreground)', letterSpacing: '0.05em', textTransform: 'uppercase', flexShrink: 0 }}>
-          Metrics
-        </span>
-        {/* Live stats pills */}
-        <div style={{ display: 'flex', gap: 10, alignItems: 'center', flex: 1 }}>
-          {hasCpu && (
-            <span style={{ fontSize: 11, fontVariantNumeric: 'tabular-nums', color: 'var(--color-primary)' }}>
-              CPU {latest!.cpu_percent.toFixed(1)}%
-            </span>
-          )}
-          {hasMem && (
-            <span style={{ fontSize: 11, fontVariantNumeric: 'tabular-nums', color: '#a78bfa' }}>
-              {fmtBytes(latest!.memory_bytes)}
-            </span>
-          )}
-          {hasLogs && (
-            <span style={{ fontSize: 11, fontVariantNumeric: 'tabular-nums', color: 'var(--color-muted-foreground)' }}>
-              <span style={{ color: 'var(--color-status-running)' }}>{totalOut}</span>
-              {' / '}
-              <span style={{ color: 'var(--color-status-crashed)' }}>{totalErr}</span>
-              {' lines today'}
-            </span>
-          )}
-        </div>
-        <span style={{ fontSize: 11, color: 'var(--color-muted-foreground)', transition: 'transform 0.15s', display: 'inline-block', transform: open ? 'rotate(180deg)' : 'none' }}>▾</span>
-      </button>
-
-      {/* Expanded charts area */}
-      {open && (
-        <div style={{ padding: '0 16px 10px' }}>
-          {/* Tab switcher */}
-          <div style={{ display: 'flex', gap: 2, marginBottom: 8, background: 'var(--color-background)', borderRadius: 6, padding: 2, border: '1px solid var(--color-border)', width: 'fit-content' }}>
-            {([['logs', 'Log Volume'], ['cpu', 'CPU'], ['mem', 'Memory']] as const).map(([t, label]) => (
-              <button key={t} onClick={() => setTab(t)} style={{
-                padding: '3px 12px', fontSize: 11, fontWeight: 500, borderRadius: 4,
-                border: 'none', cursor: 'pointer', transition: 'background 0.15s',
-                background: tab === t ? 'var(--color-primary)' : 'transparent',
-                color: tab === t ? 'var(--color-primary-foreground)' : 'var(--color-muted-foreground)',
-              }}>
-                {label}
-              </button>
-            ))}
-          </div>
-
-          {tab === 'logs' && hasLogs && <LogVolumeContent buckets={buckets} />}
-          {tab === 'cpu' && hasCpu && <CpuContent samples={todaySamples} />}
-          {tab === 'mem' && hasMem && <MemContent samples={todaySamples} />}
-        </div>
-      )}
-    </div>
-  )
-}
-
-// @group BusinessLogic > MetricsPanel : Log volume bar chart content
+// @group BusinessLogic > InsightsPanel : Log volume bar chart content with error spike highlighting
 function LogVolumeContent({ buckets }: { buckets: LogStatsBucket[] }) {
   const [filter, setFilter] = useState<'both' | 'stdout' | 'stderr'>('both')
   const totalOut = buckets.reduce((s, b) => s + b.stdout_count, 0)
@@ -730,6 +1141,12 @@ function LogVolumeContent({ buckets }: { buckets: LogStatsBucket[] }) {
   const nowX = ((Date.now() - todayMidnight.getTime()) / (24 * 60 * 60 * 1000)) * W
   const n = slots.length
   const barW = Math.max(1, (W / n) - 0.5)
+
+  const nonEmptyErr = slots.filter(b => b.stderr_count > 0)
+  const avgErr = nonEmptyErr.length
+    ? nonEmptyErr.reduce((s, b) => s + b.stderr_count, 0) / nonEmptyErr.length
+    : 0
+  const spikeThreshold = Math.max(avgErr * 2.5, 3)
 
   return (
     <>
@@ -763,10 +1180,17 @@ function LogVolumeContent({ buckets }: { buckets: LogStatsBucket[] }) {
           const errH = showErr ? (s.stderr_count / maxCount) * H : 0
           const totalH = outH + errH
           if (totalH < 0.5) return null
+          const isSpike = s.stderr_count >= spikeThreshold
           return (
             <g key={i}>
               {errH > 0.5 && <rect x={x} y={H - totalH} width={barW} height={errH} fill="var(--color-status-crashed)" fillOpacity={0.8} />}
               {outH > 0.5 && <rect x={x} y={H - outH} width={barW} height={outH} fill="var(--color-status-running)" fillOpacity={0.8} />}
+              {isSpike && (
+                <>
+                  <rect x={x - 0.5} y={H - totalH - 0.5} width={barW + 1} height={totalH + 0.5} fill="none" stroke="#f97316" strokeWidth={2} />
+                  <circle cx={x + barW / 2} cy={H - totalH - 4} r={2.5} fill="#f97316" />
+                </>
+              )}
             </g>
           )
         })}
@@ -776,7 +1200,7 @@ function LogVolumeContent({ buckets }: { buckets: LogStatsBucket[] }) {
   )
 }
 
-// @group BusinessLogic > MetricsPanel : CPU line chart content
+// @group BusinessLogic > InsightsPanel : CPU line chart content
 function CpuContent({ samples }: { samples: MetricSample[] }) {
   const W = 800, H = 60
   const todayMidnight = new Date(); todayMidnight.setHours(0, 0, 0, 0)
@@ -785,7 +1209,7 @@ function CpuContent({ samples }: { samples: MetricSample[] }) {
   const nowX = ((Date.now() - startMs) / dayMs) * W
   function toX(ts: string) { return ((new Date(ts).getTime() - startMs) / dayMs) * W }
   const pts = samples.map(s => `${toX(s.timestamp).toFixed(1)},${(H - (Math.min(s.cpu_percent, 100) / 100) * H).toFixed(1)}`).join(' ')
-  const fill = samples.length ? `${toX(samples[0].timestamp).toFixed(1)},${H} ${pts} ${toX(samples[samples.length-1].timestamp).toFixed(1)},${H}` : ''
+  const fill = samples.length ? `${toX(samples[0].timestamp).toFixed(1)},${H} ${pts} ${toX(samples[samples.length - 1].timestamp).toFixed(1)},${H}` : ''
   const peak = Math.max(...samples.map(s => s.cpu_percent), 0)
   return (
     <>
@@ -810,7 +1234,7 @@ function CpuContent({ samples }: { samples: MetricSample[] }) {
   )
 }
 
-// @group BusinessLogic > MetricsPanel : Memory line chart content
+// @group BusinessLogic > InsightsPanel : Memory line chart content
 function MemContent({ samples }: { samples: MetricSample[] }) {
   const W = 800, H = 60
   const todayMidnight = new Date(); todayMidnight.setHours(0, 0, 0, 0)
@@ -820,7 +1244,7 @@ function MemContent({ samples }: { samples: MetricSample[] }) {
   function toX(ts: string) { return ((new Date(ts).getTime() - startMs) / dayMs) * W }
   const maxMem = Math.max(...samples.map(s => s.memory_bytes), 1)
   const pts = samples.map(s => `${toX(s.timestamp).toFixed(1)},${(H - (s.memory_bytes / maxMem) * H).toFixed(1)}`).join(' ')
-  const fill = samples.length ? `${toX(samples[0].timestamp).toFixed(1)},${H} ${pts} ${toX(samples[samples.length-1].timestamp).toFixed(1)},${H}` : ''
+  const fill = samples.length ? `${toX(samples[0].timestamp).toFixed(1)},${H} ${pts} ${toX(samples[samples.length - 1].timestamp).toFixed(1)},${H}` : ''
   return (
     <>
       <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: 'var(--color-muted-foreground)', marginBottom: 4 }}>
@@ -844,28 +1268,23 @@ function MemContent({ samples }: { samples: MetricSample[] }) {
   )
 }
 
-// @group Utilities > MetricsPanel : Shared time axis — fixed 6-hr grid + floating local-time "now" label
+// @group Utilities > InsightsPanel : Shared time axis — fixed 6-hr grid + floating local-time "now" label
 function TimeAxis({ nowX, W = 800 }: { nowX: number; W?: number }) {
   const nowPct = (Math.min(Math.max(nowX, 0), W) / W) * 100
   const d = new Date()
   const nowLabel = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
   return (
     <div style={{ position: 'relative', marginTop: 2 }}>
-      {/* Floating current-time label pinned at the actual nowX position */}
       <div style={{ position: 'relative', height: 13 }}>
         <span style={{
-          position: 'absolute',
-          left: `${nowPct}%`,
+          position: 'absolute', left: `${nowPct}%`,
           transform: 'translateX(-50%)',
-          fontSize: 9,
-          fontWeight: 700,
-          color: 'var(--color-primary)',
-          whiteSpace: 'nowrap',
+          fontSize: 9, fontWeight: 700,
+          color: 'var(--color-primary)', whiteSpace: 'nowrap',
         }}>
           {nowLabel}
         </span>
       </div>
-      {/* Static 6-hour grid ticks — right edge is 24:00, NOT "now" */}
       <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: 'var(--color-muted-foreground)' }}>
         <span>00:00</span><span>06:00</span><span>12:00</span><span>18:00</span><span>24:00</span>
       </div>
@@ -873,24 +1292,19 @@ function TimeAxis({ nowX, W = 800 }: { nowX: number; W?: number }) {
   )
 }
 
-// @group Utilities > MetricsPanel : Build a full 288-slot grid for today, merging actual bucket data
+// @group Utilities > InsightsPanel : Build a full 288-slot grid for today, merging actual bucket data
 function buildDaySlots(buckets: LogStatsBucket[]) {
   const BUCKET_MS = 5 * 60 * 1000
   const now = Date.now()
-
-  // Start of today in local time (midnight)
   const todayMidnight = new Date()
   todayMidnight.setHours(0, 0, 0, 0)
   const startMs = todayMidnight.getTime()
-
-  // How many 5-min slots have elapsed since midnight (up to 288)
   const slotsFilled = Math.min(288, Math.ceil((now - startMs) / BUCKET_MS))
 
-  // Index bucket data by slot index
   const bySlot = new Map<number, { stdout_count: number; stderr_count: number }>()
   for (const b of buckets) {
     const bucketMs = new Date(b.window_start).getTime()
-    const slotIdx  = Math.floor((bucketMs - startMs) / BUCKET_MS)
+    const slotIdx = Math.floor((bucketMs - startMs) / BUCKET_MS)
     if (slotIdx >= 0 && slotIdx < 288) {
       bySlot.set(slotIdx, { stdout_count: b.stdout_count, stderr_count: b.stderr_count })
     }
