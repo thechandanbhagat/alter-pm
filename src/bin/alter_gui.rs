@@ -87,9 +87,14 @@ fn on_menu_event(app: &tauri::AppHandle, event: tauri::menu::MenuEvent) {
         }
         "browser" => {
             #[cfg(target_os = "windows")]
-            let _ = std::process::Command::new("cmd")
-                .args(["/c", "start", "http://127.0.0.1:2999/"])
-                .spawn();
+            {
+                use std::os::windows::process::CommandExt;
+                const CREATE_NO_WINDOW: u32 = 0x08000000;
+                let _ = std::process::Command::new("cmd")
+                    .args(["/c", "start", "http://127.0.0.1:2999/"])
+                    .creation_flags(CREATE_NO_WINDOW)
+                    .spawn();
+            }
             #[cfg(target_os = "macos")]
             let _ = std::process::Command::new("open")
                 .arg("http://127.0.0.1:2999/")
