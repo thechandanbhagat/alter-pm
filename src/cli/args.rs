@@ -26,6 +26,10 @@ pub struct Cli {
     #[arg(long, global = true)]
     pub no_color: bool,
 
+    /// Use a named remote connection (from `alter remote list`)
+    #[arg(long, global = true, env = "ALTER_REMOTE")]
+    pub remote: Option<String>,
+
     /// Internal: run as daemon process (not for direct user use)
     #[arg(long, hide = true)]
     pub internal_daemon: bool,
@@ -67,6 +71,10 @@ pub enum Commands {
     Unstartup,
     /// Open the web dashboard URL
     Web,
+    /// Show or rotate the master authentication token
+    Token(TokenArgs),
+    /// Manage named remote connections
+    Remote(RemoteArgs),
 }
 
 #[derive(Args, Debug)]
@@ -79,6 +87,9 @@ pub struct StartArgs {
     /// Working directory
     #[arg(long)]
     pub cwd: Option<String>,
+    /// Namespace to group this process under (default: "default")
+    #[arg(long, short = 'N')]
+    pub namespace: Option<String>,
     /// Arguments passed to the script (everything after --)
     #[arg(last = true, allow_hyphen_values = true)]
     pub args: Option<Vec<String>>,
@@ -159,4 +170,70 @@ pub enum DaemonAction {
     Status,
     /// Tail daemon's own log
     Logs,
+}
+
+#[derive(Args, Debug)]
+pub struct TokenArgs {
+    #[command(subcommand)]
+    pub action: TokenAction,
+}
+
+#[derive(Subcommand, Debug)]
+pub enum TokenAction {
+    /// Print the current master authentication token
+    Show,
+    /// Generate a new master token (invalidates the current one)
+    Rotate,
+}
+
+#[derive(Args, Debug)]
+pub struct RemoteArgs {
+    #[command(subcommand)]
+    pub action: RemoteAction,
+}
+
+#[derive(Subcommand, Debug)]
+pub enum RemoteAction {
+    /// Add a named remote connection
+    Add {
+        /// Connection name (e.g. "prod", "staging")
+        name: String,
+        /// Remote daemon host (IP or hostname)
+        #[arg(long, short = 'H')]
+        host: String,
+        /// Remote daemon port
+        #[arg(long, short, default_value = "2999")]
+        port: u16,
+        /// Authentication token — get it from the remote server with `alter token show`
+        #[arg(long, short)]
+        token: String,
+        /// Optional human-readable label
+        #[arg(long, short)]
+        label: Option<String>,
+    },
+    /// Update an existing remote connection
+    Update {
+        /// Connection name to update
+        name: String,
+        #[arg(long, short = 'H')]
+        host: Option<String>,
+        #[arg(long, short)]
+        port: Option<u16>,
+        #[arg(long, short)]
+        token: Option<String>,
+        #[arg(long, short)]
+        label: Option<String>,
+    },
+    /// Remove a named remote connection
+    Remove {
+        /// Connection name to remove
+        name: String,
+    },
+    /// List all saved connections
+    List,
+    /// Set the default connection (use 'local' to reset to local daemon)
+    Use {
+        /// Connection name, or 'local' to reset to local daemon
+        name: String,
+    },
 }

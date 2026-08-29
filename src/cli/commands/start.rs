@@ -28,6 +28,7 @@ pub async fn run(client: &DaemonClient, args: StartArgs, json_mode: bool) -> Res
         "script": args.script,
         "args": args.args.unwrap_or_default(),
         "cwd": args.cwd,
+        "namespace": args.namespace,
         "env": env,
         "autorestart": args.autorestart,
         "max_restarts": args.max_restarts,

@@ -33,6 +33,7 @@ pub fn router(state: Arc<DaemonState>) -> Router {
         .route("/{id}/logs/stats", get(get_log_stats))
         .route("/{id}/cron/history", get(get_cron_history))
         .route("/{id}/enabled", patch(set_process_enabled))
+        .route("/{id}/namespace", patch(set_process_namespace))
         .route("/{id}/clone", post(clone_process))
         .route("/{id}/envfiles", get(list_envfiles))
         .route("/{id}/envfile", get(get_envfile).put(put_envfile))
@@ -188,6 +189,24 @@ async fn set_process_enabled(
         .and_then(|v| v.as_bool())
         .ok_or_else(|| ApiError::bad_request("missing 'enabled' boolean field"))?;
     let info = state.manager.set_enabled(id, enabled).await.map_err(ApiError::from)?;
+    let s = state.clone(); tokio::spawn(async move { if let Err(e) = s.save_to_disk().await { tracing::warn!("auto-save failed: {e}"); } });
+    Ok(Json(json!(info)))
+}
+
+// @group APIEndpoints > Process : PATCH /processes/:id/namespace — move a process between namespaces (no restart)
+async fn set_process_namespace(
+    State(state): State<Arc<DaemonState>>,
+    Path(id_str): Path<String>,
+    Json(body): Json<serde_json::Value>,
+) -> Result<Json<Value>, ApiError> {
+    let id = resolve(&state, &id_str).await?;
+    let namespace = body.get("namespace")
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.trim().is_empty())
+        .ok_or_else(|| ApiError::bad_request("missing 'namespace' string field"))?
+        .trim()
+        .to_string();
+    let info = state.manager.set_namespace(id, namespace).await.map_err(ApiError::from)?;
     let s = state.clone(); tokio::spawn(async move { if let Err(e) = s.save_to_disk().await { tracing::warn!("auto-save failed: {e}"); } });
     Ok(Json(json!(info)))
 }

@@ -11,7 +11,7 @@ import { useDialog } from '@/hooks/useDialog'
 import { Dialog } from '@/components/Dialog'
 import { EnvFilePanel } from '@/components/EnvFilePanel'
 import { ProcessNotifModal, NsNotifModal } from '@/components/NotifModal'
-import { formatLastRun, formatNextRun, formatUptime, formatBytes, formatCpu, statusColor } from '@/lib/utils'
+import { formatLastRun, formatNextRun, formatUptime, formatBytes, formatCpu, statusColor, PROCESS_DRAG_MIME } from '@/lib/utils'
 import type { AppSettings } from '@/lib/settings'
 import type { ProcessInfo } from '@/types'
 
@@ -141,6 +141,27 @@ export default function ProcessesPage({ processes, reload, settings, namespaceFi
     setCollapsed(prev => { const next = new Set(prev); if (next.has(ns)) next.delete(ns); else next.add(ns); return next })
   }
 
+  // @group BusinessLogic > NamespaceDrag : Drag a process row/card onto a namespace group header to move it
+  const [dragOverNs, setDragOverNs] = useState<string | null>(null)
+  async function moveToNamespace(processId: string, ns: string) {
+    setDragOverNs(null)
+    const proc = processes.find(p => p.id === processId)
+    if (!proc || (proc.namespace || 'default') === ns) return
+    await api.setProcessNamespace(processId, ns).catch(() => {})
+    reload()
+  }
+  function nsDropHandlers(ns: string) {
+    return {
+      onDragOver: (e: React.DragEvent) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; setDragOverNs(ns) },
+      onDragLeave: () => setDragOverNs(cur => cur === ns ? null : cur),
+      onDrop: (e: React.DragEvent) => {
+        e.preventDefault()
+        const id = e.dataTransfer.getData(PROCESS_DRAG_MIME)
+        if (id) moveToNamespace(id, ns)
+      },
+    }
+  }
+
   async function startAll(ns: string)   { await api.startNamespace(ns).catch(() => {}); setTimeout(reload, 300) }
   async function restartAll(ns: string) { await api.restartNamespace(ns).catch(() => {}); setTimeout(reload, 400) }
   async function stopAll(ns: string) {
@@ -252,7 +273,12 @@ export default function ProcessesPage({ processes, reload, settings, namespaceFi
                 const allInactive = procs.every(p => p.status !== 'running' && p.status !== 'watching')
                 const hasActive   = procs.some(p => p.status === 'running' || p.status === 'watching' || p.status === 'sleeping')
                 return (
-                  <div key={ns} style={{ marginBottom: 24 }}>
+                  <div key={ns} {...nsDropHandlers(ns)} style={{
+                    marginBottom: 24, borderRadius: 8, transition: 'background 0.1s, outline 0.1s',
+                    background: dragOverNs === ns ? 'color-mix(in srgb, var(--color-primary) 8%, transparent)' : undefined,
+                    outline: dragOverNs === ns ? '2px dashed var(--color-primary)' : undefined,
+                    outlineOffset: 4,
+                  }}>
                     {/* Namespace header (only when not filtered to one ns) */}
                     {(sortedNs.length > 1 || !namespaceFilter) && (
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
@@ -315,8 +341,13 @@ export default function ProcessesPage({ processes, reload, settings, namespaceFi
                     const allInactive = procs.every(p => p.status !== 'running' && p.status !== 'watching')
                     const hasActive   = procs.some(p => p.status === 'running' || p.status === 'watching' || p.status === 'sleeping')
                     return [
-                      <tr key={`ns-${ns}`} onClick={() => toggleNs(ns)}
-                        style={{ background: 'var(--color-muted)', cursor: 'pointer', userSelect: 'none' }}>
+                      <tr key={`ns-${ns}`} onClick={() => toggleNs(ns)} {...nsDropHandlers(ns)}
+                        style={{
+                          background: dragOverNs === ns ? 'color-mix(in srgb, var(--color-primary) 15%, var(--color-muted))' : 'var(--color-muted)',
+                          outline: dragOverNs === ns ? '2px dashed var(--color-primary)' : undefined,
+                          outlineOffset: -2,
+                          cursor: 'pointer', userSelect: 'none',
+                        }}>
                         <td colSpan={12} style={{ padding: '6px 12px' }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                             <span style={{ fontSize: 10, color: 'var(--color-muted-foreground)' }}>{isCollapsed ? '▶' : '▼'}</span>
@@ -399,9 +430,13 @@ function ProcessCard({ p, reload, confirmDelete, onConfirm, onDanger, onOpenDeta
 
   return (
     <div
+      draggable
+      onDragStart={e => { e.dataTransfer.setData(PROCESS_DRAG_MIME, p.id); e.dataTransfer.effectAllowed = 'move' }}
+      title={`Drag to move "${p.name}" to another namespace`}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       style={{
+        cursor: 'grab',
         background: isDisabled ? 'color-mix(in srgb, var(--color-muted-foreground) 5%, var(--color-card))' : 'var(--color-card)',
         border: `1px solid ${hovered ? (isDisabled ? 'var(--color-muted-foreground)' : color + '60') : 'var(--color-border)'}`,
         borderLeft: `4px solid ${isDisabled ? 'var(--color-muted-foreground)' : color}`,
@@ -557,7 +592,11 @@ function ProcessRow({ p, reload, confirmDelete, onConfirm, onDanger, onOpenDetai
   const isDisabled = p.enabled === false
 
   return (
-    <tr style={{ borderBottom: '1px solid var(--color-border)', background: isDisabled ? 'color-mix(in srgb, var(--color-muted-foreground) 5%, transparent)' : 'transparent' }}
+    <tr
+      draggable
+      onDragStart={e => { e.dataTransfer.setData(PROCESS_DRAG_MIME, p.id); e.dataTransfer.effectAllowed = 'move' }}
+      title={`Drag to move "${p.name}" to another namespace`}
+      style={{ borderBottom: '1px solid var(--color-border)', background: isDisabled ? 'color-mix(in srgb, var(--color-muted-foreground) 5%, transparent)' : 'transparent', cursor: 'grab' }}
       onMouseEnter={e => (e.currentTarget.style.background = isDisabled ? 'color-mix(in srgb, var(--color-muted-foreground) 9%, transparent)' : 'var(--color-accent)')}
       onMouseLeave={e => (e.currentTarget.style.background = isDisabled ? 'color-mix(in srgb, var(--color-muted-foreground) 5%, transparent)' : 'transparent')}
     >

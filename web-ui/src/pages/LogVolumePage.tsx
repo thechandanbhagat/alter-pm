@@ -1,4 +1,4 @@
-// @group BusinessLogic : Dedicated log volume page — per-process 5-min bucket charts
+// @group BusinessLogic : Log analytics page — per-process 5-min bucket charts, aggregate view, and top-by-volume rankings
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
@@ -307,28 +307,28 @@ export default function LogVolumePage({ processes }: Props) {
   const withData = filtered.length
 
   return (
-    <div style={{ padding: '20px 24px', maxWidth: 1400, margin: '0 auto' }}>
+    <div style={{ padding: '20px 24px' }}>
 
       {/* ── Page header ── */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16, marginBottom: 20, flexWrap: 'wrap' }}>
         <div>
-          <h1 style={{ fontSize: 20, fontWeight: 700, margin: 0 }}>Log Volume</h1>
+          <h1 style={{ fontSize: 20, fontWeight: 700, margin: 0 }}>Log Analytics</h1>
           <p style={{ fontSize: 12, color: 'var(--color-muted-foreground)', margin: '4px 0 0' }}>
-            5-minute stdout / stderr buckets — today · {withData} of {totalProcesses} processes
+            stdout / stderr activity in 5-min buckets — today · {withData} of {totalProcesses} processes with data
             {lastRefresh && (
-              <span> · refreshed {fmtTime(lastRefresh.toISOString())}</span>
+              <span> · updated {fmtTime(lastRefresh.toISOString())}</span>
             )}
           </p>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
           {/* Legend */}
-          <div style={{ display: 'flex', gap: 12, fontSize: 11, color: 'var(--color-muted-foreground)' }}>
+          <div style={{ display: 'flex', gap: 10, fontSize: 11, color: 'var(--color-muted-foreground)', padding: '0 4px' }}>
             <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-              <span style={{ width: 8, height: 8, borderRadius: 2, background: 'var(--color-status-running)', display: 'inline-block' }} />
+              <span style={{ width: 8, height: 8, borderRadius: 2, background: 'var(--color-status-running)', display: 'inline-block', flexShrink: 0 }} />
               stdout
             </span>
             <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-              <span style={{ width: 8, height: 8, borderRadius: 2, background: 'var(--color-status-crashed)', display: 'inline-block' }} />
+              <span style={{ width: 8, height: 8, borderRadius: 2, background: 'var(--color-status-crashed)', display: 'inline-block', flexShrink: 0 }} />
               stderr
             </span>
           </div>
@@ -337,9 +337,9 @@ export default function LogVolumePage({ processes }: Props) {
           <div style={{ display: 'flex', border: '1px solid var(--color-border)', borderRadius: 6, overflow: 'hidden' }}>
             {(['local', 'global'] as const).map(mode => (
               <button key={mode} onClick={() => setScaleMode(mode)} style={{
-                padding: '4px 10px', fontSize: 11, fontWeight: 500,
-                background: scaleMode === mode ? 'var(--color-primary)' : 'transparent',
-                color: scaleMode === mode ? '#fff' : 'var(--color-foreground)',
+                padding: '5px 10px', fontSize: 11, fontWeight: 500,
+                background: scaleMode === mode ? 'var(--color-primary)' : 'var(--color-secondary)',
+                color: scaleMode === mode ? '#fff' : 'var(--color-muted-foreground)',
                 border: 'none', cursor: 'pointer',
               }}>
                 {mode === 'local' ? 'Self-scaled' : 'Global scale'}
@@ -353,7 +353,7 @@ export default function LogVolumePage({ processes }: Props) {
             disabled={loading}
             style={{
               display: 'flex', alignItems: 'center', gap: 6,
-              padding: '6px 12px', fontSize: 12, fontWeight: 500,
+              padding: '5px 12px', fontSize: 12, fontWeight: 500,
               background: 'var(--color-secondary)', color: 'var(--color-foreground)',
               border: '1px solid var(--color-border)', borderRadius: 6,
               cursor: loading ? 'default' : 'pointer', opacity: loading ? 0.6 : 1,
@@ -366,7 +366,7 @@ export default function LogVolumePage({ processes }: Props) {
       </div>
 
       {/* ── Summary stat cards ── */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 20 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12, marginBottom: 20 }}>
         {[
           { label: 'Total stdout', value: fmtCount(totals.stdout), sub: 'lines today', color: 'var(--color-status-running)' },
           { label: 'Total stderr', value: fmtCount(totals.stderr), sub: 'lines today', color: 'var(--color-status-crashed)' },
@@ -496,12 +496,12 @@ export default function LogVolumePage({ processes }: Props) {
 
       {!loading && byNamespace.length === 0 && (
         <div style={{ textAlign: 'center', padding: 60, color: 'var(--color-muted-foreground)' }}>
-          <div style={{ fontSize: 32, marginBottom: 8 }}>📊</div>
-          <div style={{ fontSize: 14, fontWeight: 500, marginBottom: 4 }}>No log data yet</div>
-          <div style={{ fontSize: 12 }}>
+          <BarChart2 size={32} style={{ margin: '0 auto 12px', opacity: 0.3 }} />
+          <div style={{ fontSize: 14, fontWeight: 500, marginBottom: 6 }}>No log activity yet</div>
+          <div style={{ fontSize: 12, maxWidth: 340, margin: '0 auto', lineHeight: 1.6 }}>
             {nsFilter || nameFilter
               ? 'No processes match the current filter.'
-              : 'Processes haven\'t written any logs today, or no processes are running.'}
+              : 'Log Analytics shows stdout and stderr activity charts for each process, grouped in 5-minute buckets. Start a process and logs will appear here.'}
           </div>
         </div>
       )}
