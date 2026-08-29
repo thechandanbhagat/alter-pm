@@ -6,6 +6,73 @@ Format: `[version] — YYYY-MM-DD` with sections: **Added**, **Changed**, **Fixe
 
 ---
 
+## [1.3.0] — 2026-08-29
+
+### Added
+
+**Namespace Drag-and-Drop**
+- Drag any process (table row, card, or sidebar entry) onto a namespace to move it there instantly, with no restart
+- New `PATCH /api/v1/processes/:id/namespace` endpoint relabels a process in place
+- `alter start` gains a `--namespace`/`-N` flag to set the namespace at creation time from the CLI
+- Namespace label in the process detail/table view is now a clickable link to its namespace page
+- Favorite namespaces can be pinned to the top of the sidebar namespace list
+
+**Cluster Mode & Process Health**
+- Multi-instance ("cluster") mode — run N copies of a process (`instances`), each suffixed `-0`, `-1`, …
+- Rolling restart for multi-instance groups (`POST /api/v1/processes/group/:name/rolling-restart`) — restarts instances one at a time to avoid downtime
+- HTTP/TCP health check probes per process (`health_check_url`, interval/timeout/retries)
+- Lifecycle hooks: `pre_start`, `post_start`, `pre_stop` shell commands
+- Start/Edit forms and API client updated to expose cluster, health-check, and hook fields
+
+**Remote Daemon Connections**
+- `alter remote add/update/remove/list/use` — manage named connections to remote `alter` daemons
+- `--remote <name>` global flag routes any CLI command to a saved remote connection
+- Remote server bookmarks API and Settings UI for saving/switching servers
+
+**Desktop App**
+- `alter-gui` — a Tauri-based desktop build of the dashboard, sharing the same daemon and web UI
+
+**OS Startup Automation**
+- `alter startup` / `alter unstartup` register/unregister the daemon to launch at login on Windows, Linux, and macOS
+
+**Authentication**
+- `alter token show` / `alter token rotate` — view or rotate the CLI master token from the command line
+- `POST /api/v1/auth/rotate-token` backing endpoint
+
+**Log Library Overhaul**
+- "Log Volume" renamed to "Log Analytics" with an updated layout
+- Log Library rebuilt as a dual-panel browser with live streaming
+- Regex log filtering and favorites integration in the process detail log view
+
+**AI Panel**
+- Collapsible provider/model selector
+- Starter prompt suggestions shown in the empty panel state
+
+**Terminal**
+- Terminal sessions are now audit-logged to `terminal-activity.log`
+
+**Other**
+- Comprehensive user guide added to the documentation site, linked from the README
+- `SECURITY.md` and a security disclosure notice added to the README
+- New `AlterLogo` branding component used across the sidebar and login screen
+
+### Changed
+
+- Namespace restart-all now only targets processes that are both enabled and currently running
+- README/GitHub star banner points at the correct repo reference
+
+### Fixed
+
+- Browser launched from the tray/CLI no longer flashes a CMD window on Windows
+- Tracing subscriber uses `try_init` to avoid a panic when running inside the Tauri desktop shell
+
+### Removed
+
+- Notification channels subsystem (superseded by the per-namespace/per-process notification overrides)
+- Standalone keyboard shortcuts hook
+
+---
+
 ## [1.1.0] — 2026-04-10
 
 ### Added
