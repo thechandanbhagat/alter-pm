@@ -6,6 +6,14 @@ Format: `[version] — YYYY-MM-DD` with sections: **Added**, **Changed**, **Fixe
 
 ---
 
+## [1.3.1] — 2026-08-30
+
+### Fixed
+
+- Linux release build failed because the `tauri` dependency (added for the `alter-gui` desktop binary) was always-on, pulling in `glib`/`gio`/`gobject` system libraries not present on the CI runner. `tauri` is now gated behind an opt-in `gui` Cargo feature, and `alter-gui` requires it — a plain `cargo build --release` (used by the release pipeline) no longer touches Tauri/GTK at all. Build `alter-gui` locally with `cargo build --bin alter-gui --features gui`.
+
+---
+
 ## [1.3.0] — 2026-08-29
 
 ### Added
