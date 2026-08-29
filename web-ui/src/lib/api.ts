@@ -136,6 +136,9 @@ export const api = {
   setProcessEnabled: (id: string, enabled: boolean): Promise<ProcessInfo> =>
     request(`/processes/${id}/enabled`, { method: 'PATCH', body: JSON.stringify({ enabled }) }),
 
+  setProcessNamespace: (id: string, namespace: string): Promise<ProcessInfo> =>
+    request(`/processes/${id}/namespace`, { method: 'PATCH', body: JSON.stringify({ namespace }) }),
+
   resetProcess: (id: string): Promise<ProcessInfo> =>
     request(`/processes/${id}/reset`, { method: 'POST' }),
 

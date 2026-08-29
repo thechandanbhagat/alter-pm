@@ -380,6 +380,14 @@ impl ProcessManager {
         Ok(guard.to_info())
     }
 
+    // @group BusinessLogic > Namespace : Move a process to a different namespace without restarting it
+    pub async fn set_namespace(&self, id: Uuid, namespace: String) -> Result<ProcessInfo> {
+        let arc = self.get_arc(id)?;
+        let mut guard = arc.write().await;
+        guard.config.namespace = namespace;
+        Ok(guard.to_info())
+    }
+
     // @group BusinessLogic > Namespace : Start all stopped/crashed processes in a namespace (bulk — one Telegram notification)
     pub async fn start_namespace(&self, namespace: &str) -> Vec<ProcessInfo> {
         let ids: Vec<Uuid> = {

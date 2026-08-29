@@ -87,6 +87,9 @@ pub struct StartArgs {
     /// Working directory
     #[arg(long)]
     pub cwd: Option<String>,
+    /// Namespace to group this process under (default: "default")
+    #[arg(long, short = 'N')]
+    pub namespace: Option<String>,
     /// Arguments passed to the script (everything after --)
     #[arg(last = true, allow_hyphen_values = true)]
     pub args: Option<Vec<String>>,

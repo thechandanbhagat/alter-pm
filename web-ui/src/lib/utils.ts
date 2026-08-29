@@ -8,6 +8,9 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
 
+// @group Utilities > DragAndDrop : Shared MIME type for dragging a process id onto a namespace drop target
+export const PROCESS_DRAG_MIME = 'application/x-alter-process-id'
+
 // @group Utilities > Formatting
 export function formatUptime(secs: number): string {
   if (secs < 60)    return `${secs}s`
