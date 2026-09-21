@@ -50,6 +50,12 @@ fn platform_asset_name(version: &str) -> Option<String> {
     Some(name)
 }
 
+// @group Utilities > Platform : Silent-install switches for the Inno Setup installer.
+// Kept identical to manifests/t/thechandanbhagat/alter/*/...installer.yaml so a
+// self-update behaves the same as `winget install`.
+#[cfg(windows)]
+const INNO_SILENT_ARGS: [&str; 4] = ["/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/SP-"];
+
 // @group Utilities > Platform : Returns true if the asset for this platform is an installer/package
 // rather than a raw binary — affects how apply_update handles the download.
 fn is_installer_asset() -> bool {
@@ -172,24 +178,40 @@ async fn apply_update(
         // Save state before handing off to installer
         let _ = state.save_to_disk().await;
 
+        // The spawn result decides the response below: a failed launch must not be
+        // reported to the dashboard as a successful update.
         #[cfg(windows)]
-        {
+        let launched = {
             use std::os::windows::process::CommandExt;
-            // Run the NSIS installer — /S for silent; installer handles daemon restart
-            let _ = std::process::Command::new(&tmp_path)
-                .arg("/S")
+            // Inno Setup installer — these switches must stay in step with the winget
+            // manifest. /S is an NSIS switch: Inno ignores unrecognised switches, so
+            // passing it puts the full interactive wizard on screen behind the daemon
+            // instead of installing silently. See issue #10.
+            std::process::Command::new(&tmp_path)
+                .args(INNO_SILENT_ARGS)
                 .creation_flags(0x0000_0000) // allow normal window so UAC prompt can appear
-                .spawn();
-        }
+                .spawn()
+        };
         #[cfg(target_os = "linux")]
-        {
+        let launched = {
             // Run dpkg in background; requires sudo — will prompt or fail silently
-            let _ = std::process::Command::new("sh")
+            std::process::Command::new("sh")
                 .args(["-c", &format!("dpkg -i \"{}\"", tmp_path.display())])
                 .stdin(std::process::Stdio::null())
                 .stdout(std::process::Stdio::null())
                 .stderr(std::process::Stdio::null())
-                .spawn();
+                .spawn()
+        };
+
+        #[cfg(not(any(windows, target_os = "linux")))]
+        let launched: std::io::Result<std::process::Child> = Err(std::io::Error::new(
+            std::io::ErrorKind::Unsupported,
+            "no installer package for this platform",
+        ));
+
+        if let Err(e) = launched {
+            let _ = std::fs::remove_file(&tmp_path);
+            return Err(ApiError::internal(format!("failed to launch installer: {e}")));
         }
 
         return Ok(Json(json!({ "success": true, "message": "installer launched" })));
