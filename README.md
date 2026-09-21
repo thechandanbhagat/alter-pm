@@ -24,6 +24,16 @@
 winget install thechandanbhagat.alter
 ```
 
+### PowerShell one-liner
+
+```powershell
+irm https://raw.githubusercontent.com/thechandanbhagat/alter-pm/main/scripts/install.ps1 | iex
+```
+
+Fetches the latest release, stops a running daemon, and runs the installer silently.
+Does not need an elevated shell, the installer raises its own UAC prompt. Pin a
+version with `$env:ALTER_VERSION = '1.3.2'` before running.
+
 ### Manual installer
 
 Download the latest `alter-x.x.x-windows-x64-setup.exe` from [Releases](https://github.com/thechandanbhagat/alter-pm/releases) and run it.  
