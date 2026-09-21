@@ -6,6 +6,19 @@ Format: `[version] — YYYY-MM-DD` with sections: **Added**, **Changed**, **Fixe
 
 ---
 
+## [1.3.2] — 2026-09-21
+
+### Fixed
+
+- **Windows installer destroyed the system PATH** ([#11](https://github.com/thechandanbhagat/alter-pm/issues/11)). The installer ran `setx /M PATH "%PATH%"` after install to make the new PATH live without a reboot. `setx` silently truncates its value at 1024 characters, so on any machine with a PATH longer than that the tail was permanently cut off, which is why `node.exe` and other tooling stopped resolving after installing alter. It also wrote `REG_SZ` over the `REG_EXPAND_SZ` Path value (breaking `%SystemRoot%`-style entries), folded the user PATH into the machine PATH, and used the installer's pre-install environment, so it even removed the alter entry it had just added. The `setx` call is gone. Setup now declares `ChangesEnvironment=yes` and lets Inno Setup broadcast `WM_SETTINGCHANGE` itself, which is the supported way to do this and touches nothing else.
+- Installer now records the machine PATH as it was before installation to `HKLM\Software\thechandanbhagat\alter\PathBackup`, as a recovery copy.
+- Uninstalling now removes alter from the system PATH instead of leaving a dead entry behind, and rewrites the value as `REG_EXPAND_SZ` so other segments keep expanding.
+- Reinstalling over an existing install no longer appends a duplicate PATH entry when the existing one has a trailing backslash. The check now compares PATH segments instead of doing a substring match.
+- **Self-update did nothing on Windows** ([#10](https://github.com/thechandanbhagat/alter-pm/issues/10)). `POST /api/v1/system/update/apply` launched the downloaded installer with `/S`, which is an NSIS switch. The installer is built with Inno Setup, which ignores unrecognised switches, so instead of installing silently it opened the full interactive wizard from a background daemon. It now passes `/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP-`, matching the winget manifest.
+- Self-update no longer reports success when the installer fails to launch. The spawn result was discarded, so the dashboard showed "installer launched" either way. A failed launch now returns a 500 with the underlying error and cleans up the downloaded file.
+
+---
+
 ## [1.3.1] — 2026-08-30
 
 ### Fixed
