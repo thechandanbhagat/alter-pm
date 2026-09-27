@@ -240,7 +240,8 @@ export default function ProcessDetailPage({ reload, settings, onOpenTerminal, fa
       await alert('No working directory', 'This process has no working directory configured.')
       return
     }
-    window.open(`vscode://file/${process!.cwd.replace(/\\/g, '/')}`)
+    // vscode://file/<abs path> — strip the leading "/" of POSIX paths to avoid "file//Users/…"
+    window.open(`vscode://file/${process!.cwd.replace(/\\/g, '/').replace(/^\/+/, '')}`)
   }
 
   const sColor = statusColor(process.status)

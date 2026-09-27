@@ -51,10 +51,15 @@ export function FolderBrowser({ initialPath = '', onSelect, onClose }: Props) {
   }
 
   // @group Utilities > Breadcrumbs : Build clickable path segments from current path
+  // macOS/Linux paths are absolute from "/" and keep "/" separators; Windows paths use "\"
+  // and start at a drive letter.
   function buildCrumbs(): { label: string; path: string }[] {
     if (!result?.path) return []
-    const normalized = result.path.replace(/\\/g, '/')
-    const parts = normalized.split('/').filter(Boolean)
+    if (isPosix) {
+      const parts = result.path.split('/').filter(Boolean)
+      return parts.map((part, i) => ({ label: part, path: '/' + parts.slice(0, i + 1).join('/') }))
+    }
+    const parts = result.path.replace(/\\/g, '/').split('/').filter(Boolean)
     return parts.map((part, i) => {
       const joined = parts.slice(0, i + 1).join('\\')
       // Windows drive root: "C:" → "C:\"
@@ -63,6 +68,7 @@ export function FolderBrowser({ initialPath = '', onSelect, onClose }: Props) {
     })
   }
 
+  const isPosix = !!result?.path.startsWith('/')
   const crumbs = buildCrumbs()
   const currentPath = result?.path ?? ''
   const canSelect = !!currentPath
@@ -88,13 +94,13 @@ export function FolderBrowser({ initialPath = '', onSelect, onClose }: Props) {
 
         {/* Breadcrumb / path bar */}
         <div style={{ padding: '7px 12px', borderBottom: '1px solid var(--color-border)', background: 'var(--color-muted)', display: 'flex', alignItems: 'center', gap: 2, flexWrap: 'wrap', flexShrink: 0 }}>
-          {/* Drives button (Windows root) */}
+          {/* Root button — drive list on Windows, "/" on macOS/Linux */}
           <button
             onClick={() => navigate('')}
-            title="Show drives"
+            title={isPosix ? 'Filesystem root' : 'Show drives'}
             style={crumbBtnStyle}
           >
-            ⊞ Drives
+            {isPosix ? '/' : '⊞ Drives'}
           </button>
           {crumbs.map((c, i) => (
             <span key={i} style={{ display: 'flex', alignItems: 'center', gap: 2 }}>

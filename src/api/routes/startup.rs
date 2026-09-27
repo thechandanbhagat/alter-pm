@@ -3,6 +3,7 @@
 use axum::{http::StatusCode, routing::get, Json, Router};
 use serde::Serialize;
 
+#[cfg(target_os = "windows")]
 const TASK_NAME: &str = "alter-daemon";
 
 pub fn router() -> Router {
@@ -68,8 +69,9 @@ fn check_enabled() -> bool {
 
     #[cfg(target_os = "macos")]
     {
-        let home = dirs::home_dir().unwrap_or_default();
-        home.join("Library").join("LaunchAgents").join("io.alter.daemon.plist").exists()
+        crate::cli::commands::startup::launch_agent_path()
+            .map(|p| p.exists())
+            .unwrap_or(false)
     }
 
     #[cfg(not(any(target_os = "windows", target_os = "linux", target_os = "macos")))]
@@ -78,7 +80,9 @@ fn check_enabled() -> bool {
 
 // @group Utilities > Startup : Register autostart (mirrors CLI run_startup)
 fn do_enable() -> anyhow::Result<()> {
-    let exe = std::env::current_exe()?.to_string_lossy().to_string();
+    let exe_path = std::env::current_exe()?;
+    #[cfg(not(target_os = "macos"))]
+    let exe = exe_path.to_string_lossy().to_string();
 
     #[cfg(target_os = "windows")]
     {
@@ -110,26 +114,7 @@ Restart=on-failure\nRestartSec=3\n\n[Install]\nWantedBy=default.target\n");
     }
 
     #[cfg(target_os = "macos")]
-    {
-        use std::io::Write;
-        let home = dirs::home_dir().ok_or_else(|| anyhow::anyhow!("no home dir"))?;
-        let agents = home.join("Library").join("LaunchAgents");
-        std::fs::create_dir_all(&agents)?;
-        let plist_path = agents.join("io.alter.daemon.plist");
-        let plist = format!(
-"<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n\
-<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \
-\"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n\
-<plist version=\"1.0\"><dict>\n\
-<key>Label</key><string>io.alter.daemon</string>\n\
-<key>ProgramArguments</key><array>\
-<string>{exe}</string><string>daemon</string><string>start</string></array>\n\
-<key>RunAtLoad</key><true/>\n\
-</dict></plist>\n");
-        std::fs::File::create(&plist_path)
-            .and_then(|mut f| f.write_all(plist.as_bytes()))?;
-        run_cmd("launchctl", &["load", plist_path.to_str().unwrap()])?;
-    }
+    crate::cli::commands::startup::install_launch_agent(&exe_path)?;
 
     Ok(())
 }
@@ -159,16 +144,12 @@ fn do_disable() -> anyhow::Result<()> {
     }
 
     #[cfg(target_os = "macos")]
-    {
-        let home = dirs::home_dir().ok_or_else(|| anyhow::anyhow!("no home dir"))?;
-        let plist = home.join("Library").join("LaunchAgents").join("io.alter.daemon.plist");
-        let _ = run_cmd("launchctl", &["unload", plist.to_str().unwrap()]);
-        let _ = std::fs::remove_file(&plist);
-    }
+    crate::cli::commands::startup::uninstall_launch_agent()?;
 
     Ok(())
 }
 
+#[cfg(target_os = "linux")]
 fn run_cmd(program: &str, args: &[&str]) -> anyhow::Result<()> {
     let s = std::process::Command::new(program).args(args).status()?;
     if !s.success() { anyhow::bail!("{program} exited with {s}") }

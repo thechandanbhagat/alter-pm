@@ -167,14 +167,15 @@ impl ProcessManager {
                 }
             }
 
-            // PID exited — update state and decide whether to restart
+            // PID exited — decide whether to restart. State is updated by restart_loop, which
+            // also drops the event if the process was stopped/restarted meanwhile (pid mismatch).
             let (autorestart, restart_count, max_restarts, restart_delay_ms) = {
                 match registry.get(&id) {
                     Some(entry) => {
-                        let mut proc = entry.write().await;
-                        proc.status = ProcessStatus::Stopped;
-                        proc.pid = None;
-                        proc.stopped_at = Some(Utc::now());
+                        let proc = entry.read().await;
+                        if proc.pid != Some(pid) {
+                            return; // stopped or replaced by the user — nothing to do
+                        }
                         (
                             proc.config.autorestart,
                             proc.restart_count,
@@ -189,11 +190,11 @@ impl ProcessManager {
             if autorestart && restart_count < max_restarts {
                 tokio::time::sleep(tokio::time::Duration::from_millis(restart_delay_ms)).await;
                 let _ = restart_tx
-                    .send(RestartEvent::Restart { process_id: id })
+                    .send(RestartEvent::Restart { process_id: id, pid: Some(pid) })
                     .await;
             } else {
                 let _ = restart_tx
-                    .send(RestartEvent::Exited { process_id: id, exit_code: None })
+                    .send(RestartEvent::Exited { process_id: id, pid: Some(pid), exit_code: None })
                     .await;
             }
         });
@@ -263,6 +264,8 @@ impl ProcessManager {
             kill_process(pid);
         }
 
+        // Dropping the watcher ends the OS file watch so a later file change can't restart us
+        proc.file_watcher = None;
         proc.status = ProcessStatus::Stopped;
         proc.pid = None;
         proc.stopped_at = Some(Utc::now());
@@ -493,6 +496,18 @@ impl ProcessManager {
         result
     }
 
+    // @group BusinessLogic > Query : Live info plus the full AppConfig of every process (for persistence).
+    // ProcessInfo omits watch paths, env_file and more, so saving must use the real config.
+    pub async fn snapshot(&self) -> Vec<(ProcessInfo, AppConfig)> {
+        let mut result = Vec::new();
+        for entry in self.registry.iter() {
+            let proc = entry.value().read().await;
+            result.push((proc.to_info(), proc.config.clone()));
+        }
+        result.sort_by(|a, b| a.0.created_at.cmp(&b.0.created_at));
+        result
+    }
+
     // @group BusinessLogic > LogStats : Return bucketed stdout/stderr log counts for a process
     pub async fn get_log_stats(&self, id: Uuid) -> Vec<crate::models::log_stats::LogStatsBucket> {
         match self.registry.get(&id) {
@@ -663,6 +678,7 @@ impl ProcessManager {
         let rtx = self.restart_tx.clone();
         tokio::spawn(watch_and_restart(
             id,
+            pid,
             effective_autorestart,
             config.max_restarts,
             config.restart_delay_ms,
@@ -693,14 +709,19 @@ impl ProcessManager {
                 tokio::spawn(async move {
                     while let Some(pid_id) = rx.recv().await {
                         let _ = manager_rtx
-                            .send(RestartEvent::Restart { process_id: pid_id })
+                            .send(RestartEvent::Restart { process_id: pid_id, pid: None })
                             .await;
                     }
                 });
                 tx
             };
 
-            let _ = FileWatcher::start(id, &config.watch_paths, &config.watch_ignore, watch_restart_tx);
+            // Keep the watcher on the process entry — a dropped watcher stops watching at once.
+            // Replacing it here also drops the previous watcher on a manual restart.
+            match FileWatcher::start(id, &config.watch_paths, &config.watch_ignore, watch_restart_tx) {
+                Ok(watcher) => arc.write().await.file_watcher = Some(watcher),
+                Err(e) => tracing::warn!("failed to start file watcher for {id}: {e}"),
+            }
         }
 
         // @group BusinessLogic > Cron : Start (or replace) the cron scheduler for this process
@@ -725,7 +746,7 @@ impl ProcessManager {
     ) {
         while let Some(event) = rx.recv().await {
             match event {
-                RestartEvent::Restart { process_id } => {
+                RestartEvent::Restart { process_id, pid: event_pid } => {
                     if let Some(arc) = registry.get(&process_id) {
                         let arc = Arc::clone(arc.value());
                         let rtx = restart_tx.clone();
@@ -736,6 +757,16 @@ impl ProcessManager {
                             // Stop existing child if still alive
                             {
                                 let mut proc = arc.write().await;
+                                // Only restart the child this event is about. A manual stop clears
+                                // pid and a manual restart replaces it — in both cases the exit that
+                                // produced this event is stale and must not respawn the process.
+                                let current = match event_pid {
+                                    Some(p) => proc.pid == Some(p),
+                                    None => proc.pid.is_some(), // forced (watch) restart: only if running
+                                };
+                                if !current {
+                                    return;
+                                }
                                 if let Some(pid) = proc.pid {
                                     kill_process(pid);
                                 }
@@ -801,6 +832,7 @@ impl ProcessManager {
                                     });
                                     tokio::spawn(watch_and_restart(
                                         process_id,
+                                        pid,
                                         config.autorestart,
                                         config.max_restarts,
                                         config.restart_delay_ms,
@@ -829,9 +861,13 @@ impl ProcessManager {
                     }
                 }
 
-                RestartEvent::Exited { process_id, exit_code } => {
+                RestartEvent::Exited { process_id, pid: event_pid, exit_code } => {
                     if let Some(arc) = registry.get(&process_id) {
                         let mut proc = arc.write().await;
+                        // Stale exit of a child that was already stopped/replaced — keep current state
+                        if proc.pid != event_pid {
+                            continue;
+                        }
                         // Cron jobs transition to Sleeping instead of Stopped
                         proc.status = if proc.config.cron.is_some() {
                             ProcessStatus::Sleeping
@@ -848,11 +884,14 @@ impl ProcessManager {
                     }
                 }
 
-                RestartEvent::MaxRestartsReached { process_id, exit_code } => {
+                RestartEvent::MaxRestartsReached { process_id, pid: event_pid, exit_code } => {
                     let notifications = Arc::clone(&notifications);
                     if let Some(arc) = registry.get(&process_id) {
                         let info_for_notif = {
                             let mut proc = arc.write().await;
+                            if proc.pid != event_pid {
+                                continue; // stale — the user already stopped/restarted it
+                            }
                             proc.status = ProcessStatus::Errored;
                             proc.pid = None;
                             proc.last_exit_code = exit_code;
@@ -1025,6 +1064,7 @@ impl ProcessManager {
                             });
                             tokio::spawn(watch_and_restart(
                                 process_id,
+                                pid,
                                 false, // cron jobs never auto-restart — scheduler drives re-runs
                                 config.max_restarts,
                                 config.restart_delay_ms,
@@ -1298,11 +1338,27 @@ fn kill_process(pid: u32) {
     }
     #[cfg(not(target_os = "windows"))]
     {
+        // runner.rs starts every child as its own process-group leader (pgid == pid),
+        // so the negative pid reaches the whole tree (npm → node, sh → workers, …).
+        let pgid = pid as libc::pid_t;
         unsafe {
-            // Send SIGTERM to the process group (negative pid = group)
-            libc::kill(-(pid as i32), libc::SIGTERM);
-            // Fallback: also send to the process itself
-            libc::kill(pid as i32, libc::SIGTERM);
+            libc::kill(-pgid, libc::SIGTERM);
+            // Fallback for children adopted from an older daemon that were not group leaders
+            libc::kill(pgid, libc::SIGTERM);
         }
+        // Escalate to SIGKILL for anything that ignores SIGTERM — Windows uses taskkill /F,
+        // and without this a stubborn child keeps running (and holding its port) after "stop".
+        std::thread::spawn(move || {
+            std::thread::sleep(std::time::Duration::from_secs(KILL_GRACE_SECS));
+            unsafe {
+                if libc::kill(-pgid, 0) == 0 {
+                    libc::kill(-pgid, libc::SIGKILL);
+                }
+            }
+        });
     }
 }
+
+// @group Constants : Seconds a stopped Unix process group gets to exit before SIGKILL
+#[cfg(not(target_os = "windows"))]
+const KILL_GRACE_SECS: u64 = 5;

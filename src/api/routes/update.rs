@@ -225,8 +225,34 @@ async fn apply_update(
         return Err(ApiError::internal(format!("download failed: {e}")));
     }
 
-    if let Err(e) = replace_binary(&current_exe, &tmp_path) {
-        let _ = std::fs::remove_file(&tmp_path);
+    // macOS assets are .tar.gz archives — renaming the archive over the executable would
+    // leave a gzip file where `alter` used to be. Extract the binary first.
+    #[cfg(not(windows))]
+    let (new_binary, extract_dir) = if download_url.ends_with(".tar.gz") {
+        let dir = exe_dir.join("alter_update.d");
+        match extract_binary(&tmp_path, &dir) {
+            Ok(bin) => {
+                let _ = std::fs::remove_file(&tmp_path);
+                (bin, Some(dir))
+            }
+            Err(e) => {
+                let _ = std::fs::remove_file(&tmp_path);
+                let _ = std::fs::remove_dir_all(&dir);
+                return Err(ApiError::internal(format!("failed to unpack update: {e}")));
+            }
+        }
+    } else {
+        (tmp_path.clone(), None)
+    };
+    #[cfg(windows)]
+    let (new_binary, extract_dir): (std::path::PathBuf, Option<std::path::PathBuf>) = (tmp_path.clone(), None);
+
+    let replaced = replace_binary(&current_exe, &new_binary);
+    let _ = std::fs::remove_file(&new_binary);
+    if let Some(dir) = extract_dir {
+        let _ = std::fs::remove_dir_all(dir);
+    }
+    if let Err(e) = replaced {
         return Err(ApiError::internal(format!("binary replacement failed: {e}")));
     }
 
@@ -262,6 +288,34 @@ async fn download_binary(url: &str, dest: &std::path::Path) -> anyhow::Result<()
     }
     file.flush().await?;
     Ok(())
+}
+
+// @group Utilities > Update : Unpack a .tar.gz release into `dir` and return the `alter` binary in it
+#[cfg(not(windows))]
+fn extract_binary(archive: &std::path::Path, dir: &std::path::Path) -> anyhow::Result<std::path::PathBuf> {
+    let _ = std::fs::remove_dir_all(dir);
+    std::fs::create_dir_all(dir)?;
+    let status = std::process::Command::new("tar")
+        .arg("-xzf")
+        .arg(archive)
+        .arg("-C")
+        .arg(dir)
+        .status()?;
+    anyhow::ensure!(status.success(), "tar exited with {status}");
+
+    // The archive may hold the binary at its root or inside a single top-level folder
+    let mut stack = vec![dir.to_path_buf()];
+    while let Some(d) = stack.pop() {
+        for entry in std::fs::read_dir(&d)?.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                stack.push(path);
+            } else if path.file_name().is_some_and(|n| n == "alter") {
+                return Ok(path);
+            }
+        }
+    }
+    anyhow::bail!("archive does not contain an `alter` binary")
 }
 
 // @group Utilities > Update : Replace the running binary with the downloaded temp file (OS-specific)
@@ -323,5 +377,48 @@ fn spawn_new_daemon(exe: &std::path::Path, port: u16) {
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null())
             .spawn();
+    }
+}
+
+// @group UnitTests : Release archive unpacking (macOS/Linux)
+#[cfg(all(test, not(windows)))]
+mod tests {
+    use super::extract_binary;
+
+    // @group UnitTests > Update : The `alter` binary is found inside a nested release folder
+    #[test]
+    fn test_extract_binary_from_nested_tarball() {
+        let work = tempfile::tempdir().unwrap();
+        let staging = work.path().join("alter-9.9.9-macos-arm64");
+        std::fs::create_dir_all(&staging).unwrap();
+        std::fs::write(staging.join("alter"), b"#!/bin/sh\necho new\n").unwrap();
+        std::fs::write(staging.join("README.md"), b"readme").unwrap();
+
+        let archive = work.path().join("release.tar.gz");
+        let status = std::process::Command::new("tar")
+            .arg("-czf").arg(&archive)
+            .arg("-C").arg(work.path())
+            .arg("alter-9.9.9-macos-arm64")
+            .status()
+            .unwrap();
+        assert!(status.success());
+
+        let out = work.path().join("unpacked");
+        let bin = extract_binary(&archive, &out).unwrap();
+        assert_eq!(bin.file_name().unwrap(), "alter");
+        assert_eq!(std::fs::read(&bin).unwrap(), b"#!/bin/sh\necho new\n");
+    }
+
+    // @group EdgeCases : An archive without an `alter` binary is rejected
+    #[test]
+    fn test_extract_binary_missing() {
+        let work = tempfile::tempdir().unwrap();
+        std::fs::write(work.path().join("other"), b"x").unwrap();
+        let archive = work.path().join("bad.tar.gz");
+        std::process::Command::new("tar")
+            .arg("-czf").arg(&archive).arg("-C").arg(work.path()).arg("other")
+            .status()
+            .unwrap();
+        assert!(extract_binary(&archive, &work.path().join("out")).is_err());
     }
 }

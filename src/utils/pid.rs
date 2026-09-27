@@ -39,7 +39,9 @@ fn process_exists(pid: u32) -> bool {
     }
     #[cfg(not(target_os = "windows"))]
     {
-        // On Linux/Mac, check if /proc/<pid> exists or send signal 0
-        std::path::Path::new(&format!("/proc/{pid}")).exists()
+        // Signal 0 checks existence without signalling (macOS has no /proc). EPERM means the
+        // pid exists but belongs to another user — still "running" for our purposes.
+        let rc = unsafe { libc::kill(pid as libc::pid_t, 0) };
+        rc == 0 || std::io::Error::last_os_error().raw_os_error() == Some(libc::EPERM)
     }
 }

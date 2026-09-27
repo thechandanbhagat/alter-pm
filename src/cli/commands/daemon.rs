@@ -44,14 +44,25 @@ fn start_daemon(host: &str, port: u16) -> Result<()> {
 
     #[cfg(not(target_os = "windows"))]
     {
-        std::process::Command::new(&exe)
-            .arg("--internal-daemon")
+        use std::os::unix::process::CommandExt;
+        let mut cmd = std::process::Command::new(&exe);
+        cmd.arg("--internal-daemon")
             .arg("--host").arg(host)
             .arg("--port").arg(port.to_string())
             .stdin(std::process::Stdio::null())
             .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
-            .spawn()?;
+            .stderr(std::process::Stdio::null());
+        // Detach into a new session: no controlling terminal (closing the terminal or a
+        // Ctrl-C during the wait below can't signal the daemon), and a new process group —
+        // launchd kills whatever is left in a job's group when `alter daemon start` exits,
+        // which would otherwise take the freshly started daemon with it.
+        unsafe {
+            cmd.pre_exec(|| {
+                libc::setsid();
+                Ok(())
+            });
+        }
+        cmd.spawn()?;
     }
 
     // Poll via blocking TCP — avoids any async runtime issues
