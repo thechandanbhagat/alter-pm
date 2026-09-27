@@ -6,6 +6,7 @@ use crate::models::cron_run::CronRun;
 use crate::models::log_stats::LogStatsState;
 use crate::models::process_info::{HealthCheckStatus, ProcessInfo};
 use crate::models::process_status::ProcessStatus;
+use crate::process::watcher::FileWatcher;
 use chrono::{DateTime, Utc};
 use std::sync::Arc;
 use tokio::sync::{broadcast, Mutex};
@@ -55,6 +56,8 @@ pub struct ManagedProcess {
     pub health_check_handle: Option<tokio::task::JoinHandle<()>>,
     /// Cached git branch from the process cwd — populated at creation time
     pub git_branch: Option<String>,
+    /// Active file watcher (watch mode). Must be held here: dropping it stops the OS watch.
+    pub file_watcher: Option<FileWatcher>,
     // @group BusinessLogic > LogStats : Rolling 5-minute log volume buckets (stdout + stderr counts)
     pub log_stats: Arc<Mutex<LogStatsState>>,
 }
@@ -88,6 +91,7 @@ impl ManagedProcess {
             health_check_handle: None,
             log_stats: Arc::new(Mutex::new(LogStatsState::new())),
             git_branch,
+            file_watcher: None,
         }
     }
 

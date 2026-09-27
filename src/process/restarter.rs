@@ -5,12 +5,17 @@ use tokio::sync::mpsc;
 use tokio::time::{sleep, Duration};
 use uuid::Uuid;
 
-/// Message sent from restarter to manager when a process needs to be restarted or marked errored
+/// Message sent from restarter to manager when a process needs to be restarted or marked errored.
+///
+/// `pid` identifies the child the event is about. The manager ignores an event whose pid no
+/// longer matches the process entry — the child was stopped or replaced by a manual
+/// stop/restart after it exited, so acting on it would resurrect or clobber the process.
+/// `Restart { pid: None }` is a forced restart of whatever is currently running (file watcher).
 #[derive(Debug)]
 pub enum RestartEvent {
-    Restart { process_id: Uuid },
-    MaxRestartsReached { process_id: Uuid, exit_code: Option<i32> },
-    Exited { process_id: Uuid, exit_code: Option<i32> },
+    Restart { process_id: Uuid, pid: Option<u32> },
+    MaxRestartsReached { process_id: Uuid, pid: Option<u32>, exit_code: Option<i32> },
+    Exited { process_id: Uuid, pid: Option<u32>, exit_code: Option<i32> },
 }
 
 /// Calculates the backoff delay for a given restart attempt.
@@ -23,8 +28,11 @@ pub fn backoff_delay(base_ms: u64, attempt: u32) -> Duration {
 
 /// Watches for process exit and decides whether to restart.
 /// Sends RestartEvent back to the manager via the provided channel.
+/// `pid` is the OS pid of the child being watched; it is echoed in every event.
+#[allow(clippy::too_many_arguments)]
 pub async fn watch_and_restart(
     process_id: Uuid,
+    pid: Option<u32>,
     autorestart: bool,
     max_restarts: u32,
     restart_delay_ms: u64,
@@ -42,14 +50,14 @@ pub async fn watch_and_restart(
 
     if clean_exit || !autorestart {
         let _ = event_tx
-            .send(RestartEvent::Exited { process_id, exit_code })
+            .send(RestartEvent::Exited { process_id, pid, exit_code })
             .await;
         return;
     }
 
     if restart_count >= max_restarts {
         let _ = event_tx
-            .send(RestartEvent::MaxRestartsReached { process_id, exit_code })
+            .send(RestartEvent::MaxRestartsReached { process_id, pid, exit_code })
             .await;
         return;
     }
@@ -58,6 +66,6 @@ pub async fn watch_and_restart(
     sleep(delay).await;
 
     let _ = event_tx
-        .send(RestartEvent::Restart { process_id })
+        .send(RestartEvent::Restart { process_id, pid })
         .await;
 }

@@ -423,10 +423,17 @@ async fn run_script(
     Ok(Sse::new(event_stream))
 }
 
+// @group Configuration : Python launcher — macOS (12.3+) and most Linux distros ship only
+// `python3`; there is no bare `python` binary, so `.py` scripts would fail to spawn.
+#[cfg(target_os = "windows")]
+const PYTHON: &str = "python";
+#[cfg(not(target_os = "windows"))]
+const PYTHON: &str = "python3";
+
 // @group Configuration : Map file extension back to interpreter command
 pub(crate) fn interpreter_for_ext(ext: &str) -> &'static str {
     match ext {
-        "py" => "python",
+        "py" => PYTHON,
         "js" => "node",
         "ts" => "ts-node",
         "ps1" => "powershell",
@@ -536,7 +543,7 @@ mod tests {
     // @group UnitTests > Scripts > InterpreterForExt : Extensions map to correct interpreter
     #[test]
     fn test_interpreter_for_ext_common() {
-        assert_eq!(interpreter_for_ext("py"),  "python");
+        assert_eq!(interpreter_for_ext("py"),  PYTHON);
         assert_eq!(interpreter_for_ext("js"),  "node");
         assert_eq!(interpreter_for_ext("ts"),  "ts-node");
         assert_eq!(interpreter_for_ext("ps1"), "powershell");
@@ -558,7 +565,7 @@ mod tests {
     fn test_lang_ext_interpreter_roundtrip() {
         // python → py → python (interpreter)
         let ext = ext_for_lang("python");
-        assert_eq!(interpreter_for_ext(ext), "python");
+        assert_eq!(interpreter_for_ext(ext), PYTHON);
 
         // node → js → node
         let ext = ext_for_lang("node");

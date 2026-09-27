@@ -12,12 +12,17 @@ export default function SystemTab() {
   const [startupLoading, setStartupLoading] = useState(true)
   const [startupBusy, setStartupBusy] = useState(false)
   const [startupError, setStartupError] = useState<string | null>(null)
+  // Actual daemon directories — they differ per OS (%APPDATA% on Windows, ~/.alter-pm2 elsewhere)
+  const [paths, setPaths] = useState<{ data_dir: string; log_dir: string } | null>(null)
 
   useEffect(() => {
     api.getStartupStatus()
       .then(s => setStartup(s))
       .catch(() => setStartup(null))
       .finally(() => setStartupLoading(false))
+    api.getSystemPaths()
+      .then(p => setPaths(p))
+      .catch(() => setPaths(null))
   }, [])
 
   async function toggleStartup() {
@@ -121,7 +126,7 @@ export default function SystemTab() {
           ))}
         </div>
         <p style={{ ...mutedStyle, marginTop: 10 }}>
-          Log files are stored in <code style={{ fontSize: 10 }}>%APPDATA%\alter-pm2\logs\</code>.
+          Log files are stored in <code style={{ fontSize: 10 }}>{paths?.log_dir ?? 'the data directory (logs/)'}</code>.
           Rotation runs automatically in the background — no configuration needed.
         </p>
       </div>
@@ -133,9 +138,15 @@ export default function SystemTab() {
           Data directory
         </div>
         <p style={mutedStyle}>
-          All alter data (processes, logs, settings, history) is stored in the daemon data directory.
-          On Windows: <code style={{ fontSize: 10 }}>%APPDATA%\alter-pm2\</code>
-          {' '}· Linux/macOS: <code style={{ fontSize: 10 }}>~/.alter-pm2/</code>
+          All alter data (processes, logs, settings, history) is stored in the daemon data directory
+          {paths ? (
+            <>: <code style={{ fontSize: 10 }}>{paths.data_dir}</code></>
+          ) : (
+            <>
+              . On Windows: <code style={{ fontSize: 10 }}>%APPDATA%\alter-pm2\</code>
+              {' '}· Linux/macOS: <code style={{ fontSize: 10 }}>~/.alter-pm2/</code>
+            </>
+          )}
         </p>
       </div>
 

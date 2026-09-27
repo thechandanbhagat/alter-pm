@@ -6,7 +6,6 @@ use crate::config::ecosystem::AppConfig;
 use crate::config::notification_store::NotificationsStore;
 use crate::config::telegram_config::TelegramConfig;
 use crate::models::cron_run::CronRun;
-use crate::models::process_info::ProcessInfo;
 use crate::models::tunnel::TunnelSettings;
 use crate::process::manager::ProcessManager;
 use crate::terminal::TerminalManager;
@@ -101,12 +100,17 @@ impl DaemonState {
 
     // @group DatabaseOperations : Serialize current process list to JSON file
     pub async fn save_to_disk(&self) -> Result<()> {
-        let processes = self.manager.list().await;
+        let processes = self.manager.snapshot().await;
         let apps = processes
             .into_iter()
-            .map(|p| SavedApp {
+            .map(|(p, mut config)| SavedApp {
                 id: p.id,
-                config: build_app_config(&p),
+                // Persist the real config — rebuilding it from ProcessInfo dropped watch paths,
+                // health checks, hooks, env_file and restart delay on every daemon restart.
+                config: {
+                    config.cron_next_run = p.cron_next_run;
+                    config
+                },
                 restart_count: p.restart_count,
                 autorestart_on_restore: p.autorestart,
                 cron_run_history: p.cron_run_history,
@@ -213,41 +217,5 @@ impl DaemonState {
                 }
             }
         }
-    }
-}
-
-fn build_app_config(info: &ProcessInfo) -> AppConfig {
-    use crate::config::ecosystem::AppConfig;
-    AppConfig {
-        name: info.name.clone(),
-        script: info.script.clone(),
-        args: info.args.clone(),
-        cwd: info.cwd.clone(),
-        instances: 1,
-        autorestart: info.autorestart,
-        max_restarts: info.max_restarts,
-        restart_delay_ms: 1000,
-        namespace: info.namespace.clone(),
-        watch: info.watch,
-        watch_paths: vec![],
-        watch_ignore: vec![],
-        env: info.env.clone(),
-        log_file: None,
-        error_file: None,
-        max_log_size_mb: 10,
-        cron: info.cron.clone(),
-        cron_last_run: None,
-        cron_next_run: info.cron_next_run,
-        notify: info.notify.clone(),
-        log_alert: info.log_alert.clone(),
-        env_file: None,
-        health_check_url: None,
-        health_check_interval_secs: 30,
-        health_check_timeout_secs: 5,
-        health_check_retries: 3,
-        pre_start: None,
-        post_start: None,
-        pre_stop: None,
-        enabled: info.enabled,
     }
 }

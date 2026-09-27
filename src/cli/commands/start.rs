@@ -23,11 +23,24 @@ pub async fn run(client: &DaemonClient, args: StartArgs, json_mode: bool) -> Res
         }
     }
 
+    // A relative --cwd (e.g. ".") must be resolved here: the daemon would otherwise resolve it
+    // against its own working directory, not the directory the user ran `alter start` in.
+    // (path::absolute, not canonicalize: the latter yields \\?\ paths that cmd.exe rejects.)
+    let cwd = args.cwd.map(|dir| {
+        if std::path::Path::new(&dir).is_relative() {
+            std::path::absolute(&dir)
+                .map(|p| p.to_string_lossy().to_string())
+                .unwrap_or(dir)
+        } else {
+            dir
+        }
+    });
+
     let body = json!({
         "name": args.name,
         "script": args.script,
         "args": args.args.unwrap_or_default(),
-        "cwd": args.cwd,
+        "cwd": cwd,
         "namespace": args.namespace,
         "env": env,
         "autorestart": args.autorestart,

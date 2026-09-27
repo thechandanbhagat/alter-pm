@@ -359,7 +359,7 @@ async fn update_process(
 // @group APIEndpoints > Process : POST /processes/:id/terminal
 // Opens a new visible terminal window in the process's working directory.
 // On Windows: spawns Windows Terminal (wt) falling back to cmd.exe.
-// On Unix: spawns xterm as a fallback.
+// On macOS: opens Terminal.app. Other Unix: spawns xterm.
 async fn open_terminal(
     State(state): State<Arc<DaemonState>>,
     Path(id_str): Path<String>,
@@ -383,7 +383,15 @@ async fn open_terminal(
                 .map_err(|e| ApiError::internal(format!("failed to open terminal: {e}")))?;
         }
     }
-    #[cfg(not(target_os = "windows"))]
+    #[cfg(target_os = "macos")]
+    {
+        // xterm is not part of macOS — `open -a Terminal <dir>` opens Terminal.app there
+        std::process::Command::new("open")
+            .args(["-a", "Terminal", &cwd])
+            .spawn()
+            .map_err(|e| ApiError::internal(format!("failed to open terminal: {e}")))?;
+    }
+    #[cfg(all(unix, not(target_os = "macos")))]
     {
         std::process::Command::new("xterm")
             .current_dir(&cwd)

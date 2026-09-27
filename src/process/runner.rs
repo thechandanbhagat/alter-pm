@@ -63,12 +63,26 @@ pub async fn spawn_process(
             c
         }
     };
+    // @group BusinessLogic > Unix : A script like "node app.js" or "npm run dev" is a command
+    // line, not a program — Windows resolves it through cmd /C above, so run it through
+    // /bin/sh here to make the same config work on macOS/Linux. "$@" appends `args` safely.
     #[cfg(not(target_os = "windows"))]
     let mut cmd = {
-        let mut c = Command::new(script);
-        c.args(args);
-        c
+        if is_shell_command(script, cwd) {
+            let mut c = Command::new("/bin/sh");
+            c.arg("-c").arg(format!("{script} \"$@\"")).arg("sh").args(args);
+            c
+        } else {
+            let mut c = Command::new(script);
+            c.args(args);
+            c
+        }
     };
+    // @group BusinessLogic > Unix : Make the child a process-group leader (pgid == pid) so that
+    // kill_process can signal the whole tree, and so a Ctrl-C aimed at a foreground daemon
+    // doesn't also hit every managed process.
+    #[cfg(unix)]
+    cmd.process_group(0);
     cmd.stdout(Stdio::piped());
     cmd.stderr(Stdio::piped());
     cmd.kill_on_drop(false);
@@ -126,6 +140,21 @@ pub async fn spawn_process(
     Ok(child)
 }
 
+/// True when `script` must be run through the shell: it contains whitespace (a command line)
+/// and is not the path of an existing file (paths with spaces are exec'd directly).
+#[cfg(not(target_os = "windows"))]
+pub(crate) fn is_shell_command(script: &str, cwd: Option<&str>) -> bool {
+    if !script.trim().contains(char::is_whitespace) {
+        return false;
+    }
+    let path = std::path::Path::new(script);
+    let resolved = match cwd {
+        Some(dir) if path.is_relative() => std::path::Path::new(dir).join(path),
+        _ => path.to_path_buf(),
+    };
+    !resolved.is_file()
+}
+
 /// Wait for the child to exit and send the result through the channel.
 pub async fn wait_for_exit(mut child: Child, exit_tx: mpsc::Sender<RunResult>) {
     let exit_code = match child.wait().await {
@@ -133,4 +162,34 @@ pub async fn wait_for_exit(mut child: Child, exit_tx: mpsc::Sender<RunResult>) {
         Err(_) => None,
     };
     let _ = exit_tx.send(RunResult { exit_code }).await;
+}
+
+// @group UnitTests : Unix command-line detection
+#[cfg(all(test, not(target_os = "windows")))]
+mod tests {
+    use super::is_shell_command;
+
+    // @group UnitTests > Runner : Bare program names are exec'd directly
+    #[test]
+    fn test_plain_program_is_not_shell() {
+        assert!(!is_shell_command("node", None));
+        assert!(!is_shell_command("/usr/bin/env", None));
+    }
+
+    // @group UnitTests > Runner : Command lines go through /bin/sh
+    #[test]
+    fn test_command_line_is_shell() {
+        assert!(is_shell_command("node app.js", None));
+        assert!(is_shell_command("npm run dev", Some("/tmp")));
+    }
+
+    // @group EdgeCases : An existing file whose path contains a space is still exec'd directly
+    #[test]
+    fn test_existing_path_with_space_is_not_shell() {
+        let dir = tempfile::tempdir().unwrap();
+        let script = dir.path().join("my script.sh");
+        std::fs::write(&script, "#!/bin/sh\n").unwrap();
+        assert!(!is_shell_command(script.to_str().unwrap(), None));
+        assert!(!is_shell_command("my script.sh", dir.path().to_str()));
+    }
 }

@@ -129,6 +129,9 @@ async fn handle_terminal(
     let mut cmd = {
         let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/bash".to_string());
         let mut c = portable_pty::CommandBuilder::new(&shell);
+        // The browser side is xterm.js. A daemon started by launchd/systemd has no TERM,
+        // which leaves zsh/vim/less in dumb-terminal mode without colours.
+        c.env("TERM", "xterm-256color");
         // Git-aware PS1: user@host:path (branch)$
         // Uses __git_ps1 if available (git-prompt.sh), otherwise falls back to `git branch`
         c.env(

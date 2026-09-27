@@ -29,6 +29,85 @@ winget install thechandanbhagat.alter
 Download the latest `alter-x.x.x-windows-x64-setup.exe` from [Releases](https://github.com/thechandanbhagat/alter-pm/releases) and run it.  
 `alter.exe` is added to your `PATH` automatically.
 
+### macOS
+
+There is no prebuilt macOS download yet, so alter is built from source. It takes a few minutes and
+works on both Apple Silicon and Intel Macs.
+
+**1. Install the prerequisites** (skip any you already have)
+
+```bash
+xcode-select --install                                           # Apple command-line tools (C compiler + linker)
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh   # Rust — open a new terminal afterwards
+brew install node                                                # Node.js 20.19+ (or use nvm / nodejs.org)
+```
+
+Node.js is only needed to build the dashboard — alter itself has no runtime dependencies.
+
+**2. Build and install**
+
+```bash
+git clone https://github.com/thechandanbhagat/alter-pm
+cd alter-pm
+(cd web-ui && npm ci && npm run build)   # build the dashboard (embedded into the binary)
+cargo install --path .                   # release build → ~/.cargo/bin/alter
+alter --version
+```
+
+`~/.cargo/bin` is put on your `PATH` by the Rust installer. If `alter` is not found, open a new
+terminal or run `source "$HOME/.cargo/env"`.
+
+**3. Start the daemon and open the dashboard**
+
+```bash
+alter daemon start   # runs in the background — closing the terminal does not stop it
+alter web            # opens http://127.0.0.1:2999/ in your browser
+```
+
+If port 2999 is taken, add `export ALTER_PORT=3000` to your `~/.zshrc` — every `alter` command
+(including `daemon start`) then uses that port.
+
+**4. Start automatically at login** (optional)
+
+```bash
+alter startup        # registers ~/Library/LaunchAgents/io.alter.daemon.plist
+```
+
+The login agent records your current `PATH`, so tools installed with Homebrew or nvm (`node`, `npm`,
+`python3`, …) are found by your processes after a reboot. Run `alter startup` again whenever your
+`PATH` changes, and `alter unstartup` to remove it.
+
+**Updating**
+
+```bash
+cd alter-pm
+git pull
+(cd web-ui && npm ci && npm run build)
+cargo install --path .
+alter daemon restart   # restart the daemon on the new binary
+```
+
+**Uninstalling**
+
+```bash
+alter unstartup                # remove the login agent (if you added it)
+alter stop all                 # stop managed processes — `daemon stop` leaves them running
+alter daemon stop
+cargo uninstall alter-gui      # the crate's package name; removes ~/.cargo/bin/alter
+rm -rf ~/.alter-pm2            # optional: processes, logs and settings
+```
+
+**Troubleshooting**
+
+| Problem | Fix |
+|---------|-----|
+| `cargo build` fails with `folder 'web-ui/dist/' does not exist` | Build the dashboard first: `(cd web-ui && npm ci && npm run build)` |
+| A process started at login fails with `No such file or directory` | Its command isn't on the agent's `PATH` — run `alter startup` again from a terminal where the command works |
+| `alter daemon start` says it didn't start within 5 s | Check `alter daemon logs` (daemon log: `~/.alter-pm2/daemon.log`) |
+| Login agent didn't start the daemon | See `~/Library/Logs/alter-daemon.log` and `~/Library/Logs/alter-daemon-error.log` |
+
+See [macOS & Linux](#macos--linux) for how alter behaves on Unix systems.
+
 ---
 
 ## Features
@@ -54,13 +133,28 @@ Download the latest `alter-x.x.x-windows-x64-setup.exe` from [Releases](https://
 
 ### Build from source
 
-Requires [Rust](https://rustup.rs/).
+Requires [Rust](https://rustup.rs/) and [Node.js](https://nodejs.org/) 20.19+. The dashboard is
+embedded into the binary at compile time, so build `web-ui/` first — `cargo build` fails with
+`folder 'web-ui/dist/' does not exist` otherwise.
 
 ```powershell
 git clone https://github.com/thechandanbhagat/alter-pm
 cd alter-pm
+cd web-ui; npm ci; npm run build; cd ..
 cargo build --release
 # Binary: target\release\alter.exe
+```
+
+On macOS, follow the step-by-step [macOS installation](#macos) above. On Linux, also install
+`pkg-config` and the OpenSSL headers (`sudo apt install pkg-config libssl-dev` on Debian/Ubuntu):
+
+```bash
+git clone https://github.com/thechandanbhagat/alter-pm
+cd alter-pm
+(cd web-ui && npm ci && npm run build)
+cargo build --release
+cp target/release/alter ~/.local/bin/   # or anywhere on your PATH
+alter daemon start
 ```
 
 ---
@@ -120,6 +214,19 @@ alter is built with Windows as a first-class platform:
 - `npm`, `yarn`, `npx` and other `.cmd` scripts work directly
 - Terminal button opens Windows Terminal or `cmd.exe` in the process directory
 - Data stored in `%APPDATA%\alter-pm2\`
+
+---
+
+## macOS & Linux
+
+- Data is stored in `~/.alter-pm2/`
+- A `script` containing spaces (e.g. `npm run dev`) runs through `/bin/sh`, matching `cmd /C` on Windows
+- Stopping a process terminates its whole process tree (`SIGTERM`, then `SIGKILL` after 5 s)
+- `alter startup` registers a LaunchAgent (`~/Library/LaunchAgents/io.alter.daemon.plist`) on macOS or a
+  user systemd unit on Linux. On macOS the agent records your shell's `PATH` (and `ALTER_PORT` /
+  `ALTER_HOST` if set), so Homebrew/nvm tools such as `node` and `python3` resolve after login —
+  re-run `alter startup` if your `PATH` changes
+- Port Finder uses `lsof` on macOS and `ss` (or `netstat`) on Linux
 
 ---
 
