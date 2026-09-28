@@ -4,6 +4,20 @@
 
 ---
 
+## Video walkthroughs
+
+Start with these short demos of the running application. All recordings use local sample services.
+
+| Demo | Watch | What you will learn |
+|---|---|---|
+| Product overview | [52 seconds on YouTube](https://youtu.be/F_sz2mlNNJs) | Status, resources, namespaces, and logs |
+| Process workflow | [55 seconds on YouTube](https://youtu.be/LM7kWGhMk5U) | Configure, launch, stop, start, and restart a worker |
+| Logs and monitoring | [53 seconds on YouTube](https://youtu.be/TGzG2I--aw0) | Filter output, browse logs, and compare activity |
+
+![Alter overview with four running sample services](../userguide/screenshots/overview.png)
+
+[Open the illustrated user guide](https://alter-pm.chandanbhagat.com.np/).
+
 ## Table of Contents
 
 1. [Installation](#1-installation)
@@ -38,29 +52,19 @@ winget install thechandanbhagat.alter
 
 Download `alter-x.x.x-windows-x64-setup.exe` from [GitHub Releases](https://github.com/thechandanbhagat/alter-pm/releases/latest) and run it. `alter.exe` is added to your `PATH` automatically.
 
-### Linux / macOS
+### macOS / Linux — build from source
 
-```bash
-# Linux x86_64
-curl -Lo alter https://github.com/thechandanbhagat/alter-pm/releases/latest/download/alter-linux-x86_64
-chmod +x alter && sudo mv alter /usr/local/bin/
-
-# macOS arm64
-curl -Lo alter https://github.com/thechandanbhagat/alter-pm/releases/latest/download/alter-macos-arm64
-chmod +x alter && sudo mv alter /usr/local/bin/
-```
-
-### Build from source
-
-Requires [Rust 1.77+](https://rustup.rs/).
+Requires [Rust](https://rustup.rs/) and Node.js 20.19+. On macOS, install the Xcode command-line tools. On Debian or Ubuntu, install `pkg-config` and `libssl-dev`.
 
 ```bash
 git clone https://github.com/thechandanbhagat/alter-pm
 cd alter-pm
-cargo build --release
-# Binary: target/release/alter  (Linux/macOS)
-#         target/release/alter.exe  (Windows)
+(cd web-ui && npm ci && npm run build)
+cargo install --path .
+alter --version
 ```
+
+Build the dashboard before Rust embeds it in the binary. Node.js is needed for that build, but not to run alter. See the [README installation guide](../README.md#installation) for platform-specific details.
 
 ---
 
@@ -96,14 +100,14 @@ alter daemon start --port 4000   # Custom port
 
 ![Process list dashboard](../userguide/screenshots/processes.png)
 
-### Navigation bar (top)
+### Main navigation (left sidebar)
 
 | Link | Description |
 |------|-------------|
 | **Processes ▼** | List and manage all processes. Dropdown shows namespace groups. |
 | **Cron Jobs ▼** | Scheduled tasks. |
 | **Log Library** | Unified log browser across all processes. |
-| **Log Volume** | Visual chart of log output volume over time. |
+| **Log Analytics** | Compare stdout and stderr activity in five-minute intervals. |
 | **TOOLS ▼** | Tunnels and Port Finder. |
 
 ### Sidebar
@@ -117,6 +121,8 @@ Shows daemon connection status, GitHub star widget, Discord link, notifications,
 ---
 
 ## 4. Managing Processes
+
+[Watch: launch, stop, and restart a worker — 55 seconds](https://youtu.be/LM7kWGhMk5U)
 
 ### Starting a process
 
@@ -159,6 +165,8 @@ Each row has action buttons: **Start/Stop**, **Restart**, **Logs** (opens log vi
 
 Click a process **name** to open its detail page with live logs, CPU/memory charts, and full config.
 
+![Running worker with live output and lifecycle controls](../userguide/screenshots/process-detail.png)
+
 ### Enable / Disable
 
 Disabling a process keeps it in the list but excludes it from **Start All** and auto-restart. Disabled rows show a subtle gray background and a grayed Start button. Toggle via the process detail page.
@@ -196,7 +204,9 @@ Drag the top edge of the terminal panel to resize it. Use **Maximize** (⬜) to 
 
 ## 6. Log Library
 
-![Log Library — browsing logs by process](../userguide/screenshots/logs-page.png)
+[Watch: logs and monitoring — 53 seconds](https://youtu.be/TGzG2I--aw0)
+
+![Log Library — browsing logs by process](../userguide/screenshots/log-library.png)
 
 Navigate to **Log Library** to browse logs from every process in one place.
 
@@ -211,6 +221,18 @@ Navigate to **Log Library** to browse logs from every process in one place.
 - Line-level search and filter  
 - Download full log file  
 - Auto-scroll toggle  
+
+### Filter live output
+
+Open a process and enter a term such as `GET /health` in **Filter logs**. Expand **Insights** to see CPU, memory, output volume, and recurring patterns.
+
+![Live logs filtered to health requests with memory insights](../userguide/screenshots/live-logs.png)
+
+### Log Analytics
+
+Select **Log Analytics** in the sidebar to compare stdout and stderr in five-minute intervals. Use the aggregate chart, top-by-volume list, and individual process charts to understand activity across your workspace.
+
+![Log Analytics showing activity across sample services](../userguide/screenshots/log-analytics.png)
 
 ### Log storage
 

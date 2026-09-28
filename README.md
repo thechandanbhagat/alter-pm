@@ -2,6 +2,36 @@
 
 > A fast, lightweight process manager for Windows (and cross-platform). Run and manage any application — Python, Node.js, Go, Rust, .NET, PHP — from a single binary with a built-in web dashboard.
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](./LICENSE)
+[![Built with Rust](https://img.shields.io/badge/Built%20with-Rust-orange.svg)](https://www.rust-lang.org/)
+![Platforms: Windows, Linux, macOS](https://img.shields.io/badge/Platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey.svg)
+[![winget](https://img.shields.io/badge/winget-thechandanbhagat.alter-blue?logo=windows)](https://github.com/microsoft/winget-pkgs)
+
+[User guide](https://alter-pm.chandanbhagat.com.np/) · [Video demos](#watch-the-demos) · [Quick start](#quick-start) · [Installation](#installation)
+
+![Alter overview — running services, namespaces, resource usage, and log volume](./userguide/screenshots/overview.png)
+
+## Watch the demos
+
+Three short walkthroughs of the real application, with narration and background music. The videos use local sample services.
+
+<table>
+  <tr>
+    <td width="33%"><a href="https://youtu.be/F_sz2mlNNJs"><img src="./userguide/screenshots/overview.png" alt="Watch the Alter product overview" /></a></td>
+    <td width="33%"><a href="https://youtu.be/LM7kWGhMk5U"><img src="./userguide/screenshots/process-detail.png" alt="Watch the process workflow demo" /></a></td>
+    <td width="33%"><a href="https://youtu.be/TGzG2I--aw0"><img src="./userguide/screenshots/log-analytics.png" alt="Watch the logs and monitoring demo" /></a></td>
+  </tr>
+  <tr>
+    <td><a href="https://youtu.be/F_sz2mlNNJs"><strong>Product overview ↗</strong></a><br />52 seconds · Status, resources, namespaces, and logs.</td>
+    <td><a href="https://youtu.be/LM7kWGhMk5U"><strong>Launch, stop, and restart ↗</strong></a><br />55 seconds · Configure and control a background worker.</td>
+    <td><a href="https://youtu.be/TGzG2I--aw0"><strong>Logs and monitoring ↗</strong></a><br />53 seconds · Filter output and compare service activity.</td>
+  </tr>
+</table>
+
+[Follow the illustrated user guide →](https://alter-pm.chandanbhagat.com.np/#video-demos)
+
+---
+
 > [!WARNING]
 > **For Developer Use Only**
 >
@@ -9,10 +39,69 @@
 >
 > If you choose to use alter in a production or publicly exposed environment, you do so **entirely at your own risk**. No security guarantees are made for such deployments.
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](./LICENSE)
-[![Built with Rust](https://img.shields.io/badge/Built%20with-Rust-orange.svg)](https://www.rust-lang.org/)
-[![Platform: Windows](https://img.shields.io/badge/Platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey.svg)]()
-[![winget](https://img.shields.io/badge/winget-thechandanbhagat.alter-blue?logo=windows)](https://github.com/microsoft/winget-pkgs)
+## Quick Start
+
+```powershell
+# Start the daemon
+alter daemon start
+
+# Start processes
+alter start python -- -m http.server 8080
+alter start node --name api -- server.js
+alter start "go run main.go" --name backend --cwd C:\projects\api
+
+# List processes
+alter list
+
+# Stream logs
+alter logs api --follow
+
+# Open web dashboard
+alter web    # → http://127.0.0.1:2999/
+```
+
+---
+
+## Screenshots
+
+### Organize and control your processes
+
+Group related services into namespaces, inspect their status and resource usage, and start, stop, or restart them from the dashboard.
+
+![Process list showing the commerce and workers namespaces](./userguide/screenshots/processes.png)
+
+<details>
+<summary><strong>Configure a new process</strong></summary>
+
+Set the command, working directory, namespace, arguments, environment, and restart policy.
+
+![New process form with a sample worker configuration](./userguide/screenshots/start-page.png)
+
+</details>
+
+### Find the log line that matters
+
+Filter live output and expand Insights for resource history. Use Log Library for saved output and Log Analytics to compare activity.
+
+![Live logs filtered to health requests with memory insights](./userguide/screenshots/live-logs.png)
+
+<details>
+<summary><strong>Log Library and Log Analytics</strong></summary>
+
+![Log Library browsing saved output for the API process](./userguide/screenshots/log-library.png)
+
+![Log Analytics comparing stdout and stderr activity across services](./userguide/screenshots/log-analytics.png)
+
+</details>
+
+<details>
+<summary><strong>Built-in terminal and AI assistant</strong></summary>
+
+![Built-in terminal with command history](./userguide/screenshots/terminal-history.png)
+
+![AI assistant for process and log questions](./userguide/screenshots/ai-assistant.png)
+
+</details>
 
 ---
 
@@ -159,52 +248,6 @@ alter daemon start
 
 ---
 
-## Screenshots
-
-<table>
-  <tr>
-    <td align="center" width="50%">
-      <img src="./userguide/screenshots/processes.png" alt="Process list dashboard" /><br/>
-      <sub>Process list — namespace groups, status, CPU &amp; memory</sub>
-    </td>
-    <td align="center" width="50%">
-      <img src="./userguide/screenshots/terminal-history.png" alt="Built-in terminal with command history" /><br/>
-      <sub>Built-in terminal — multi-tab, split pane, persistent history</sub>
-    </td>
-  </tr>
-  <tr>
-    <td align="center" colspan="2">
-      <img src="./userguide/screenshots/ai-assistant.png" alt="AI assistant panel" style="max-width:640px" /><br/>
-      <sub>AI assistant — ask about crashes, logs, or config (Ollama, Claude, OpenAI, Copilot)</sub>
-    </td>
-  </tr>
-</table>
-
----
-
-## Quick Start
-
-```powershell
-# Start the daemon
-alter daemon start
-
-# Start processes
-alter start python -- -m http.server 8080
-alter start node --name api -- server.js
-alter start "go run main.go" --name backend --cwd C:\projects\api
-
-# List processes
-alter list
-
-# Stream logs
-alter logs api --follow
-
-# Open web dashboard
-alter web    # → http://127.0.0.1:2999/
-```
-
----
-
 ## Windows
 
 alter is built with Windows as a first-class platform:
@@ -265,7 +308,8 @@ Full documentation is in [`docs/`](./docs/):
 
 | Document | Description |
 |----------|-------------|
-| [User Guide](./docs/USER_GUIDE.md) | Complete guide — installation, dashboard, all features |
+| [Illustrated User Guide](https://alter-pm.chandanbhagat.com.np/) | Video walkthroughs, screenshots, and feature documentation |
+| [Markdown User Guide](./docs/USER_GUIDE.md) | Repository-friendly guide — installation, dashboard, all features |
 | [README](./docs/README.md) | Full project overview and setup guide |
 | [CLI Reference](./docs/CLI.md) | All commands, flags, and examples |
 | [API Reference](./docs/API.md) | Full REST API documentation |
