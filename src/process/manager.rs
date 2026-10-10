@@ -16,7 +16,7 @@ use crate::process::watcher::FileWatcher;
 use anyhow::{anyhow, Result};
 use chrono::Utc;
 use dashmap::DashMap;
-use std::collections::{HashMap, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::Arc;
 use sysinfo::{Pid, ProcessRefreshKind, ProcessesToUpdate, System};
 use tokio::sync::mpsc;
@@ -1132,23 +1132,7 @@ impl ProcessManager {
                 continue;
             }
 
-            // Refresh ALL processes so we can walk the full process tree.
-            // On Windows, non-.exe scripts are wrapped in cmd.exe /C, so proc.pid points to
-            // cmd.exe rather than the real child (node.exe, python.exe, etc.). Summing the
-            // entire subtree rooted at proc.pid gives accurate CPU + memory figures.
-            sys.refresh_processes_specifics(
-                ProcessesToUpdate::All,
-                false,
-                ProcessRefreshKind::new().with_cpu().with_memory(),
-            );
-
-            // Build parent -> [children] map for tree traversal
-            let mut children_map: HashMap<Pid, Vec<Pid>> = HashMap::new();
-            for (pid, process) in sys.processes() {
-                if let Some(parent) = process.parent() {
-                    children_map.entry(parent).or_default().push(*pid);
-                }
-            }
+            let children_map = refresh_process_tree(&mut sys);
 
             // @group BusinessLogic > Metrics : Decide whether this tick records a history sample
             let record_sample = tick % METRIC_SAMPLE_INTERVAL_TICKS == 0;
@@ -1158,6 +1142,10 @@ impl ProcessManager {
             for (id, sysinfo_pid) in &pid_map {
                 if let Some(arc) = registry.get(id) {
                     let mut proc = arc.write().await;
+                    // A stop or restart may have replaced the PID while we sampled.
+                    if proc.pid != Some(sysinfo_pid.as_u32()) {
+                        continue;
+                    }
                     if sys.process(*sysinfo_pid).is_some() {
                         // Sum CPU and memory across the entire process subtree so that
                         // shell wrappers (cmd.exe) and real child processes are both counted.
@@ -1281,6 +1269,25 @@ impl ProcessManager {
     }
 }
 
+// @group Utilities > Metrics : Refresh live processes and index their children
+fn refresh_process_tree(sys: &mut System) -> HashMap<Pid, Vec<Pid>> {
+    // Include descendants of shell wrappers (cmd.exe, npm, etc.), but remove exited
+    // processes: retaining their last CPU/RSS samples makes totals grow indefinitely.
+    sys.refresh_processes_specifics(
+        ProcessesToUpdate::All,
+        true,
+        ProcessRefreshKind::new().with_cpu().with_memory(),
+    );
+
+    let mut children_map: HashMap<Pid, Vec<Pid>> = HashMap::new();
+    for (pid, process) in sys.processes() {
+        if let Some(parent) = process.parent() {
+            children_map.entry(parent).or_default().push(*pid);
+        }
+    }
+    children_map
+}
+
 // @group Utilities > Metrics : Sum CPU% and memory bytes for a process and all its descendants
 fn sum_process_tree(
     sys: &System,
@@ -1290,7 +1297,12 @@ fn sum_process_tree(
     let mut total_cpu = 0.0f32;
     let mut total_mem = 0u64;
     let mut stack = vec![root];
+    let mut visited = HashSet::new();
     while let Some(pid) = stack.pop() {
+        // Parent PID relationships can become cyclic after PID reuse.
+        if !visited.insert(pid) {
+            continue;
+        }
         if let Some(p) = sys.process(pid) {
             total_cpu += p.cpu_usage();
             total_mem += p.memory();
@@ -1301,6 +1313,9 @@ fn sum_process_tree(
     }
     (total_cpu, total_mem)
 }
+
+#[cfg(test)]
+mod metrics_tests;
 
 // @group Utilities : Check whether a PID is still alive in the OS process table
 pub fn is_pid_alive(pid: u32) -> bool {
