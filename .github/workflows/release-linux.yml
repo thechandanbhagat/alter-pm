@@ -8,6 +8,12 @@ on:
   push:
     tags:
       - "v*"
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Existing release tag to rebuild (for example, v1.3.2)"
+        required: true
+        type: string
 
 permissions:
   contents: write
@@ -16,6 +22,7 @@ permissions:
 
 env:
   CARGO_TERM_COLOR: always
+  RELEASE_TAG: ${{ inputs.release_tag || github.ref_name }}
 
 jobs:
   # ─────────────────────────────────────────────────────────────────────────────
@@ -26,8 +33,17 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      - name: Validate release tag
+        run: |
+          if [[ ! "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([+-][0-9A-Za-z.-]+)*$ ]]; then
+            echo "::error::Expected a version tag such as v1.3.2"
+            exit 1
+          fi
+
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: refs/tags/${{ env.RELEASE_TAG }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -59,6 +75,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: refs/tags/${{ env.RELEASE_TAG }}
 
       - name: Restore web UI
         uses: actions/download-artifact@v4
@@ -93,16 +111,18 @@ jobs:
           path: target/x86_64-unknown-linux-gnu/release/alter
 
   # ─────────────────────────────────────────────────────────────────────────────
-  # Build Linux arm64 binary (cross-compiled)
+  # Build Linux arm64 binary on a native ARM runner
   # ─────────────────────────────────────────────────────────────────────────────
   build-linux-arm64:
     name: Build (Linux arm64)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04-arm
     needs: build-web-ui
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: refs/tags/${{ env.RELEASE_TAG }}
 
       - name: Restore web UI
         uses: actions/download-artifact@v4
@@ -110,10 +130,10 @@ jobs:
           name: web-ui-dist
           path: web-ui/dist/
 
-      - name: Install cross-compilation toolchain
+      - name: Install native build dependencies
         run: |
           sudo apt-get update -q
-          sudo apt-get install -y gcc-aarch64-linux-gnu
+          sudo apt-get install -y pkg-config libssl-dev
 
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
@@ -127,12 +147,11 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             target
-          key: linux-arm64-cargo-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: linux-arm64-cargo-
+          key: linux-arm64-native-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: linux-arm64-native-cargo-
 
       - name: Build release binary
         env:
-          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
           GH_OAUTH_CLIENT_ID: ${{ secrets.GH_OAUTH_CLIENT_ID }}
         run: cargo build --release --target aarch64-unknown-linux-gnu
 
@@ -156,12 +175,13 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: refs/tags/${{ env.RELEASE_TAG }}
 
       - name: Extract version from tag
         id: version
         run: |
-          TAG="${{ github.ref_name }}"
-          VERSION="${TAG#v}"
+          VERSION="${RELEASE_TAG#v}"
           echo "VERSION=$VERSION" >> "$GITHUB_OUTPUT"
 
       - name: Download amd64 binary
@@ -199,6 +219,7 @@ jobs:
       - name: Attach .deb files to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ env.RELEASE_TAG }}
           files: "*.deb"
 
   # ─────────────────────────────────────────────────────────────────────────────
@@ -213,6 +234,7 @@ jobs:
       - name: Checkout main repo
         uses: actions/checkout@v4
         with:
+          ref: refs/tags/${{ env.RELEASE_TAG }}
           fetch-depth: 0
 
       - name: Checkout or create gh-pages branch
@@ -246,6 +268,11 @@ jobs:
 
       - name: Copy .deb files into pool
         run: cp new-debs/*.deb gh-pages/apt/pool/main/
+
+      - name: Install APT repository tools
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y apt-utils dpkg-dev
 
       - name: Generate Packages files
         run: |
