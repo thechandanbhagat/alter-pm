@@ -3,7 +3,7 @@
 ; https://github.com/thechandanbhagat/alter-pm
 
 #define AppName      "alter"
-#define AppVersion   "0.1.0"
+#define AppVersion   "1.4.0"
 #define AppPublisher "thechandanbhagat"
 #define AppURL       "https://github.com/thechandanbhagat/alter-pm"
 #define AppExeName   "alter.exe"
