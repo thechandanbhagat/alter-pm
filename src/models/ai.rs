@@ -2,11 +2,12 @@
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
 // @group Types > AiSettings : Persisted AI configuration — supports multiple providers
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AiSettings {
-    /// Active provider: "ollama" | "github" | "claude" | "openai"
+    /// API provider, installed CLI adapter, or Apple Foundation Models.
     #[serde(default = "default_provider")]
     pub provider: String,
 
@@ -39,6 +40,10 @@ pub struct AiSettings {
     // @group Types > AiSettings > Ollama : Local Ollama instance
     #[serde(default = "default_ollama_base")]
     pub ollama_base_url: String,
+
+    /// Optional absolute executable paths, keyed by local CLI provider ID.
+    #[serde(default)]
+    pub local_cli_paths: HashMap<String, String>,
 }
 
 fn default_provider()    -> String { "ollama".to_string() }
@@ -59,6 +64,7 @@ impl Default for AiSettings {
             openai_key:      String::new(),
             openai_base_url: default_openai_base(),
             ollama_base_url: default_ollama_base(),
+            local_cli_paths: HashMap::new(),
         }
     }
 }

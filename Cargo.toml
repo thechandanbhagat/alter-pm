@@ -51,6 +51,7 @@ copilot-client = "0.1.0"
 argon2 = "0.5"
 rand   = "0.8"
 portable-pty = "0.8"
+tempfile = "3"
 console-subscriber = { version = "0.4", optional = true }
 tauri              = { version = "2", features = ["tray-icon"], optional = true }
 
@@ -70,8 +71,6 @@ windows = { version = "0.58", features = [
     "Win32_Foundation",
 ] }
 
-[dev-dependencies]
-tempfile = "3"
 
 [profile.release]
 opt-level     = 3

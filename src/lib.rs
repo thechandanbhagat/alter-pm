@@ -1,5 +1,6 @@
 // @group Configuration : Library crate root — exposes all modules and shared CLI entry logic
 
+pub mod ai;
 pub mod api;
 pub mod cli;
 pub mod client;

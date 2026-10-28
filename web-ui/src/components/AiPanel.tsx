@@ -1,10 +1,11 @@
 // @group BusinessLogic : AI assistant panel — slide-in chat with markdown rendering
 
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { X, Bot, Send, Trash2, Loader, RefreshCw, ChevronDown, ChevronUp } from 'lucide-react'
 import { api } from '@/lib/api'
-import type { AiChatMessage, AiModelInfo } from '@/lib/api'
+import type { AiChatMessage, AiLocalProviderInfo, AiModelInfo } from '@/lib/api'
+import { AI_PROVIDERS, AI_PROVIDER_LABELS, asAiProvider, defaultAiModel, isCliProvider, isLocalAiProvider, localProviderDisclosure, localProviderStatus, type AiProvider } from '@/lib/aiProviders'
 
 // @group Configuration > AiPanel : Starter prompt suggestions
 const STARTER_PROMPTS_GENERIC = [
@@ -19,16 +20,6 @@ const STARTER_PROMPTS_PROCESS = [
   'Is the config for this process correct?',
   'How do I restart this process automatically?',
 ]
-
-// @group Configuration > AiPanel : Provider labels for display
-const PROVIDER_LABELS: Record<string, string> = {
-  ollama: 'Ollama',
-  copilot: 'GitHub Copilot',
-  github: 'GitHub Models',
-  claude: 'Claude',
-  openai: 'OpenAI',
-}
-const VISIBLE_PROVIDERS = ['ollama', 'copilot', 'claude', 'openai']
 
 // @group BusinessLogic > AiPanel : Props
 interface AiPanelProps {
@@ -162,89 +153,157 @@ export function AiPanel({ open, processId, processName, onClose }: AiPanelProps)
   const [streaming, setStreaming] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const abortRef = useRef<AbortController | null>(null)
+  const activeRequestRef = useRef(0)
   const bottomRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const [aiModel, setAiModel] = useState<string | undefined>(undefined)
-  const [aiProvider, setAiProvider] = useState<string | undefined>(undefined)
+  const [aiProvider, setAiProvider] = useState<AiProvider | undefined>(undefined)
   const [models, setModels] = useState<AiModelInfo[]>([])
   const [modelsLoading, setModelsLoading] = useState(false)
   const [configOpen, setConfigOpen] = useState(false)
+  const [settingsLoaded, setSettingsLoaded] = useState(false)
+  const [configSaving, setConfigSaving] = useState(false)
+  const [localProviders, setLocalProviders] = useState<AiLocalProviderInfo[]>([])
+  const [localLoading, setLocalLoading] = useState(true)
+  const [localError, setLocalError] = useState<string | null>(null)
+  const [modelDraft, setModelDraft] = useState('')
+  const providerRef = useRef<AiProvider | undefined>(undefined)
+  const modelRequestRef = useRef(0)
+  const selectedLocal = localProviders.find(item => item.id === aiProvider)
+  const modelDirty = isCliProvider(aiProvider) && (modelDraft.trim() || 'default') !== aiModel
+  const canChat = settingsLoaded && !configSaving && !modelDirty &&
+    (!isLocalAiProvider(aiProvider) || (!localLoading && !!selectedLocal?.available))
+
+  const cancelRequest = useCallback(() => {
+    activeRequestRef.current += 1
+    abortRef.current?.abort()
+    abortRef.current = null
+    setStreaming(false)
+  }, [])
+
+  const closePanel = useCallback(() => {
+    cancelRequest()
+    onClose()
+  }, [cancelRequest, onClose])
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
 
-  // Load current model/provider and focus input each time the panel opens
+  // Read-only discovery: opening the panel never changes the configured provider.
   useEffect(() => {
     if (!open) return
+    let cancelled = false
     api.aiGetSettings().then(s => {
-      setAiModel(s.model)
-      setAiProvider(s.provider)
-    }).catch(() => {})
-    setTimeout(() => inputRef.current?.focus(), 80)
-  }, [open])
+      if (cancelled) return
+      const selected = asAiProvider(s.provider)
+      providerRef.current = selected
+      setAiModel(s.model || defaultAiModel(selected))
+      setModelDraft(s.model === 'default' ? '' : s.model)
+      setAiProvider(selected)
+      setModels([])
+      setSettingsLoaded(true)
+    }).catch(error => { if (!cancelled) setError((error as Error).message || 'Unable to load AI settings.') })
+    api.aiGetLocalProviders().then(data => {
+      if (!cancelled) { setLocalProviders(data.providers); setLocalError(null) }
+    }).catch(error => {
+      if (!cancelled) { setLocalProviders([]); setLocalError((error as Error).message || 'Unable to check installed providers.') }
+    }).finally(() => { if (!cancelled) setLocalLoading(false) })
+    const timer = setTimeout(() => inputRef.current?.focus(), 80)
+    return () => {
+      cancelled = true
+      clearTimeout(timer)
+      modelRequestRef.current += 1
+      cancelRequest()
+    }
+  }, [open, cancelRequest])
 
-  async function loadModels(provider?: string) {
-    const prov = provider ?? aiProvider
-    if (!prov) return
+  async function loadModels() {
+    const target = providerRef.current
+    if (!target) return
+    const request = ++modelRequestRef.current
     setModelsLoading(true)
     try {
-      await api.aiSaveSettings({ provider: prov })
-      const { models: list } = await api.aiGetModels()
+      const { models: list } = await api.aiGetModels(target)
+      if (request === modelRequestRef.current && providerRef.current === target) setModels(list)
+    } catch (error) {
+      if (request === modelRequestRef.current) setError((error as Error).message || 'Unable to load models.')
+    } finally {
+      if (request === modelRequestRef.current) setModelsLoading(false)
+    }
+  }
+
+  async function handleProviderChange(prov: AiProvider) {
+    if (streaming || configSaving) return
+    if (isLocalAiProvider(prov) && !localProviders.find(item => item.id === prov)?.available) {
+      setError('This provider is unavailable on the daemon host. Check Settings → AI → Installed providers.')
+      return
+    }
+    ++modelRequestRef.current
+    setConfigSaving(true)
+    setError(null)
+    try {
+      const { models: list } = await api.aiGetModels(prov)
+      const next = defaultAiModel(prov) || list[0]?.id
+      if (!next) throw new Error('No models are available for this provider. Configure it in Settings → AI first.')
+      await api.aiSaveSettings({ provider: prov, model: next })
+      providerRef.current = prov
+      setAiProvider(prov)
+      setAiModel(next)
+      setModelDraft(next === 'default' ? '' : next)
       setModels(list)
-      if (list.length > 0) {
-        const keep = list.find(m => m.id === aiModel)
-        const next = keep ? aiModel : list[0].id
-        setAiModel(next)
-        await api.aiSaveSettings({ model: next })
-      }
-    } catch { /* ignore */ } finally {
+    } catch (error) {
+      setError((error as Error).message || 'Unable to change AI provider.')
+    } finally {
+      setConfigSaving(false)
       setModelsLoading(false)
     }
   }
 
-  async function handleProviderChange(prov: string) {
-    setAiProvider(prov)
-    setModels([])
-    setAiModel(undefined)
-    await loadModels(prov)
-  }
-
   async function handleModelChange(modelId: string) {
-    setAiModel(modelId)
-    await api.aiSaveSettings({ model: modelId }).catch(() => {})
+    if (!aiProvider || streaming || configSaving) return
+    setConfigSaving(true)
+    setError(null)
+    const next = modelId.trim() || defaultAiModel(aiProvider)
+    try {
+      await api.aiSaveSettings({ provider: aiProvider, model: next })
+      setAiModel(next)
+      setModelDraft(next === 'default' ? '' : next)
+    } catch (error) {
+      setError((error as Error).message || 'Unable to change AI model.')
+    } finally {
+      setConfigSaving(false)
+    }
   }
 
   useEffect(() => {
     if (!open) return
-    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') closePanel() }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  }, [open, onClose])
+  }, [open, closePanel])
 
   function clearChat() {
-    if (streaming) { abortRef.current?.abort(); setStreaming(false) }
+    cancelRequest()
     setMessages([])
     setError(null)
   }
 
-  async function sendMessage() {
-    const text = input.trim()
-    if (!text || streaming) return
+  function submitMessage(text: string, history: AiChatMessage[]) {
+    if (!text || streaming || !canChat || !open) return
+    const request = ++activeRequestRef.current
     setInput('')
     setError(null)
 
     const userMsg: AiChatMessage = { role: 'user', content: text }
-    setMessages(prev => [...prev, userMsg])
     const assistantMsg: AiChatMessage = { role: 'assistant', content: '' }
-    setMessages(prev => [...prev, assistantMsg])
+    setMessages([...history, userMsg, assistantMsg])
     setStreaming(true)
-
-    const history = messages.concat(userMsg)
 
     const abort = api.aiChat(
       { message: text, process_id: processId ?? undefined, history, model: aiModel, provider: aiProvider },
       (delta) => {
+        if (request !== activeRequestRef.current) return
         setMessages(prev => {
           const copy = [...prev]
           const last = copy[copy.length - 1]
@@ -252,10 +311,23 @@ export function AiPanel({ open, processId, processName, onClose }: AiPanelProps)
           return copy
         })
       },
-      () => { setStreaming(false) },
-      (err) => { setError(err); setStreaming(false) },
+      () => {
+        if (request !== activeRequestRef.current) return
+        abortRef.current = null
+        setStreaming(false)
+      },
+      (err) => {
+        if (request !== activeRequestRef.current) return
+        abortRef.current = null
+        setError(err)
+        setStreaming(false)
+      },
     )
     abortRef.current = abort
+  }
+
+  function sendMessage() {
+    submitMessage(input.trim(), messages)
   }
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
@@ -263,36 +335,14 @@ export function AiPanel({ open, processId, processName, onClose }: AiPanelProps)
   }
 
   function sendStarter(prompt: string) {
-    setInput(prompt)
-    // Small delay so the state flushes before sendMessage reads it
-    setTimeout(() => {
-      setInput('')
-      setError(null)
-      const userMsg: AiChatMessage = { role: 'user', content: prompt }
-      setMessages([userMsg, { role: 'assistant', content: '' }])
-      setStreaming(true)
-      const abort = api.aiChat(
-        { message: prompt, process_id: processId ?? undefined, history: [userMsg], model: aiModel, provider: aiProvider },
-        (delta) => {
-          setMessages(prev => {
-            const copy = [...prev]
-            const last = copy[copy.length - 1]
-            if (last?.role === 'assistant') copy[copy.length - 1] = { ...last, content: last.content + delta }
-            return copy
-          })
-        },
-        () => { setStreaming(false) },
-        (err) => { setError(err); setStreaming(false) },
-      )
-      abortRef.current = abort
-    }, 0)
+    submitMessage(prompt, [])
   }
 
-  const providerLabel = aiProvider ? (PROVIDER_LABELS[aiProvider] ?? aiProvider) : null
+  const providerLabel = aiProvider ? (AI_PROVIDER_LABELS[aiProvider] ?? aiProvider) : null
 
   const panel = (
     <>
-      {open && <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 199 }} />}
+      {open && <div onClick={closePanel} style={{ position: 'fixed', inset: 0, zIndex: 199 }} />}
 
       <div style={{
         position: 'fixed', top: 0, right: 0, width: panelWidth, height: 'calc(100vh - 22px)', zIndex: 200,
@@ -325,7 +375,7 @@ export function AiPanel({ open, processId, processName, onClose }: AiPanelProps)
             onMouseLeave={e => { e.currentTarget.style.color = 'var(--color-muted-foreground)' }}>
             <Trash2 size={13} />
           </button>
-          <button title="Close" onClick={onClose} style={iconBtn}
+          <button title="Close" onClick={closePanel} style={iconBtn}
             onMouseEnter={e => { e.currentTarget.style.color = 'var(--color-foreground)' }}
             onMouseLeave={e => { e.currentTarget.style.color = 'var(--color-muted-foreground)' }}>
             <X size={14} />
@@ -339,30 +389,46 @@ export function AiPanel({ open, processId, processName, onClose }: AiPanelProps)
               <label style={{ fontSize: 10, color: 'var(--color-muted-foreground)', width: 48, flexShrink: 0 }}>Provider</label>
               <select
                 value={aiProvider ?? ''}
-                onChange={e => handleProviderChange(e.target.value)}
+                onChange={e => void handleProviderChange(asAiProvider(e.target.value))}
+                aria-label="Chat AI provider"
+                disabled={!settingsLoaded || configSaving || streaming}
                 style={{ flex: 1, fontSize: 11, padding: '3px 6px', borderRadius: 4, border: '1px solid var(--color-border)', background: 'var(--color-background)', color: 'var(--color-foreground)', cursor: 'pointer' }}
               >
                 {!aiProvider && <option value="">— select —</option>}
-                {VISIBLE_PROVIDERS.map(p => (
-                  <option key={p} value={p}>{PROVIDER_LABELS[p]}</option>
+                {AI_PROVIDERS.map(p => (
+                  <option key={p} value={p} disabled={isLocalAiProvider(p) && (localLoading || !localProviders.find(item => item.id === p)?.available)}>
+                    {AI_PROVIDER_LABELS[p]}{isLocalAiProvider(p) ? ` — ${localProviderStatus(localProviders.find(item => item.id === p), localLoading)}` : ''}
+                  </option>
                 ))}
               </select>
             </div>
             <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
               <label style={{ fontSize: 10, color: 'var(--color-muted-foreground)', width: 48, flexShrink: 0 }}>Model</label>
-              <select
+              {isCliProvider(aiProvider) ? <>
+                <input
+                  aria-label="Chat CLI model ID"
+                  value={modelDraft}
+                  onChange={event => setModelDraft(event.target.value)}
+                  placeholder="CLI default"
+                  disabled={configSaving || streaming}
+                  style={{ minWidth: 0, flex: 1, width: 100, fontSize: 11, padding: '3px 6px', borderRadius: 4, border: '1px solid var(--color-border)', background: 'var(--color-background)', color: 'var(--color-foreground)' }}
+                />
+                <button onClick={() => void handleModelChange(modelDraft)} disabled={!modelDirty || configSaving || streaming} style={{ ...iconBtn, width: 'auto', padding: '0 6px', fontSize: 11 }}>Save model</button>
+              </> : <select
+                aria-label="Chat AI model"
                 value={aiModel ?? ''}
                 onChange={e => handleModelChange(e.target.value)}
-                disabled={modelsLoading || models.length === 0}
+                disabled={modelsLoading || models.length === 0 || configSaving || streaming}
                 style={{ flex: 1, fontSize: 11, padding: '3px 6px', borderRadius: 4, border: '1px solid var(--color-border)', background: 'var(--color-background)', color: modelsLoading ? 'var(--color-muted-foreground)' : 'var(--color-foreground)', cursor: models.length > 0 ? 'pointer' : 'default' }}
               >
                 {modelsLoading && <option value="">Loading…</option>}
                 {!modelsLoading && models.length === 0 && <option value="">{aiModel || '—'}</option>}
+                {aiModel && models.length > 0 && !models.some(model => model.id === aiModel) && <option value={aiModel}>{aiModel}</option>}
                 {models.map(m => (
                   <option key={m.id} value={m.id}>{m.label}{m.publisher ? ` (${m.publisher})` : ''}</option>
                 ))}
-              </select>
-              <button title="Refresh models" onClick={() => loadModels()} disabled={modelsLoading} style={{ ...iconBtn, flexShrink: 0 }}
+              </select>}
+              <button title="Refresh models" onClick={() => void loadModels()} disabled={modelsLoading || configSaving || streaming} style={{ ...iconBtn, flexShrink: 0 }}
                 onMouseEnter={e => { e.currentTarget.style.color = 'var(--color-foreground)' }}
                 onMouseLeave={e => { e.currentTarget.style.color = 'var(--color-muted-foreground)' }}>
                 <RefreshCw size={11} style={modelsLoading ? { animation: 'spin 1s linear infinite' } : {}} />
@@ -370,6 +436,15 @@ export function AiPanel({ open, processId, processName, onClose }: AiPanelProps)
             </div>
           </div>
         )}
+
+        {isLocalAiProvider(aiProvider) && <div style={{ padding: '8px 14px', borderBottom: '1px solid var(--color-border)', fontSize: 11, lineHeight: 1.5 }}>
+          <p style={{ color: selectedLocal?.available ? 'var(--color-status-running)' : 'var(--color-muted-foreground)' }}>
+            <strong>{localProviderStatus(selectedLocal, localLoading)}</strong> — {selectedLocal?.detail || localError || 'Check Settings → AI → Installed providers on the daemon host.'}
+          </p>
+          <p style={{ color: 'var(--color-muted-foreground)', marginTop: 4 }}>{localProviderDisclosure(aiProvider)}</p>
+          {!selectedLocal?.available && <a href="/settings/ai" style={{ color: 'var(--color-primary)' }}>Configure installed providers</a>}
+        </div>}
+        {configOpen && localError && !isLocalAiProvider(aiProvider) && <p role="alert" style={{ fontSize: 11, padding: '0 14px 8px', color: 'var(--color-destructive)' }}>{localError}</p>}
 
         {/* Messages */}
         <div style={{ flex: 1, overflowY: 'auto', padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -386,7 +461,7 @@ export function AiPanel({ open, processId, processName, onClose }: AiPanelProps)
               )}
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6, width: '100%', marginTop: 4 }}>
                 {(processName ? STARTER_PROMPTS_PROCESS : STARTER_PROMPTS_GENERIC).map(p => (
-                  <button key={p} onClick={() => sendStarter(p)} style={{
+                  <button key={p} onClick={() => sendStarter(p)} disabled={!canChat || streaming} style={{
                     width: '100%', textAlign: 'left', padding: '7px 11px',
                     fontSize: 11, lineHeight: 1.4, cursor: 'pointer',
                     background: 'var(--color-secondary)', color: 'var(--color-foreground)',
@@ -425,7 +500,7 @@ export function AiPanel({ open, processId, processName, onClose }: AiPanelProps)
           ))}
 
           {error && (
-            <div style={{
+            <div role="alert" style={{
               fontSize: 11, color: 'var(--color-destructive)', padding: '8px 10px',
               background: 'color-mix(in srgb, var(--color-destructive) 10%, transparent)',
               borderRadius: 6, border: '1px solid color-mix(in srgb, var(--color-destructive) 30%, transparent)',
@@ -445,7 +520,7 @@ export function AiPanel({ open, processId, processName, onClose }: AiPanelProps)
             onKeyDown={handleKeyDown}
             placeholder="Ask anything… (Enter to send)"
             rows={1}
-            disabled={streaming}
+            disabled={streaming || !canChat}
             style={{
               flex: 1, resize: 'none', padding: '7px 10px', fontSize: 12,
               borderRadius: 6, border: '1px solid var(--color-border)',
@@ -461,12 +536,12 @@ export function AiPanel({ open, processId, processName, onClose }: AiPanelProps)
           />
           <button
             onClick={sendMessage}
-            disabled={!input.trim() || streaming}
+            disabled={!input.trim() || streaming || !canChat}
             title="Send (Enter)"
             style={{
               width: 32, height: 32, flexShrink: 0, borderRadius: 6, border: 'none', cursor: 'pointer',
-              background: (!input.trim() || streaming) ? 'var(--color-secondary)' : 'var(--color-primary)',
-              color: (!input.trim() || streaming) ? 'var(--color-muted-foreground)' : '#fff',
+              background: (!input.trim() || streaming || !canChat) ? 'var(--color-secondary)' : 'var(--color-primary)',
+              color: (!input.trim() || streaming || !canChat) ? 'var(--color-muted-foreground)' : '#fff',
               display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'background 0.15s',
             }}
           >
