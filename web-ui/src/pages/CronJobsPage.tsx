@@ -170,7 +170,7 @@ export default function CronJobsPage({ processes, reload, settings }: Props) {
                           title="Namespace notifications"
                           style={{ padding: '2px 5px', background: 'transparent', border: '1px solid var(--color-border)', borderRadius: 4, cursor: 'pointer', display: 'flex', alignItems: 'center' }}
                         >
-                          <Bell size={11} style={{ color: '#a78bfa' }} />
+                          <Bell size={11} style={{ color: 'var(--color-notification)' }} />
                         </button>
                       </span>
                     </div>
@@ -281,12 +281,12 @@ function CronJobRow({ p, reload, confirmDelete, onConfirm, onDanger, onOpenDetai
       <Td>
         <div style={{ display: 'flex', gap: 3, flexWrap: 'nowrap' }}>
           {isActive
-            ? <ActionBtn label="Stop" icon={Square} onClick={doStop} color="#f87171" />
-            : <ActionBtn label="Run Now" icon={Play} onClick={doRunNow} color="#4ade80" />
+            ? <ActionBtn label="Stop" icon={Square} onClick={doStop} color="var(--color-destructive)" />
+            : <ActionBtn label="Run Now" icon={Play} onClick={doRunNow} color="var(--color-success)" />
           }
-          <ActionBtn label="Logs"   icon={ScrollText} onClick={onOpenDetail} color="#60a5fa" />
-          <ActionBtn label="Edit"   icon={Pencil}     onClick={onEdit}       color="#34d399" />
-          <ActionBtn label="Notify" icon={Bell}       onClick={onOpenNotif}  color="#a78bfa"
+          <ActionBtn label="Logs"   icon={ScrollText} onClick={onOpenDetail} color="var(--color-info)" />
+          <ActionBtn label="Edit"   icon={Pencil}     onClick={onEdit}       color="var(--color-success)" />
+          <ActionBtn label="Notify" icon={Bell}       onClick={onOpenNotif}  color="var(--color-notification)"
             badge={hasNotify ? '●' : undefined} />
           <ActionBtn label="Delete" icon={Trash2}     onClick={doDelete}     danger />
         </div>

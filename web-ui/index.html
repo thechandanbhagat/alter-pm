@@ -4,6 +4,16 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/alter-mark.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- Apply the cached appearance before CSS paints; the daemon remains authoritative. -->
+    <script>
+      try {
+        const theme = localStorage.getItem('alter_theme_' + (localStorage.getItem('alter_active_server') || 'local'))
+        const dark = theme === 'system' ? matchMedia('(prefers-color-scheme: dark)').matches : theme !== 'light'
+        document.documentElement.dataset.theme = dark ? 'dark' : 'light'
+        document.documentElement.classList.toggle('dark', dark)
+        document.documentElement.style.colorScheme = dark ? 'dark' : 'light'
+      } catch { /* Default to dark when browser storage is unavailable. */ }
+    </script>
     <title>alter — process manager</title>
   </head>
   <body>

@@ -63,7 +63,7 @@ function MarkdownBlock({ text }: { text: string }) {
       if (m.index > last) parts.push(raw.slice(last, m.index))
       const token = m[0]
       if (token.startsWith('`')) {
-        parts.push(<code key={m.index} style={{ fontFamily: 'monospace', fontSize: '0.9em', background: 'rgba(255,255,255,0.08)', padding: '1px 4px', borderRadius: 3 }}>{token.slice(1, -1)}</code>)
+        parts.push(<code key={m.index} style={{ fontFamily: 'monospace', fontSize: '0.9em', background: 'var(--color-muted)', padding: '1px 4px', borderRadius: 3 }}>{token.slice(1, -1)}</code>)
       } else if (token.startsWith('**') || token.startsWith('__')) {
         parts.push(<strong key={m.index} style={{ fontWeight: 600 }}>{token.slice(2, -2)}</strong>)
       } else {
@@ -133,7 +133,7 @@ function MarkdownBlock({ text }: { text: string }) {
       i++ // consume closing ```
       elements.push(
         <pre key={i} style={{
-          background: 'rgba(0,0,0,0.3)', borderRadius: 5, padding: '8px 10px',
+          background: 'var(--color-background)', borderRadius: 5, padding: '8px 10px',
           fontSize: 11, fontFamily: 'monospace', overflowX: 'auto',
           margin: '4px 0', whiteSpace: 'pre-wrap', wordBreak: 'break-all',
         }}>{codeLines.join('\n')}</pre>

@@ -17,14 +17,14 @@ interface Props {
 
 // @group Utilities > EnvColor : Color coding for env file types
 function envFileColor(name: string): string {
-  if (name === '.env') return '#4ade80'
-  if (name === '.env.example') return '#fbbf24'
-  if (name === '.env.local') return '#60a5fa'
-  if (name === '.env.production' || name === '.env.prod') return '#f87171'
-  if (name === '.env.development' || name === '.env.dev') return '#34d399'
-  if (name === '.env.test') return '#a78bfa'
-  if (name === '.env.staging') return '#fb923c'
-  return '#94a3b8'
+  if (name === '.env') return 'var(--color-success)'
+  if (name === '.env.example') return 'var(--color-warning)'
+  if (name === '.env.local') return 'var(--color-info)'
+  if (name === '.env.production' || name === '.env.prod') return 'var(--color-destructive)'
+  if (name === '.env.development' || name === '.env.dev') return 'var(--color-success)'
+  if (name === '.env.test') return 'var(--color-notification)'
+  if (name === '.env.staging') return 'var(--color-warning)'
+  return 'var(--color-muted-foreground)'
 }
 
 function envFileBg(name: string): string {
@@ -310,6 +310,6 @@ function primaryBtnStyle(color: string): React.CSSProperties {
   return {
     padding: '4px 10px', fontSize: 11, fontWeight: 600, cursor: 'pointer',
     background: color, border: `1px solid ${color}`,
-    borderRadius: 5, color: '#000',
+    borderRadius: 5, color: 'var(--color-status-foreground)',
   }
 }

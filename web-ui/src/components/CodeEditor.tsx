@@ -49,7 +49,7 @@ export function CodeEditor({ value, onChange, language, height = 300, readOnly =
       border: '1px solid var(--color-border)',
       borderRadius: 6,
       overflow: 'hidden',
-      background: '#1a1a1a',
+      background: 'var(--color-editor)',
       height,
     }}>
       {/* Header bar */}
@@ -58,7 +58,7 @@ export function CodeEditor({ value, onChange, language, height = 300, readOnly =
         alignItems: 'center',
         justifyContent: 'space-between',
         padding: '5px 12px',
-        background: '#111',
+        background: 'var(--color-editor-gutter)',
         borderBottom: '1px solid var(--color-border)',
         flexShrink: 0,
       }}>
@@ -77,7 +77,7 @@ export function CodeEditor({ value, onChange, language, height = 300, readOnly =
           ref={gutterRef}
           style={{
             width: 44,
-            background: '#111',
+            background: 'var(--color-editor-gutter)',
             borderRight: '1px solid var(--color-border)',
             overflowY: 'hidden',
             flexShrink: 0,
@@ -87,7 +87,7 @@ export function CodeEditor({ value, onChange, language, height = 300, readOnly =
             lineHeight: '20px',
             fontFamily: 'monospace',
             fontSize: 12,
-            color: '#555',
+            color: 'var(--color-muted-foreground)',
             textAlign: 'right',
           }}
         >
@@ -115,8 +115,8 @@ export function CodeEditor({ value, onChange, language, height = 300, readOnly =
             border: 'none',
             outline: 'none',
             resize: 'none',
-            background: '#1a1a1a',
-            color: '#e4e4e7',
+            background: 'var(--color-editor)',
+            color: 'var(--color-foreground)',
             fontFamily: 'Consolas, "Cascadia Code", "Fira Code", monospace',
             fontSize: 13,
             lineHeight: '20px',

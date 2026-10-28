@@ -291,7 +291,7 @@ export default function ProcessesPage({ processes, reload, settings, namespaceFi
                           {!allInactive && <NsBtn label="■ Stop"   onClick={() => stopAll(ns)} danger />}
                           <button onClick={() => setNotifNs(ns)} title="Namespace notifications"
                             style={{ padding: '2px 5px', background: 'transparent', border: '1px solid var(--color-border)', borderRadius: 4, cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
-                            <Bell size={11} style={{ color: '#a78bfa' }} />
+                            <Bell size={11} style={{ color: 'var(--color-notification)' }} />
                           </button>
                         </span>
                       </div>
@@ -359,7 +359,7 @@ export default function ProcessesPage({ processes, reload, settings, namespaceFi
                               {!allInactive && <NsBtn label="■ Stop All"   onClick={() => stopAll(ns)} danger />}
                               <button onClick={() => setNotifNs(ns)} title="Namespace notifications"
                                 style={{ padding: '2px 5px', background: 'transparent', border: '1px solid var(--color-border)', borderRadius: 4, cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
-                                <Bell size={11} style={{ color: '#a78bfa' }} />
+                                <Bell size={11} style={{ color: 'var(--color-notification)' }} />
                               </button>
                             </span>
                           </div>
@@ -438,7 +438,7 @@ function ProcessCard({ p, reload, confirmDelete, onConfirm, onDanger, onOpenDeta
       style={{
         cursor: 'grab',
         background: isDisabled ? 'color-mix(in srgb, var(--color-muted-foreground) 5%, var(--color-card))' : 'var(--color-card)',
-        border: `1px solid ${hovered ? (isDisabled ? 'var(--color-muted-foreground)' : color + '60') : 'var(--color-border)'}`,
+        border: `1px solid ${hovered ? (isDisabled ? 'var(--color-muted-foreground)' : `color-mix(in srgb, ${color} 38%, transparent)`) : 'var(--color-border)'}`,
         borderLeft: `4px solid ${isDisabled ? 'var(--color-muted-foreground)' : color}`,
         borderRadius: 8,
         padding: '12px 14px',
@@ -446,7 +446,7 @@ function ProcessCard({ p, reload, confirmDelete, onConfirm, onDanger, onOpenDeta
         flexDirection: 'column',
         gap: 8,
         transition: 'border-color 0.15s, box-shadow 0.15s',
-        boxShadow: hovered && !isDisabled ? `0 2px 12px ${color}18` : 'none',
+        boxShadow: hovered && !isDisabled ? `0 2px 12px color-mix(in srgb, ${color} 9%, transparent)` : 'none',
         opacity: isDisabled ? 0.7 : 1,
       }}
     >
@@ -467,7 +467,7 @@ function ProcessCard({ p, reload, confirmDelete, onConfirm, onDanger, onOpenDeta
         <span style={{
           fontSize: 10, fontWeight: 700, whiteSpace: 'nowrap', flexShrink: 0,
           padding: '2px 8px', borderRadius: 10,
-          background: color + '22', color,
+          background: `color-mix(in srgb, ${color} 13%, transparent)`, color,
         }}>● {p.status}</span>
       </div>
 
@@ -481,22 +481,22 @@ function ProcessCard({ p, reload, confirmDelete, onConfirm, onDanger, onOpenDeta
             title={p.cron}>cron</span>
         )}
         {p.watch && !p.cron && (
-          <span style={{ fontSize: 10, padding: '1px 6px', borderRadius: 8, background: 'rgba(250,204,21,0.15)', color: '#fbbf24' }}>watch</span>
+          <span style={{ fontSize: 10, padding: '1px 6px', borderRadius: 8, background: 'rgba(250,204,21,0.15)', color: 'var(--color-warning)' }}>watch</span>
         )}
       </div>
 
       {/* CPU + Memory mini bars */}
       {isActive && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-          <MiniBar label="CPU" value={cpuPct} color="#60a5fa" text={formatCpu(p.cpu_percent ?? 0)} />
-          <MiniBar label="Mem" value={memPct} color="#a78bfa" text={formatBytes(p.memory_bytes ?? 0)} />
+          <MiniBar label="CPU" value={cpuPct} color="var(--color-info)" text={formatCpu(p.cpu_percent ?? 0)} />
+          <MiniBar label="Mem" value={memPct} color="var(--color-notification)" text={formatBytes(p.memory_bytes ?? 0)} />
         </div>
       )}
 
       {/* Uptime + restarts + PID */}
       <div style={{ display: 'flex', gap: 10, fontSize: 11, color: 'var(--color-muted-foreground)', flexWrap: 'wrap' }}>
         {p.uptime_secs != null && <span>⏱ {formatUptime(p.uptime_secs)}</span>}
-        <span style={{ color: p.restart_count > 5 ? '#f87171' : undefined }}>↺ {p.restart_count}</span>
+        <span style={{ color: p.restart_count > 5 ? 'var(--color-destructive)' : undefined }}>↺ {p.restart_count}</span>
         {p.pid != null && <span>PID {p.pid}</span>}
       </div>
 
@@ -519,13 +519,13 @@ function ProcessCard({ p, reload, confirmDelete, onConfirm, onDanger, onOpenDeta
       {/* Action buttons — primary always visible, secondary split by visibleRowActions setting */}
       {(() => {
         const secondary = [
-          { key: 'logs',     label: 'Logs',     icon: ScrollText,    onClick: () => navigate(`/processes/${p.id}`),                   color: '#60a5fa' },
-          { key: 'edit',     label: 'Edit',     icon: Pencil,        onClick: () => onEdit(p),                                        color: '#34d399' },
-          { key: 'terminal', label: 'Terminal', icon: SquareTerminal, onClick: () => p.cwd && onOpenTerminal(p.cwd, p.name),           color: '#22d3ee', disabled: !p.cwd },
-          { key: 'env',      label: '.env',     icon: FileKey,       onClick: () => onOpenEnv(p),                                     color: '#fbbf24' },
-          { key: 'enable',   label: isDisabled ? 'Enable' : 'Disable', icon: isDisabled ? Power : PowerOff, onClick: doToggleEnabled, color: isDisabled ? '#4ade80' : 'var(--color-muted-foreground)' },
-          { key: 'notify',   label: 'Notify',   icon: Bell,          onClick: () => onOpenNotif(p),                                   color: '#a78bfa', badge: hasNotify ? '●' : undefined },
-          { key: 'clone',    label: 'Clone',    icon: Copy,          onClick: doClone,                                                color: '#94a3b8' },
+          { key: 'logs',     label: 'Logs',     icon: ScrollText,    onClick: () => navigate(`/processes/${p.id}`),                   color: 'var(--color-info)' },
+          { key: 'edit',     label: 'Edit',     icon: Pencil,        onClick: () => onEdit(p),                                        color: 'var(--color-success)' },
+          { key: 'terminal', label: 'Terminal', icon: SquareTerminal, onClick: () => p.cwd && onOpenTerminal(p.cwd, p.name),           color: 'var(--color-status-watching)', disabled: !p.cwd },
+          { key: 'env',      label: '.env',     icon: FileKey,       onClick: () => onOpenEnv(p),                                     color: 'var(--color-warning)' },
+          { key: 'enable',   label: isDisabled ? 'Enable' : 'Disable', icon: isDisabled ? Power : PowerOff, onClick: doToggleEnabled, color: isDisabled ? 'var(--color-success)' : 'var(--color-muted-foreground)' },
+          { key: 'notify',   label: 'Notify',   icon: Bell,          onClick: () => onOpenNotif(p),                                   color: 'var(--color-notification)', badge: hasNotify ? '●' : undefined },
+          { key: 'clone',    label: 'Clone',    icon: Copy,          onClick: doClone,                                                color: 'var(--color-muted-foreground)' },
           { key: 'delete',   label: 'Delete',   icon: Trash2,        onClick: doDelete,                                               danger: true },
         ]
         const inline   = secondary.filter(a => visibleRowActions.includes(a.key))
@@ -533,8 +533,8 @@ function ProcessCard({ p, reload, confirmDelete, onConfirm, onDanger, onOpenDeta
         return (
           <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', paddingTop: 2, borderTop: '1px solid var(--color-border)' }}>
             {isActive
-              ? <><ActionBtn label="Restart" icon={RotateCcw} onClick={doRestart} color="#fb923c" /><ActionBtn label="Stop" icon={Square} onClick={doStop} color="#f87171" /></>
-              : <ActionBtn label="Start" icon={Play} onClick={isDisabled ? undefined : doStart} color={isDisabled ? 'var(--color-muted-foreground)' : '#4ade80'} disabled={isDisabled} title={isDisabled ? 'Process is disabled — enable it first' : 'Start'} />
+              ? <><ActionBtn label="Restart" icon={RotateCcw} onClick={doRestart} color="var(--color-warning)" /><ActionBtn label="Stop" icon={Square} onClick={doStop} color="var(--color-destructive)" /></>
+              : <ActionBtn label="Start" icon={Play} onClick={isDisabled ? undefined : doStart} color={isDisabled ? 'var(--color-muted-foreground)' : 'var(--color-success)'} disabled={isDisabled} title={isDisabled ? 'Process is disabled — enable it first' : 'Start'} />
             }
             {inline.map(a => <ActionBtn key={a.key} label={a.label} icon={a.icon} onClick={a.onClick} color={a.color} danger={a.danger} badge={a.badge} />)}
             <RowOverflowMenu actions={overflow} />
@@ -650,13 +650,13 @@ function ProcessRow({ p, reload, confirmDelete, onConfirm, onDanger, onOpenDetai
       <Td>
         {(() => {
           const secondary = [
-            { key: 'logs',     label: 'Logs',     icon: ScrollText,    onClick: () => navigate(`/processes/${p.id}`),                   color: '#60a5fa' },
-            { key: 'edit',     label: 'Edit',     icon: Pencil,        onClick: () => onEdit(p),                                        color: '#34d399' },
-            { key: 'terminal', label: 'Terminal', icon: SquareTerminal, onClick: () => p.cwd && onOpenTerminal(p.cwd, p.name),           color: '#22d3ee', disabled: !p.cwd },
-            { key: 'env',      label: '.env',     icon: FileKey,       onClick: () => onOpenEnv(p),                                     color: '#fbbf24' },
-            { key: 'enable',   label: isDisabled ? 'Enable' : 'Disable', icon: isDisabled ? Power : PowerOff, onClick: doToggleEnabled, color: isDisabled ? '#4ade80' : 'var(--color-muted-foreground)' },
-            { key: 'notify',   label: 'Notify',   icon: Bell,          onClick: () => onOpenNotif(p),                                   color: '#a78bfa', badge: hasNotify ? '●' : undefined },
-            { key: 'clone',    label: 'Clone',    icon: Copy,          onClick: doClone,                                                color: '#94a3b8' },
+            { key: 'logs',     label: 'Logs',     icon: ScrollText,    onClick: () => navigate(`/processes/${p.id}`),                   color: 'var(--color-info)' },
+            { key: 'edit',     label: 'Edit',     icon: Pencil,        onClick: () => onEdit(p),                                        color: 'var(--color-success)' },
+            { key: 'terminal', label: 'Terminal', icon: SquareTerminal, onClick: () => p.cwd && onOpenTerminal(p.cwd, p.name),           color: 'var(--color-status-watching)', disabled: !p.cwd },
+            { key: 'env',      label: '.env',     icon: FileKey,       onClick: () => onOpenEnv(p),                                     color: 'var(--color-warning)' },
+            { key: 'enable',   label: isDisabled ? 'Enable' : 'Disable', icon: isDisabled ? Power : PowerOff, onClick: doToggleEnabled, color: isDisabled ? 'var(--color-success)' : 'var(--color-muted-foreground)' },
+            { key: 'notify',   label: 'Notify',   icon: Bell,          onClick: () => onOpenNotif(p),                                   color: 'var(--color-notification)', badge: hasNotify ? '●' : undefined },
+            { key: 'clone',    label: 'Clone',    icon: Copy,          onClick: doClone,                                                color: 'var(--color-muted-foreground)' },
             { key: 'delete',   label: 'Delete',   icon: Trash2,        onClick: doDelete,                                               danger: true },
           ]
           const inline   = secondary.filter(a => visibleRowActions.includes(a.key))
@@ -664,8 +664,8 @@ function ProcessRow({ p, reload, confirmDelete, onConfirm, onDanger, onOpenDetai
           return (
             <div style={{ display: 'flex', gap: 3, flexWrap: 'nowrap' }}>
               {isActive
-                ? <><ActionBtn label="Restart" icon={RotateCcw} onClick={doRestart} color="#fb923c" /><ActionBtn label="Stop" icon={Square} onClick={doStop} color="#f87171" /></>
-                : <ActionBtn label="Start" icon={Play} onClick={isDisabled ? undefined : doStart} color={isDisabled ? 'var(--color-muted-foreground)' : '#4ade80'} disabled={isDisabled} title={isDisabled ? 'Process is disabled — enable it first' : 'Start'} />
+                ? <><ActionBtn label="Restart" icon={RotateCcw} onClick={doRestart} color="var(--color-warning)" /><ActionBtn label="Stop" icon={Square} onClick={doStop} color="var(--color-destructive)" /></>
+                : <ActionBtn label="Start" icon={Play} onClick={isDisabled ? undefined : doStart} color={isDisabled ? 'var(--color-muted-foreground)' : 'var(--color-success)'} disabled={isDisabled} title={isDisabled ? 'Process is disabled — enable it first' : 'Start'} />
               }
               {inline.map(a => <ActionBtn key={a.key} label={a.label} icon={a.icon} onClick={a.onClick} color={a.color} danger={a.danger} badge={a.badge} />)}
               <RowOverflowMenu actions={overflow} />

@@ -256,7 +256,7 @@ export default function GeneralTab({ settings, onUpdate }: Props) {
             <div style={descStyle}>
               Current: <code style={{ fontFamily: 'monospace', fontSize: 11 }}>{updateInfo?.current ?? '…'}</code>
               {updateInfo && !updateInfo.up_to_date && (
-                <span style={{ marginLeft: 8, color: '#f97316', fontWeight: 600 }}>
+                <span style={{ marginLeft: 8, color: 'var(--color-warning)', fontWeight: 600 }}>
                   → v{updateInfo.latest} available
                 </span>
               )}
@@ -289,7 +289,7 @@ export default function GeneralTab({ settings, onUpdate }: Props) {
           <div style={{ paddingTop: 12 }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 10 }}>
               <div>
-                <div style={{ fontSize: 13, fontWeight: 600, color: '#f97316' }}>
+                <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-warning)' }}>
                   v{updateInfo.latest} is available
                 </div>
                 {updateInfo.published_at && (

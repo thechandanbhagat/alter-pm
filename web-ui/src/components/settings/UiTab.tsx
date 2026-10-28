@@ -1,7 +1,8 @@
-// @group BusinessLogic > UiTab : UI settings — process row action visibility
+// @group BusinessLogic > UiTab : UI settings — appearance and process row action visibility
 
 import type { AppSettings } from '@/lib/settings'
-import { card, descStyle, sectionTitle, SettingRow, Toggle } from './shared'
+import { normalizeTheme } from '@/lib/theme'
+import { card, descStyle, sectionTitle, selectStyle, SettingRow, Toggle } from './shared'
 
 interface Props {
   settings: AppSettings
@@ -11,6 +12,26 @@ interface Props {
 export default function UiTab({ settings, onUpdate }: Props) {
   return (
     <>
+      <p style={sectionTitle}>Appearance</p>
+      <div style={card}>
+        <SettingRow
+          label="Theme"
+          description="Choose a theme, or follow your system appearance."
+          isLast
+          control={
+            <select
+              aria-label="Theme"
+              value={settings.theme}
+              onChange={event => onUpdate({ theme: normalizeTheme(event.target.value) })}
+              style={selectStyle}
+            >
+              <option value="dark">Dark</option>
+              <option value="light">Light</option>
+              <option value="system">System</option>
+            </select>
+          }
+        />
+      </div>
       <p style={sectionTitle}>Process Row Actions</p>
       <div style={{ ...card, marginBottom: 8 }}>
         <p style={{ ...descStyle, marginBottom: 12 }}>

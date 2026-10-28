@@ -17,14 +17,14 @@ interface Props {
 
 // @group Utilities > EnvColor : Color tokens for env file tabs (same as EnvFilePanel)
 function envFileColor(name: string): string {
-  if (name === '.env') return '#4ade80'
-  if (name === '.env.example') return '#fbbf24'
-  if (name === '.env.local') return '#60a5fa'
-  if (name === '.env.production' || name === '.env.prod') return '#f87171'
-  if (name === '.env.development' || name === '.env.dev') return '#34d399'
-  if (name === '.env.test') return '#a78bfa'
-  if (name === '.env.staging') return '#fb923c'
-  return '#94a3b8'
+  if (name === '.env') return 'var(--color-success)'
+  if (name === '.env.example') return 'var(--color-warning)'
+  if (name === '.env.local') return 'var(--color-info)'
+  if (name === '.env.production' || name === '.env.prod') return 'var(--color-destructive)'
+  if (name === '.env.development' || name === '.env.dev') return 'var(--color-success)'
+  if (name === '.env.test') return 'var(--color-notification)'
+  if (name === '.env.staging') return 'var(--color-warning)'
+  return 'var(--color-muted-foreground)'
 }
 function envFileBg(name: string): string {
   if (name === '.env') return 'rgba(74,222,128,0.13)'
@@ -213,7 +213,7 @@ export default function StartPage({ onDone, settings }: Props) {
                   </span>
                 )}
                 {envFiles.length > 1 && (
-                  <span style={{ fontSize: 10, padding: '1px 6px', borderRadius: 4, background: 'rgba(96,165,250,0.13)', color: '#60a5fa', fontWeight: 500 }}>
+                  <span style={{ fontSize: 10, padding: '1px 6px', borderRadius: 4, background: 'rgba(96,165,250,0.13)', color: 'var(--color-info)', fontWeight: 500 }}>
                     {envFiles.length} env files
                   </span>
                 )}
@@ -458,7 +458,7 @@ export default function StartPage({ onDone, settings }: Props) {
               onClick={saveEnvFile}
               style={{
                 padding: '4px 12px', fontSize: 11, fontWeight: 600, cursor: 'pointer',
-                background: activeColor, border: 'none', borderRadius: 5, color: '#000',
+                background: activeColor, border: 'none', borderRadius: 5, color: 'var(--color-status-foreground)',
                 opacity: envSaving || envLoadingFile || !envDirty ? 0.5 : 1,
               }}
             >

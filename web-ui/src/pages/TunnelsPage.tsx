@@ -302,7 +302,7 @@ export default function TunnelsPage() {
           <Globe size={18} style={{ color: 'var(--color-primary)' }} />
           <h1 style={{ fontSize: 18, fontWeight: 700, margin: 0, color: 'var(--color-foreground)' }}>Tunnels</h1>
           {activeTunnels.length > 0 && (
-            <span style={{ fontSize: 11, fontWeight: 600, background: 'var(--color-status-running)', color: '#fff', borderRadius: 10, padding: '1px 8px' }}>
+            <span style={{ fontSize: 11, fontWeight: 600, background: 'var(--color-status-running)', color: 'var(--color-status-foreground)', borderRadius: 10, padding: '1px 8px' }}>
               {activeTunnels.length} active
             </span>
           )}

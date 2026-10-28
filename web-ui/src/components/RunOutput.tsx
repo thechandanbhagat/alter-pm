@@ -36,7 +36,7 @@ export function RunOutput({ lines, exitCode, isRunning, onClear, height = 200 }:
       border: '1px solid var(--color-border)',
       borderRadius: 6,
       overflow: 'hidden',
-      background: '#0d0d0d',
+      background: 'var(--color-background)',
       height,
     }}>
       {/* Terminal header */}
@@ -45,7 +45,7 @@ export function RunOutput({ lines, exitCode, isRunning, onClear, height = 200 }:
         alignItems: 'center',
         justifyContent: 'space-between',
         padding: '5px 12px',
-        background: '#111',
+        background: 'var(--color-editor-gutter)',
         borderBottom: '1px solid var(--color-border)',
         flexShrink: 0,
       }}>
@@ -94,16 +94,16 @@ export function RunOutput({ lines, exitCode, isRunning, onClear, height = 200 }:
         fontFamily: 'Consolas, "Cascadia Code", "Fira Code", monospace',
         fontSize: 12,
         lineHeight: '18px',
-        color: '#e4e4e7',
+        color: 'var(--color-log-output)',
       }}>
         {lines.length === 0 && !isRunning && (
-          <span style={{ color: '#555', fontStyle: 'italic' }}>No output yet — click ▶ Run to execute the script</span>
+          <span style={{ color: 'var(--color-muted-foreground)', fontStyle: 'italic' }}>No output yet — click ▶ Run to execute the script</span>
         )}
         {lines.map((line, i) => (
           <div
             key={i}
             style={{
-              color: line.stream === 'stderr' ? 'var(--color-destructive)' : '#e4e4e7',
+              color: line.stream === 'stderr' ? 'var(--color-destructive)' : 'var(--color-log-output)',
               wordBreak: 'break-all',
               whiteSpace: 'pre-wrap',
             }}

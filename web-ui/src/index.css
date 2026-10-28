@@ -30,6 +30,66 @@
   --color-status-starting: #80deea;
   --color-status-stopping: #ffd54f;
   --color-status-sleeping: #4f9cf9;
+
+  /* Shared accents and editor surfaces also need to follow the selected theme. */
+  --color-success: #4ade80;
+  --color-info: #60a5fa;
+  --color-warning: #fbbf24;
+  --color-notification: #a78bfa;
+  --color-status-foreground: #111827;
+  --color-log-output: #c9d1e0;
+  --color-log-error: #f06292;
+  --color-editor: #1a1a1a;
+  --color-editor-gutter: #111;
+  --color-syntax-key: #93c5fd;
+  --color-syntax-value: #86efac;
+  --color-syntax-keyword: #c084fc;
+}
+
+:root { color-scheme: dark; }
+
+:root[data-theme='light'] {
+  color-scheme: light;
+  --color-background: hsl(220 35% 97%);
+  --color-foreground: hsl(220 30% 18%);
+  --color-card: hsl(0 0% 100%);
+  --color-card-foreground: hsl(220 30% 18%);
+  --color-muted: hsl(220 28% 93%);
+  --color-muted-foreground: hsl(220 16% 39%);
+  --color-border: hsl(220 20% 80%);
+  --color-input: hsl(220 28% 93%);
+  --color-primary: hsl(214 74% 40%);
+  --color-primary-foreground: hsl(0 0% 100%);
+  --color-secondary: hsl(220 30% 95%);
+  --color-secondary-foreground: hsl(220 24% 28%);
+  --color-accent: hsl(214 40% 91%);
+  --color-accent-foreground: hsl(220 30% 18%);
+  --color-destructive: hsl(354 62% 44%);
+  --color-destructive-foreground: hsl(0 0% 100%);
+  --color-popover: hsl(0 0% 100%);
+  --color-popover-foreground: hsl(220 30% 18%);
+  --color-ring: hsl(214 74% 40%);
+
+  --color-status-running: #13743e;
+  --color-status-watching: #086979;
+  --color-status-stopped: #805300;
+  --color-status-crashed: #b52a5b;
+  --color-status-errored: #803a9b;
+  --color-status-starting: #086979;
+  --color-status-stopping: #805300;
+  --color-status-sleeping: #1b5fb2;
+  --color-success: #13743e;
+  --color-info: #1b5fb2;
+  --color-warning: #805300;
+  --color-notification: #7040ac;
+  --color-status-foreground: #fff;
+  --color-log-output: hsl(220 30% 18%);
+  --color-log-error: #b52a5b;
+  --color-editor: hsl(0 0% 100%);
+  --color-editor-gutter: hsl(220 28% 93%);
+  --color-syntax-key: #1b5fb2;
+  --color-syntax-value: #13743e;
+  --color-syntax-keyword: #7040ac;
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; border-color: var(--color-border); }
@@ -64,8 +124,67 @@ body {
   white-space: pre-wrap;
   word-break: break-all;
 }
-.log-line-err { color: #f06292; }
-.log-line-out { color: #c9d1e0; }
+.log-line-err { color: var(--color-log-error); }
+.log-line-out { color: var(--color-log-output); }
+
+::selection { background: var(--color-primary); color: var(--color-primary-foreground); }
+:focus-visible { outline: 2px solid var(--color-ring); outline-offset: 2px; }
+select:focus-visible { outline: 2px solid var(--color-ring) !important; outline-offset: 2px; }
+
+/* ANSI programs choose their own colors, so the terminal keeps a dark canvas. */
+.terminal-panel {
+  color-scheme: dark;
+  --color-primary: hsl(213 89% 62%);
+  --color-primary-foreground: #fff;
+  --color-border: #333;
+  --color-ring: hsl(213 89% 62%);
+}
+
+.theme-menu-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--color-border);
+  border-radius: 5px;
+  background: var(--color-secondary);
+  color: var(--color-muted-foreground);
+  cursor: pointer;
+}
+.theme-menu-trigger:hover:not(:disabled),
+.theme-menu-trigger[data-state='open'] {
+  background: var(--color-accent);
+  color: var(--color-foreground);
+}
+.theme-menu-trigger:disabled { opacity: 0.5; cursor: default; }
+.theme-menu-content {
+  z-index: 1200;
+  min-width: 150px;
+  padding: 4px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: var(--color-popover);
+  color: var(--color-popover-foreground);
+  font-size: 12px;
+}
+.theme-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 8px;
+  border-radius: 3px;
+  cursor: pointer;
+  user-select: none;
+  outline: none;
+}
+.theme-menu-item[data-highlighted] {
+  background: var(--color-accent);
+  color: var(--color-accent-foreground);
+}
+.theme-menu-item[data-state='checked'] { color: var(--color-primary); }
+.theme-menu-check { display: flex; width: 13px; margin-left: auto; }
 
 /* Row highlight */
 @keyframes rowHighlight {

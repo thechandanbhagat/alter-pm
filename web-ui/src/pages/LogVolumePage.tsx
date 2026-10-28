@@ -160,8 +160,8 @@ function ProcessCard({
         {errRate > 0 && (
           <span style={{
             fontSize: 10, fontWeight: 600, padding: '1px 6px',
-            background: errRate > 20 ? 'var(--color-destructive)' : '#f97316',
-            color: '#fff', borderRadius: 10,
+            background: errRate > 20 ? 'var(--color-destructive)' : 'var(--color-warning)',
+            color: 'var(--color-status-foreground)', borderRadius: 10,
           }}>
             {errRate}% err
           </span>

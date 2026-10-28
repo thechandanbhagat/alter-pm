@@ -169,10 +169,10 @@ function NotifRow({
         borderBottom: '1px solid var(--color-border)',
         borderLeft: n.read ? '2px solid transparent' : `2px solid ${cfg.color}`,
         cursor: 'pointer',
-        background: n.read ? 'transparent' : 'rgba(255,255,255,0.03)',
+        background: n.read ? 'transparent' : 'color-mix(in srgb, var(--color-primary) 7%, transparent)',
       }}
       onMouseEnter={e => (e.currentTarget.style.background = 'var(--color-muted)')}
-      onMouseLeave={e => (e.currentTarget.style.background = n.read ? 'transparent' : 'rgba(255,255,255,0.03)')}
+      onMouseLeave={e => (e.currentTarget.style.background = n.read ? 'transparent' : 'color-mix(in srgb, var(--color-primary) 7%, transparent)')}
       onClick={onNavigate}
     >
       {/* Status dot */}
