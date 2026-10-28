@@ -62,6 +62,13 @@ alter web    # → http://127.0.0.1:2999/
 
 ---
 
+## What's new in v1.4.0
+
+- Choose **Dark, Light, or System** in Settings → UI or from the sidebar footer. Theme changes apply immediately and persist across reloads.
+- Analyze processes and logs with installed **Claude Code, Codex, Cursor, or Devin CLIs**, or **Apple Foundation Models** on supported Macs. Settings shows provider availability and lets you override executable paths.
+
+Installed CLIs use their existing login and cloud models; Apple inference runs on the daemon host. Google Antigravity (`agy`) is detected but remains unavailable for chat in this release. [Read the changelog](./docs/CHANGELOG.md#140--2026-10-28).
+
 ## Screenshots
 
 ### Organize and control your processes
@@ -95,13 +102,41 @@ Filter live output and expand Insights for resource history. Use Log Library for
 </details>
 
 <details>
-<summary><strong>Built-in terminal and AI assistant</strong></summary>
+<summary><strong>Built-in terminal</strong></summary>
 
 ![Built-in terminal with command history](./userguide/screenshots/terminal-history.png)
 
-![AI assistant for process and log questions](./userguide/screenshots/ai-assistant.png)
+</details>
+
+---
+
+### Choose your theme
+
+Use the appearance setting or the footer menu to choose Dark, Light, or System. System follows changes to your operating system's appearance.
+
+![Settings → UI with Light theme selected](./userguide/screenshots/settings-ui.jpg)
+
+<details>
+<summary><strong>Quick theme menu</strong></summary>
+
+![Dark, Light, and System options in the sidebar footer](./userguide/screenshots/theme-menu.jpg)
 
 </details>
+
+### Use an installed AI provider
+
+Check provider availability on the active daemon host, set an optional executable path, and choose a model. The chat panel includes process and log context when you send a question.
+
+![AI settings with installed-provider availability and executable paths](./userguide/screenshots/settings-ai.jpg)
+
+<details>
+<summary><strong>AI assistant and process context</strong></summary>
+
+![AI assistant diagnosing sample-api startup logs with Codex CLI](./userguide/screenshots/ai-assistant.jpg)
+
+</details>
+
+[Provider setup and requirements](./docs/USER_GUIDE.md#installed-providers)
 
 ---
 
@@ -132,6 +167,8 @@ brew install node                                                # Node.js 20.19
 ```
 
 Node.js is only needed to build the dashboard — alter itself has no runtime dependencies.
+
+Apple Foundation Models is optional: build natively on Apple silicon with an SDK that includes Foundation Models (Xcode 26+) to bundle its helper. Using that provider requires macOS 26+ and Apple Intelligence enabled. Builds without the helper still support the other providers.
 
 **2. Build and install**
 
@@ -205,7 +242,7 @@ See [macOS & Linux](#macos--linux) for how alter behaves on Unix systems.
 - **Auto-restart** with exponential backoff on crash
 - **Watch mode** — restart automatically on file changes
 - **Namespaces** — group and bulk-control related processes
-- **Web dashboard** — real-time process monitor at `http://localhost:2999/`
+- **Web dashboard** — real-time process monitor at `http://localhost:2999/` with persistent Dark, Light, and System themes
 - **Live log streaming** — tail logs in terminal or browser
 - **State persistence** — save and restore your process list across reboots
 - **Ecosystem config** — define all apps in one TOML or JSON file
@@ -213,7 +250,7 @@ See [macOS & Linux](#macos--linux) for how alter behaves on Unix systems.
 - **Single binary** — no runtime dependencies
 - **Dashboard authentication** — password-protect the web UI with Argon2id hashing, session tokens, and a PIN quick-unlock
 - **Telegram bot** — control your processes from Telegram: list, start, stop, restart, tail logs, and receive crash/restart alerts
-- **AI assistant** — multi-provider chat panel (Ollama, GitHub Models, Claude, OpenAI-compatible) with streaming responses and process-aware context
+- **AI assistant** — process and log analysis with Ollama, cloud APIs, installed Claude Code/Codex/Cursor/Devin CLIs, and Apple's on-device Foundation Models; provider discovery and executable path overrides show what is available on the daemon host
 - **Port Finder** — scan all open TCP/UDP ports, see owning processes, and kill by PID from the dashboard
 - **Notifications** — Slack, Discord, Microsoft Teams, and webhook alerts on crash, restart, cron events, and more
 - **Process enable/disable** — exclude individual processes from Start All without removing them

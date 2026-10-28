@@ -616,7 +616,7 @@ curl -X POST http://127.0.0.1:2999/api/v1/processes/group/worker/rolling-restart
   <!-- AI ASSISTANT -->
   <section id="ai">
     <h2>AI Assistant</h2>
-    <figure class="screenshot"><a href="screenshots/ai-assistant.png" class="screenshot-link" aria-label="Enlarge screenshot: AI Assistant — asking about an error log"><img src="screenshots/ai-assistant.png" alt="AI Assistant — asking about an error log" width="1280" height="960" loading="lazy" decoding="async" /></a><figcaption><span>AI Assistant — asking about an error log</span><a href="screenshots/ai-assistant.png" class="screenshot-link">View full size <span aria-hidden="true">↗</span></a></figcaption></figure>
+    <figure class="screenshot"><a href="screenshots/ai-assistant.jpg" class="screenshot-link" aria-label="Enlarge screenshot: AI Assistant diagnosing sample-api startup logs with Codex CLI"><img src="screenshots/ai-assistant.jpg" alt="AI Assistant diagnosing sample-api startup logs with Codex CLI" width="1280" height="720" loading="lazy" decoding="async" /></a><figcaption><span>AI Assistant diagnosing sample-api startup logs with Codex CLI</span><a href="screenshots/ai-assistant.jpg" class="screenshot-link">View full size <span aria-hidden="true">↗</span></a></figcaption></figure>
 
     <p>The AI Assistant panel (accessible from the status bar) lets you chat about your processes, logs, and configuration using a local or cloud-hosted LLM.</p>
 
@@ -628,6 +628,9 @@ curl -X POST http://127.0.0.1:2999/api/v1/processes/group/worker/rolling-restart
         <tr><td><strong>GitHub Copilot</strong></td><td>Cloud</td><td>Uses your existing Copilot subscription. OAuth Device Flow sign-in.</td></tr>
         <tr><td><strong>Claude (Anthropic)</strong></td><td>Cloud</td><td>Requires an Anthropic API key from console.anthropic.com.</td></tr>
         <tr><td><strong>OpenAI</strong></td><td>Cloud</td><td>Requires an OpenAI API key. Supports custom base URLs (Azure, Groq, LM Studio).</td></tr>
+        <tr><td><strong>Claude Code CLI, Codex CLI, Cursor CLI, Devin CLI</strong></td><td>Installed CLI, cloud inference</td><td>Uses the CLI login on the active daemon host. Check installation and availability in Settings → AI → Installed providers.</td></tr>
+        <tr><td><strong>Google Antigravity (agy)</strong></td><td>Detection only</td><td>Shown as unavailable: its documented headless options cannot enforce isolated analysis without tools.</td></tr>
+        <tr><td><strong>Apple Foundation Models</strong></td><td>On-device</td><td>Requires macOS 26+, Apple silicon, and Apple Intelligence available on the daemon host.</td></tr>
       </tbody>
     </table>
 
@@ -642,6 +645,7 @@ curl -X POST http://127.0.0.1:2999/api/v1/processes/group/worker/rolling-restart
     </ol>
 
     <h3>What to Ask</h3>
+    <p>Installed CLIs send the prompt and included process/log context to their cloud provider when you send a message. Apple Foundation Models processes the request on the daemon host. Discovery and model refresh do not send prompts or process data. If a model reports a conversation or context limit, clear the chat and ask a more focused question.</p>
     <ul>
       <li>"Why did the <code>api-worker</code> process crash?"</li>
       <li>"Show me the last 20 error lines from <code>web-server</code>"</li>
@@ -727,17 +731,15 @@ curl -X POST http://127.0.0.1:2999/api/v1/processes/group/worker/rolling-restart
   <!-- SETTINGS: UI -->
   <section id="settings-ui">
     <h2>Settings → UI</h2>
-    <figure class="screenshot"><a href="screenshots/settings-ui.png" class="screenshot-link" aria-label="Enlarge screenshot: Settings → UI"><img src="screenshots/settings-ui.png" alt="Settings → UI" width="1280" height="800" loading="lazy" decoding="async" /></a><figcaption><span>Settings → UI</span><a href="screenshots/settings-ui.png" class="screenshot-link">View full size <span aria-hidden="true">↗</span></a></figcaption></figure>
+    <figure class="screenshot"><a href="screenshots/settings-ui.jpg" class="screenshot-link" aria-label="Enlarge screenshot: Settings → UI"><img src="screenshots/settings-ui.jpg" alt="Settings → UI with Light theme selected" width="1280" height="720" loading="lazy" decoding="async" /></a><figcaption><span>Settings → UI</span><a href="screenshots/settings-ui.jpg" class="screenshot-link">View full size <span aria-hidden="true">↗</span></a></figcaption></figure>
 
-    <p>Customize the visual appearance of the dashboard.</p>
+    <p>Choose the dashboard theme and which process actions appear inline.</p>
     <ul>
-      <li><strong>Theme</strong> — Dark, Light, or System (follows OS setting)</li>
-      <li><strong>Accent color</strong> — choose a primary color for buttons, active states, and highlights</li>
-      <li><strong>Font size</strong> — base font size for the dashboard</li>
-      <li><strong>Process view mode</strong> — default view (Table or Card) for the process list</li>
-      <li><strong>Compact mode</strong> — reduce padding and row heights for higher density</li>
-      <li><strong>Show PID column</strong> — show/hide the PID column in table view</li>
+      <li><strong>Theme</strong> — Dark (default), Light, or System. System follows your operating system's appearance and updates automatically when it changes.</li>
+      <li><strong>Process Row Actions</strong> — choose which additional actions appear inline: Logs, Edit, Terminal, .env, Enable / Disable, Notify, Clone, and Delete. Other actions remain in the ⋯ menu; Start, Stop, and Restart are always visible.</li>
     </ul>
+    <p>The theme icon in the sidebar footer also offers Dark, Light, and System. This quick menu and the Theme selector stay in sync. Changes take effect immediately and are saved with the daemon's UI settings. <strong>Reset to defaults</strong> in the General tab restores the Dark theme.</p>
+    <figure class="screenshot"><a href="screenshots/theme-menu.jpg" class="screenshot-link" aria-label="Enlarge screenshot: Sidebar theme menu"><img src="screenshots/theme-menu.jpg" alt="Dark, Light, and System options in the sidebar footer" width="1280" height="720" loading="lazy" decoding="async" /></a><figcaption><span>Change theme from the sidebar footer</span><a href="screenshots/theme-menu.jpg" class="screenshot-link">View full size <span aria-hidden="true">↗</span></a></figcaption></figure>
   </section>
 
   <hr />
@@ -775,7 +777,7 @@ curl -X POST http://127.0.0.1:2999/api/v1/processes/group/worker/rolling-restart
   <!-- SETTINGS: AI -->
   <section id="settings-ai">
     <h2>Settings → AI</h2>
-    <figure class="screenshot"><a href="screenshots/settings-ai.png" class="screenshot-link" aria-label="Enlarge screenshot: Settings → AI"><img src="screenshots/settings-ai.png" alt="Settings → AI" width="1280" height="800" loading="lazy" decoding="async" /></a><figcaption><span>Settings → AI</span><a href="screenshots/settings-ai.png" class="screenshot-link">View full size <span aria-hidden="true">↗</span></a></figcaption></figure>
+    <figure class="screenshot"><a href="screenshots/settings-ai.jpg" class="screenshot-link" aria-label="Enlarge screenshot: Settings → AI"><img src="screenshots/settings-ai.jpg" alt="Settings → AI with installed-provider availability and path overrides" width="1280" height="720" loading="lazy" decoding="async" /></a><figcaption><span>Settings → AI</span><a href="screenshots/settings-ai.jpg" class="screenshot-link">View full size <span aria-hidden="true">↗</span></a></figcaption></figure>
 
 
     <h3>Enable AI Assistant</h3>
@@ -811,8 +813,22 @@ curl -X POST http://127.0.0.1:2999/api/v1/processes/group/worker/rolling-restart
       <li>Optionally override the <strong>API base URL</strong> for Azure OpenAI, Groq, LM Studio, or other compatible endpoints</li>
     </ul>
 
+    <h4>Installed providers</h4>
+    <p>All six installed-provider options show their availability on the active daemon host, including when you connect to a remote server. An installed tool may still be unavailable if it cannot run an isolated analysis request; the status explains why.</p>
+    <ul>
+      <li>Install a current CLI version and sign in under the same operating-system account as the daemon. Discovery checks installation and capabilities; authentication and model access are checked when you send a message.</li>
+      <li>Cursor requires its standalone <code>agent</code> or <code>cursor-agent</code> executable. On Windows, choose a native executable rather than a <code>.cmd</code> wrapper.</li>
+      <li>If automatic discovery cannot find it, enter its absolute executable path and click <strong>Save paths &amp; rescan</strong>. Clear a saved path to restore automatic discovery.</li>
+      <li><strong>Rescan installed providers</strong> checks saved paths without changing the selected provider or sending a prompt.</li>
+      <li>Apple Foundation Models requires no executable path. It needs an Apple silicon Mac with macOS 26+, Apple Intelligence enabled, and an alter build containing the Apple helper. The helper is bundled automatically when building natively with an SDK that includes Foundation Models (Xcode 26+); other builds report this provider as unavailable.</li>
+      <li>Google Antigravity (<code>agy</code>) is detected but cannot be used for chat in this release because its documented headless options cannot enforce isolated analysis without tools.</li>
+    </ul>
+
+    <p>If Claude Code reports an expired login, open Claude Code under the daemon's operating-system account, sign in again, and retry. Rescanning does not renew a login.</p>
+    <p>Claude Code and Codex run with customizations disabled in a temporary workspace; Devin uses its tool-free summarizer. Cursor uses Ask mode and tool-deny rules, but its own account settings and startup hooks can still apply.</p>
+
     <h3>Model Selector</h3>
-    <p>After configuring a provider, click <strong>Refresh</strong> (↺) next to the model dropdown to fetch available models. The selector is populated with models returned by the provider's API.</p>
+    <p>After configuring a provider, click <strong>Refresh</strong> (↺) next to the model dropdown to fetch available models without saving a provider change. CLI providers use their configured default model; enter an optional <strong>CLI model ID</strong> to override it. Save the settings to apply the provider and model together. The chat panel also offers provider and model selection.</p>
   </section>
 
   <hr />

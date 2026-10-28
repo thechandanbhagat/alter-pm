@@ -322,7 +322,7 @@ export default function ProcessDetailPage({ reload, settings, onOpenTerminal, fa
                     style={{
                       background: 'none', border: 'none', cursor: 'pointer',
                       padding: '0 2px', fontSize: 12, lineHeight: 1,
-                      color: isFav ? '#f59e0b' : 'var(--color-muted-foreground)',
+                      color: isFav ? 'var(--color-warning)' : 'var(--color-muted-foreground)',
                       opacity: isFav ? 1 : 0.45,
                     }}
                     onMouseEnter={e => { (e.currentTarget as HTMLElement).style.opacity = '1' }}
@@ -390,7 +390,7 @@ export default function ProcessDetailPage({ reload, settings, onOpenTerminal, fa
                   border: '1px solid var(--color-border)',
                   borderRight: 'none', borderRadius: 0,
                   cursor: 'pointer',
-                  color: cwdCopied ? '#4ade80' : 'var(--color-muted-foreground)',
+                  color: cwdCopied ? 'var(--color-success)' : 'var(--color-muted-foreground)',
                   transition: 'color 0.15s',
                 }}
                 onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'var(--color-accent)' }}
@@ -462,7 +462,7 @@ export default function ProcessDetailPage({ reload, settings, onOpenTerminal, fa
             )}
 
             {gitInfo.dirty && (
-              <span style={{ fontSize: 10, color: '#f97316', fontWeight: 600, flexShrink: 0 }} title="Uncommitted changes">
+              <span style={{ fontSize: 10, color: 'var(--color-warning)', fontWeight: 600, flexShrink: 0 }} title="Uncommitted changes">
                 ✎ modified
               </span>
             )}
@@ -581,7 +581,7 @@ export default function ProcessDetailPage({ reload, settings, onOpenTerminal, fa
             style={{
               flex: 1, fontSize: 12, padding: '3px 6px', minWidth: 0,
               background: 'var(--color-background)', color: 'var(--color-foreground)',
-              border: `1px solid ${regexError ? '#ef4444' : 'var(--color-border)'}`,
+              border: `1px solid ${regexError ? 'var(--color-destructive)' : 'var(--color-border)'}`,
               borderRadius: 4, outline: 'none',
             }}
           />
@@ -598,7 +598,7 @@ export default function ProcessDetailPage({ reload, settings, onOpenTerminal, fa
           >.*</button>
           {textFilter && (
             <>
-              <span style={{ fontSize: 11, color: regexError ? '#ef4444' : 'var(--color-muted-foreground)', whiteSpace: 'nowrap', flexShrink: 0 }}>
+              <span style={{ fontSize: 11, color: regexError ? 'var(--color-destructive)' : 'var(--color-muted-foreground)', whiteSpace: 'nowrap', flexShrink: 0 }}>
                 {regexError ? 'bad regex' : `${visibleLines.length} match${visibleLines.length !== 1 ? 'es' : ''}`}
               </span>
               <button
@@ -947,7 +947,7 @@ function InsightsPanel({ buckets, samples, lines }: {
               <span style={{ fontSize: 11, fontVariantNumeric: 'tabular-nums', color: 'var(--color-primary)', whiteSpace: 'nowrap' }}>
                 CPU {latest.cpu_percent.toFixed(1)}%
               </span>
-              <span style={{ fontSize: 11, fontVariantNumeric: 'tabular-nums', color: '#a78bfa', whiteSpace: 'nowrap' }}>
+              <span style={{ fontSize: 11, fontVariantNumeric: 'tabular-nums', color: 'var(--color-notification)', whiteSpace: 'nowrap' }}>
                 {fmtBytes(latest.memory_bytes)}
               </span>
             </>
@@ -1188,8 +1188,8 @@ function LogVolumeContent({ buckets }: { buckets: LogStatsBucket[] }) {
               {outH > 0.5 && <rect x={x} y={H - outH} width={barW} height={outH} fill="var(--color-status-running)" fillOpacity={0.8} />}
               {isSpike && (
                 <>
-                  <rect x={x - 0.5} y={H - totalH - 0.5} width={barW + 1} height={totalH + 0.5} fill="none" stroke="#f97316" strokeWidth={2} />
-                  <circle cx={x + barW / 2} cy={H - totalH - 4} r={2.5} fill="#f97316" />
+                  <rect x={x - 0.5} y={H - totalH - 0.5} width={barW + 1} height={totalH + 0.5} fill="none" stroke="var(--color-warning)" strokeWidth={2} />
+                  <circle cx={x + barW / 2} cy={H - totalH - 4} r={2.5} fill="var(--color-warning)" />
                 </>
               )}
             </g>
@@ -1255,14 +1255,14 @@ function MemContent({ samples }: { samples: MetricSample[] }) {
       <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', height: H, display: 'block' }}>
         <defs>
           <linearGradient id="memFill" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#a78bfa" stopOpacity="0.25" />
-            <stop offset="100%" stopColor="#a78bfa" stopOpacity="0.02" />
+            <stop offset="0%" stopColor="var(--color-notification)" stopOpacity="0.25" />
+            <stop offset="100%" stopColor="var(--color-notification)" stopOpacity="0.02" />
           </linearGradient>
         </defs>
         <line x1={0} y1={H / 2} x2={W} y2={H / 2} stroke="var(--color-border)" strokeWidth={0.5} strokeDasharray="2 4" />
-        <line x1={nowX} y1={0} x2={nowX} y2={H} stroke="#a78bfa" strokeWidth={0.75} strokeOpacity={0.35} />
+        <line x1={nowX} y1={0} x2={nowX} y2={H} stroke="var(--color-notification)" strokeWidth={0.75} strokeOpacity={0.35} />
         {fill && <polygon points={fill} fill="url(#memFill)" />}
-        {pts && <polyline points={pts} fill="none" stroke="#a78bfa" strokeWidth={1.5} strokeLinejoin="round" />}
+        {pts && <polyline points={pts} fill="none" stroke="var(--color-notification)" strokeWidth={1.5} strokeLinejoin="round" />}
       </svg>
       <TimeAxis nowX={nowX} W={W} />
     </>

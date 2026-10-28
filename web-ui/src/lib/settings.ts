@@ -1,7 +1,8 @@
 // @group Configuration : User settings schema — persisted to daemon data directory via REST API
 
 import { getSessionToken } from '@/lib/auth'
-import { getActiveServer, serverBaseUrl } from '@/lib/servers'
+import { getActiveServer, getActiveServerId, serverBaseUrl, fetchRemoteServers, _setRemoteServerCache } from '@/lib/servers'
+import { normalizeTheme, readCachedTheme, type ThemePreference } from '@/lib/theme'
 
 // @group Types : Full settings schema with defaults
 export interface AppSettings {
@@ -24,6 +25,7 @@ export interface AppSettings {
   daemonUrl: string                // base URL — default http://127.0.0.1:2999
 
   // UI
+  theme: ThemePreference           // dashboard appearance; system follows the OS
   visibleRowActions: string[]      // which secondary actions show inline in process rows; others go in ⋯
 
   // Developer
@@ -52,6 +54,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
 
   daemonUrl: 'http://127.0.0.1:2999',
 
+  theme: 'dark',
   visibleRowActions: ['logs'],
 
   showQueryDevtools: false,
@@ -64,8 +67,16 @@ export const DEFAULT_SETTINGS: AppSettings = {
 }
 
 // @group Utilities > API : Base fetch helper for settings (can't import api.ts — circular dep risk)
-function settingsUrl(): string {
-  return `${serverBaseUrl(getActiveServer())}/system/ui-settings`
+async function settingsUrl(): Promise<string> {
+  const activeId = getActiveServerId()
+  // The server switcher also loads this cache, but may not have finished on startup.
+  if (getActiveServer().id !== activeId) {
+    const store = await fetchRemoteServers()
+    _setRemoteServerCache(store.servers)
+  }
+  const server = getActiveServer()
+  if (server.id !== activeId) throw new Error('Active daemon is unavailable')
+  return `${serverBaseUrl(server)}/system/ui-settings`
 }
 
 function authHeader(): Record<string, string> {
@@ -76,19 +87,19 @@ function authHeader(): Record<string, string> {
 // @group Utilities > Load : Fetch settings from daemon — merges with defaults for forward-compat
 export async function loadSettings(): Promise<AppSettings> {
   try {
-    const res = await fetch(settingsUrl(), { headers: authHeader() })
-    if (!res.ok) return { ...DEFAULT_SETTINGS }
+    const res = await fetch(await settingsUrl(), { headers: authHeader() })
+    if (!res.ok) return { ...DEFAULT_SETTINGS, theme: readCachedTheme() }
     const raw = await res.json() as Partial<AppSettings>
-    return { ...DEFAULT_SETTINGS, ...raw }
+    return { ...DEFAULT_SETTINGS, ...raw, theme: normalizeTheme(raw?.theme) }
   } catch {
-    return { ...DEFAULT_SETTINGS }
+    return { ...DEFAULT_SETTINGS, theme: readCachedTheme() }
   }
 }
 
 // @group Utilities > Save : Write settings to daemon data directory
 export async function saveSettings(settings: AppSettings): Promise<void> {
   try {
-    await fetch(settingsUrl(), {
+    await fetch(await settingsUrl(), {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json', ...authHeader() },
       body: JSON.stringify(settings),

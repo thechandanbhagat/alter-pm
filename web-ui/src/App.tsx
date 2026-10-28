@@ -20,6 +20,7 @@ import { GitHubStarBanner, GitHubStarWidget } from '@/components/GitHubStarBanne
 import { NotificationTray } from '@/components/NotificationTray'
 import { AiPanel } from '@/components/AiPanel'
 import { AlterLogo } from '@/components/AlterLogo'
+import { ThemeMenu } from '@/components/ThemeMenu'
 import { TerminalPanel, TerminalStatusBarBtn, type TerminalPanelHandle, type TerminalPanelState, type TerminalShortcuts } from '@/components/TerminalPanel'
 import { api } from '@/lib/api'
 import { statusColor, PROCESS_DRAG_MIME } from '@/lib/utils'
@@ -48,7 +49,7 @@ function NamespaceRoute({ processes, reload, settings, onOpenTerminal }: { proce
 
 // @group BusinessLogic > Layout : Sidebar + content shell
 function Layout({ onLock }: { onLock: () => void }) {
-  const { settings, updateSettings, resetToDefaults } = useSettings()
+  const { settings, updateSettings, resetToDefaults, loaded: settingsLoaded } = useSettings()
   const { processes, error, reload } = useProcesses(settings.autoRefresh, settings.processRefreshInterval)
   const health = useDaemonHealth(settings.healthRefreshInterval)
   const navigate = useNavigate()
@@ -337,9 +338,10 @@ function Layout({ onLock }: { onLock: () => void }) {
         {/* Footer */}
         <div style={{ padding: '10px 12px', borderTop: '1px solid var(--color-border)', display: 'flex', flexDirection: 'column', gap: 6 }}>
           <ServerSwitcher />
-          {/* Icon row: Settings + Save + Lock + Shutdown — equally spaced */}
+          {/* Quick settings and daemon actions */}
           <div style={{ display: 'flex', gap: 4 }}>
             <IconBtn icon={Settings} title="Settings" onClick={() => navigate('/settings')} active={location.pathname.startsWith('/settings')} badge={updateInfo !== null} />
+            <ThemeMenu theme={settings.theme} onChange={theme => updateSettings({ theme })} disabled={!settingsLoaded} />
             <div style={{ flex: 1 }} />
             <IconBtn icon={Save} title="Save state" onClick={handleSave} />
             <IconBtn icon={Lock} title="Lock screen" onClick={onLock} />
@@ -368,7 +370,10 @@ function Layout({ onLock }: { onLock: () => void }) {
           <Route path="/ports"    element={<PortFinderPage />} />
           <Route path="/tunnels"  element={<TunnelsPage />} />
           <Route path="/scripts"  element={<ScriptsPage />} />
-          <Route path="/settings/:tab?" element={<SettingsPage settings={settings} onUpdate={updateSettings} onReset={resetToDefaults} />} />
+          <Route path="/settings/:tab?" element={settingsLoaded
+            ? <SettingsPage settings={settings} onUpdate={updateSettings} onReset={resetToDefaults} />
+            : <p role="status" style={{ padding: '20px 28px', color: 'var(--color-muted-foreground)' }}>Loading settings…</p>
+          } />
         </Routes>
       </div>
 
@@ -525,7 +530,7 @@ function NamespaceSubmenu({ processes, currentNamespace, open, favorites, onTogg
                 style={{
                   background: 'none', border: 'none', cursor: 'pointer', padding: '0 2px',
                   fontSize: 11, lineHeight: 1, flexShrink: 0,
-                  color: isFav ? '#f59e0b' : 'var(--color-muted-foreground)',
+                  color: isFav ? 'var(--color-warning)' : 'var(--color-muted-foreground)',
                   opacity: isFav || isHovered ? 1 : 0,
                   transition: 'opacity 0.1s',
                 }}
@@ -764,8 +769,8 @@ function SidebarNsGroup({ ns, procs, collapsed, onToggle, onNavigate, onTerminal
         </button>
         {hovered && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 1, paddingRight: 6, flexShrink: 0, background: 'var(--color-accent)' }}>
-            {hasRunning && <SidebarActionBtn icon={Square} title={`Stop all in ${ns}`} onClick={onStopAll} color="#f87171" />}
-            <SidebarActionBtn icon={RotateCcw} title={`Restart all in ${ns}`} onClick={onRestartAll} color="#4ade80" />
+            {hasRunning && <SidebarActionBtn icon={Square} title={`Stop all in ${ns}`} onClick={onStopAll} color="var(--color-destructive)" />}
+            <SidebarActionBtn icon={RotateCcw} title={`Restart all in ${ns}`} onClick={onRestartAll} color="var(--color-status-running)" />
           </div>
         )}
       </div>
@@ -841,8 +846,8 @@ function SidebarProc({ p, onNavigate, onTerminal, onExplorer, onStop, onRestart,
         <div style={{ display: 'flex', alignItems: 'center', gap: 1, paddingRight: 6, flexShrink: 0, background: 'var(--color-accent)' }}>
           <SidebarActionBtn icon={SquareTerminal} title="Open terminal" onClick={onTerminal} disabled={!p.cwd} />
           <SidebarActionBtn icon={FolderOpen}     title="Open in Explorer" onClick={onExplorer} disabled={!p.cwd} />
-          {canStop && <SidebarActionBtn icon={Square}    title="Stop process"    onClick={onStop}    color="#f87171" />}
-          <SidebarActionBtn              icon={RotateCcw} title="Restart process" onClick={onRestart} color="#4ade80" />
+          {canStop && <SidebarActionBtn icon={Square}    title="Stop process"    onClick={onStop}    color="var(--color-destructive)" />}
+          <SidebarActionBtn              icon={RotateCcw} title="Restart process" onClick={onRestart} color="var(--color-status-running)" />
         </div>
       )}
     </div>
@@ -879,7 +884,7 @@ function SidebarActionBtn({ icon: Icon, title, onClick, color, disabled }: {
 // @group BusinessLogic > SystemStatsWidget : Bar color helper and StatRow — declared outside component to avoid re-creation on render
 function statsBarColor(pct: number) {
   if (pct >= 90) return 'var(--color-status-crashed)'
-  if (pct >= 70) return '#f97316'
+  if (pct >= 70) return 'var(--color-warning)'
   return 'var(--color-primary)'
 }
 
@@ -1056,7 +1061,7 @@ function StatusBar({ connected, processes, statsOpen, onToggleStats, updateInfo,
 
   const bar: React.CSSProperties = {
     height: 22, minHeight: 22,
-    background: '#0a0a0a',
+    background: 'var(--color-background)',
     color: 'var(--color-muted-foreground)',
     borderTop: '1px solid var(--color-border)',
     display: 'flex', alignItems: 'center',
@@ -1082,8 +1087,8 @@ function StatusBar({ connected, processes, statsOpen, onToggleStats, updateInfo,
       <div style={{ ...item, paddingLeft: 10, gap: 5 }}>
         <span style={{
           width: 6, height: 6, borderRadius: '50%', flexShrink: 0,
-          background: connected ? '#4ade80' : '#f87171',
-          boxShadow: connected ? '0 0 4px #4ade80' : undefined,
+          background: connected ? 'var(--color-status-running)' : 'var(--color-destructive)',
+          boxShadow: connected ? '0 0 4px var(--color-status-running)' : undefined,
         }} />
         <span>{activeServer.id === 'local' ? 'Local' : activeServer.name}</span>
       </div>
@@ -1100,11 +1105,11 @@ function StatusBar({ connected, processes, statsOpen, onToggleStats, updateInfo,
           ...btnItem,
           borderLeft: '1px solid var(--color-border)',
           cursor: updateInfo ? 'pointer' : 'default',
-          color: updateInfo ? '#f97316' : 'var(--color-muted-foreground)',
+          color: updateInfo ? 'var(--color-warning)' : 'var(--color-muted-foreground)',
           gap: 3,
           padding: '0 8px',
         }}
-        onMouseEnter={e => { if (updateInfo) e.currentTarget.style.background = 'color-mix(in srgb, #f97316 12%, transparent)' }}
+        onMouseEnter={e => { if (updateInfo) e.currentTarget.style.background = 'color-mix(in srgb, var(--color-warning) 12%, transparent)' }}
         onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}
       >
         {updateInfo

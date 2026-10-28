@@ -133,13 +133,13 @@ export default function TunnelsTab() {
         {(hasOutput || tnInstalling === provider) && (
           <div style={{ marginTop: 10 }}>
             {/* Terminal header */}
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: '#1a1a1a', borderRadius: '6px 6px 0 0', padding: '5px 10px', borderBottom: '1px solid #333' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'var(--color-editor-gutter)', borderRadius: '6px 6px 0 0', padding: '5px 10px', borderBottom: '1px solid var(--color-border)' }}>
               <div style={{ display: 'flex', gap: 6 }}>
                 <span style={{ width: 10, height: 10, borderRadius: '50%', background: '#ff5f57', display: 'inline-block' }} />
                 <span style={{ width: 10, height: 10, borderRadius: '50%', background: '#ffbd2e', display: 'inline-block' }} />
                 <span style={{ width: 10, height: 10, borderRadius: '50%', background: '#28c840', display: 'inline-block' }} />
               </div>
-              <span style={{ fontSize: 10, color: '#666', fontFamily: 'monospace' }}>
+              <span style={{ fontSize: 10, color: 'var(--color-muted-foreground)', fontFamily: 'monospace' }}>
                 {tnInstalling === provider ? 'Installing…' : done === true ? 'Done' : 'Failed'}
               </span>
             </div>
@@ -148,23 +148,23 @@ export default function TunnelsTab() {
               ref={el => { terminalRefs.current[provider] = el }}
               style={{
                 fontSize: 11, fontFamily: 'monospace',
-                background: '#0d0d0d',
-                border: '1px solid #333', borderTop: 'none',
+                background: 'var(--color-background)',
+                border: '1px solid var(--color-border)', borderTop: 'none',
                 borderRadius: '0 0 6px 6px',
                 padding: '10px 12px', margin: 0,
                 whiteSpace: 'pre-wrap', wordBreak: 'break-all',
                 maxHeight: 220, overflow: 'auto',
-                color: '#d4d4d4',
+                color: 'var(--color-foreground)',
                 lineHeight: 1.5,
               }}
             >
               {lines.length === 0 ? (
-                <span style={{ color: '#555' }}>Waiting for output…</span>
+                <span style={{ color: 'var(--color-muted-foreground)' }}>Waiting for output…</span>
               ) : (
                 lines.map((line, i) => <div key={i}>{line}</div>)
               )}
               {tnInstalling === provider && (
-                <span style={{ display: 'inline-block', width: 8, height: 14, background: '#d4d4d4', verticalAlign: 'text-bottom', animation: 'blink 1s step-end infinite' }} />
+                <span style={{ display: 'inline-block', width: 8, height: 14, background: 'var(--color-foreground)', verticalAlign: 'text-bottom', animation: 'blink 1s step-end infinite' }} />
               )}
             </pre>
             {/* Status line below terminal */}

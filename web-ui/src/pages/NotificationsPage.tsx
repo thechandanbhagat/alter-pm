@@ -162,7 +162,7 @@ function NotifCard({
             }}>
               <div style={{
                 fontSize: 10, fontWeight: 700, letterSpacing: '0.1em',
-                color: '#818cf8', textTransform: 'uppercase', marginBottom: 10,
+                color: 'var(--color-notification)', textTransform: 'uppercase', marginBottom: 10,
                 display: 'flex', alignItems: 'center', gap: 5,
               }}>
                 <span style={{ fontSize: 13 }}>⚙</span> Process Events
@@ -185,7 +185,7 @@ function NotifCard({
             }}>
               <div style={{
                 fontSize: 10, fontWeight: 700, letterSpacing: '0.1em',
-                color: '#fbbf24', textTransform: 'uppercase', marginBottom: 10,
+                color: 'var(--color-warning)', textTransform: 'uppercase', marginBottom: 10,
                 display: 'flex', alignItems: 'center', gap: 5,
               }}>
                 <span style={{ fontSize: 13 }}>⏰</span> Cron Events

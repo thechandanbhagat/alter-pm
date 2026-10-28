@@ -1,30 +1,29 @@
 // @group BusinessLogic > AiTab : AI assistant settings — provider selector, per-provider config, GitHub OAuth
 
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Check, Copy, Github, Loader, LogOut, RefreshCw } from 'lucide-react'
-import type { AiModelInfo } from '@/lib/api'
+import type { AiLocalProviderInfo, AiModelInfo } from '@/lib/api'
 import { api } from '@/lib/api'
+import { AI_PROVIDERS, AI_PROVIDER_LABELS, LOCAL_AI_PROVIDERS, asAiProvider, defaultAiModel, emptyCliPaths, isAbsoluteExecutablePath, isCliProvider, isLocalAiProvider, localProviderDisclosure, localProviderStatus, type AiProvider } from '@/lib/aiProviders'
 import { card, inputStyle, sectionTitle, selectStyle, SettingRow, Toggle } from './shared'
-
-type Provider = 'ollama' | 'copilot' | 'github' | 'claude' | 'openai'
-
-// 'github' kept in type for backwards compat but hidden from the UI selector
-const PROVIDER_LABELS: Record<Provider, string> = {
-  ollama:   'Ollama (local)',
-  copilot:  'GitHub Copilot',
-  github:   'GitHub Models',
-  claude:   'Claude (Anthropic)',
-  openai:   'OpenAI',
-}
-
-const VISIBLE_PROVIDERS: Provider[] = ['ollama', 'copilot', 'claude', 'openai']
 
 export default function AiTab() {
   const [aiEnabled,    setAiEnabled]    = useState(false)
-  const [provider,     setProvider]     = useState<Provider>('ollama')
+  const [provider,     setProvider]     = useState<AiProvider>('ollama')
   const [aiModel,      setAiModel]      = useState('llama3.2')
   const [aiSaving,     setAiSaving]     = useState(false)
   const [aiSaved,      setAiSaved]      = useState(false)
+
+  const [settingsLoaded, setSettingsLoaded] = useState(false)
+  const [settingsError, setSettingsError] = useState<string | null>(null)
+  const [modelsError, setModelsError] = useState<string | null>(null)
+  const [localProviders, setLocalProviders] = useState<AiLocalProviderInfo[]>([])
+  const [localPaths, setLocalPaths] = useState<Record<string, string>>(emptyCliPaths)
+  const [localLoading, setLocalLoading] = useState(false)
+  const [localError, setLocalError] = useState<string | null>(null)
+  const [pathsSaving, setPathsSaving] = useState(false)
+  const providerRef = useRef<AiProvider>('ollama')
+  const modelRequestRef = useRef(0)
 
   // @group BusinessLogic > AiTab > GitHub : OAuth Device Flow state
   const [aiClientId,        setAiClientId]        = useState('')
@@ -56,34 +55,75 @@ export default function AiTab() {
   const [modelOptions,   setModelOptions]   = useState<AiModelInfo[]>([])
   const [modelsLoading,  setModelsLoading]  = useState(false)
 
-  useEffect(() => {
-    api.aiGetSettings().then(s => {
+  const loadModels = useCallback(async (target: AiProvider) => {
+    const request = ++modelRequestRef.current
+    setModelsLoading(true)
+    setModelsError(null)
+    try {
+      const data = await api.aiGetModels(target)
+      if (request !== modelRequestRef.current || target !== providerRef.current) return
+      setModelOptions(data.models)
+      if (!isLocalAiProvider(target)) {
+        setAiModel(previous => data.models.some(model => model.id === previous)
+          ? previous : (data.models[0]?.id ?? previous))
+      }
+    } catch (error) {
+      if (request === modelRequestRef.current) setModelsError((error as Error).message || 'Unable to load models.')
+    } finally {
+      if (request === modelRequestRef.current) setModelsLoading(false)
+    }
+  }, [])
+
+  const rescanLocalProviders = useCallback(async () => {
+    setLocalLoading(true)
+    setLocalError(null)
+    try {
+      const data = await api.aiGetLocalProviders()
+      setLocalProviders(data.providers)
+    } catch (error) {
+      setLocalProviders([])
+      setLocalError((error as Error).message || 'Unable to check installed providers.')
+    } finally {
+      setLocalLoading(false)
+    }
+  }, [])
+
+  const reloadSettings = useCallback(async () => {
+    setSettingsError(null)
+    try {
+      const s = await api.aiGetSettings()
+      const selected = asAiProvider(s.provider)
+      providerRef.current = selected
       setAiEnabled(s.enabled)
-      setProvider((s.provider as Provider) || 'ollama')
-      setAiModel(s.model)
+      setProvider(selected)
+      setAiModel(s.model || defaultAiModel(selected))
       setAiClientId('')
       setAiClientIdBuiltin(!!s.client_id_builtin)
-      // GitHub
       if (s.github_username) { setAuthUsername(s.github_username); setAuthPhase('connected') }
       else { setAuthPhase('idle') }
-      // Claude
       setAnthropicKeySet(s.anthropic_key_set)
       setAnthropicKeyHint(s.anthropic_key_hint ?? '')
-      // OpenAI
       setOpenaiKeySet(s.openai_key_set)
       setOpenaiKeyHint(s.openai_key_hint ?? '')
       setOpenaiBaseUrl(s.openai_base_url || 'https://api.openai.com/v1')
-      // Ollama
       setOllamaBaseUrl(s.ollama_base_url || 'http://localhost:11434')
-      // Load models on startup if credentials are present for the active provider
-      const canLoad =
-        s.provider === 'ollama' ||
-        s.provider === 'claude'  && s.anthropic_key_set ||
-        s.provider === 'openai'  && s.openai_key_set ||
-        (s.provider === 'copilot' || s.provider === 'github') && s.github_token_set
-      if (canLoad) loadModels(s.provider as Provider)
-    }).catch(() => {})
-  }, [])
+      setLocalPaths({ ...emptyCliPaths(), ...s.local_cli_paths })
+      setSettingsLoaded(true)
+      const canLoad = isLocalAiProvider(selected) || selected === 'ollama' ||
+        selected === 'claude' && s.anthropic_key_set ||
+        selected === 'openai' && s.openai_key_set ||
+        (selected === 'copilot' || selected === 'github') && s.github_token_set
+      if (canLoad) void loadModels(selected)
+    } catch (error) {
+      setSettingsError((error as Error).message || 'Unable to load AI settings.')
+    }
+  }, [loadModels])
+
+  useEffect(() => {
+    void reloadSettings()
+    void rescanLocalProviders()
+    return () => { modelRequestRef.current += 1 }
+  }, [reloadSettings, rescanLocalProviders])
 
   // @group BusinessLogic > AiTab > GitHub : Poll during Device Flow
   useEffect(() => {
@@ -98,7 +138,7 @@ export default function AiTab() {
           setAuthPhase('connected')
           setAuthUsername(status.username)
           setAuthError(null)
-          loadModels('github')
+          void loadModels(providerRef.current)
         } else if (status.status === 'expired') {
           setAuthPhase('idle'); setAuthError('Code expired — please try again.')
         } else if (status.status === 'denied') {
@@ -111,42 +151,49 @@ export default function AiTab() {
       } catch { /* network hiccup — keep polling */ }
     }, pollInterval * 1000)
     return () => { if (pollTimerRef.current) clearInterval(pollTimerRef.current) }
-  }, [authPhase, pollInterval])
+  }, [authPhase, pollInterval, loadModels])
 
-  async function loadModels(prov?: Provider) {
-    const target = prov ?? provider
-    setModelsLoading(true)
-    try {
-      // Save provider first so the backend fetches the right model list
-      await api.aiSaveSettings({ provider: target })
-      const data = await api.aiGetModels()
-      if (data.models.length > 0) {
-        setModelOptions(data.models)
-        // Reset to first model if current selection doesn't exist in the new list
-        setAiModel(prev => {
-          const exists = data.models.some(m => m.id === prev)
-          return exists ? prev : data.models[0].id
-        })
-      }
-    } catch { /* use fallback list */ } finally {
-      setModelsLoading(false)
-    }
-  }
-
-  async function handleProviderChange(newProvider: Provider) {
+  function handleProviderChange(newProvider: AiProvider) {
+    providerRef.current = newProvider
     setProvider(newProvider)
     setModelOptions([])
-    setAiModel('')
-    await loadModels(newProvider)
+    setAiModel(defaultAiModel(newProvider))
+    setAiSaved(false)
+    void loadModels(newProvider)
+  }
+
+  function normalizedPaths() {
+    const paths = Object.fromEntries(Object.entries(localPaths).map(([id, path]) => [id, path.trim()]))
+    const invalid = Object.entries(paths).find(([, path]) => !isAbsoluteExecutablePath(path))
+    if (invalid) throw new Error(`${AI_PROVIDER_LABELS[asAiProvider(invalid[0])]} requires an absolute executable path, or leave it blank for automatic discovery.`)
+    return paths
+  }
+
+  async function savePathsAndRescan() {
+    setPathsSaving(true)
+    setLocalError(null)
+    try {
+      const paths = normalizedPaths()
+      await api.aiSaveSettings({ local_cli_paths: paths })
+      setLocalPaths(paths)
+      await rescanLocalProviders()
+    } catch (error) {
+      setLocalError((error as Error).message || 'Unable to save executable paths.')
+    } finally {
+      setPathsSaving(false)
+    }
   }
 
   async function saveAiSettings() {
     setAiSaving(true)
+    setSettingsError(null)
+    setAiSaved(false)
     try {
       const body: Parameters<typeof api.aiSaveSettings>[0] = {
         provider,
         enabled: aiEnabled,
-        model:   aiModel,
+        model: aiModel.trim() || defaultAiModel(provider),
+        local_cli_paths: normalizedPaths(),
       }
       if (provider === 'github' && aiClientId) body.client_id = aiClientId
       if (provider === 'claude'  && anthropicKey)  body.anthropic_key  = anthropicKey
@@ -162,8 +209,11 @@ export default function AiTab() {
       const s = await api.aiGetSettings()
       setAnthropicKeySet(s.anthropic_key_set); setAnthropicKeyHint(s.anthropic_key_hint ?? '')
       setOpenaiKeySet(s.openai_key_set);       setOpenaiKeyHint(s.openai_key_hint ?? '')
-      if (modelOptions.length === 0) loadModels()
-    } catch { /* ignore */ } finally {
+      if (modelOptions.length === 0) void loadModels(provider)
+      void rescanLocalProviders()
+    } catch (error) {
+      setSettingsError((error as Error).message || 'Unable to save AI settings.')
+    } finally {
       setAiSaving(false)
     }
   }
@@ -189,7 +239,7 @@ export default function AiTab() {
     try {
       await api.aiAuthLogout()
       setAuthPhase('idle'); setAuthUsername(''); setModelOptions([]); setAuthError(null)
-    } catch { /* ignore */ }
+    } catch (error) { setAuthError((error as Error).message || 'Unable to disconnect GitHub.') }
   }
 
   function copyDeviceCode() {
@@ -198,10 +248,10 @@ export default function AiTab() {
     }).catch(() => {})
   }
 
-  const SaveButton = ({ label = 'Save' }: { label?: string }) => (
+  const saveButton = (label = 'Save') => (
     <button
       onClick={saveAiSettings}
-      disabled={aiSaving}
+      disabled={aiSaving || !settingsLoaded}
       style={{
         padding: '5px 14px', fontSize: 12, fontWeight: 500,
         background: aiSaved ? 'var(--color-status-running)' : 'var(--color-primary)',
@@ -213,10 +263,16 @@ export default function AiTab() {
     </button>
   )
 
+  const selectedLocal = localProviders.find(item => item.id === provider)
+
   return (
     <>
       <p style={sectionTitle}>AI Assistant</p>
-      <div style={card}>
+      {settingsError && <div role="alert" style={{ color: 'var(--color-destructive)', marginBottom: 12 }}>
+        {settingsError}
+        {!settingsLoaded && <button type="button" onClick={() => void reloadSettings()} style={{ ...selectStyle, marginLeft: 8 }}>Retry loading settings</button>}
+      </div>}
+      <fieldset disabled={!settingsLoaded || aiSaving} style={{ ...card, minWidth: 0 }}>
 
         {/* Enable toggle */}
         <SettingRow
@@ -233,17 +289,25 @@ export default function AiTab() {
             <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
               <select
                 value={provider}
-                onChange={e => { void handleProviderChange(e.target.value as Provider) }}
+                onChange={e => handleProviderChange(asAiProvider(e.target.value))}
+                aria-label="AI provider"
                 style={{ ...selectStyle, minWidth: 180 }}
               >
-                {VISIBLE_PROVIDERS.map(p => (
-                  <option key={p} value={p}>{PROVIDER_LABELS[p]}</option>
+                {AI_PROVIDERS.map(p => (
+                  <option key={p} value={p}>{AI_PROVIDER_LABELS[p]}{isLocalAiProvider(p) ? ` — ${localProviderStatus(localProviders.find(item => item.id === p), localLoading)}` : ''}</option>
                 ))}
               </select>
-              <SaveButton label="Save" />
+              {saveButton()}
             </div>
           }
         />
+
+        {isLocalAiProvider(provider) && <div style={{ padding: '12px 0', fontSize: 12, lineHeight: 1.5 }}>
+          <p style={{ color: selectedLocal?.available ? 'var(--color-status-running)' : 'var(--color-muted-foreground)' }}>
+            <strong>{localProviderStatus(selectedLocal, localLoading)}</strong> — {selectedLocal?.detail || 'Check the installed providers below for availability on the active daemon host.'}
+          </p>
+          <p style={{ color: 'var(--color-muted-foreground)', marginTop: 4 }}>{localProviderDisclosure(provider)}</p>
+        </div>}
 
         {/* ── GitHub Copilot section ── */}
         {provider === 'copilot' && (
@@ -298,7 +362,7 @@ export default function AiTab() {
                         spellCheck={false}
                         autoComplete="off"
                       />
-                      <SaveButton />
+                      {saveButton()}
                     </div>
                   )
               }
@@ -411,7 +475,7 @@ export default function AiTab() {
                   spellCheck={false}
                   autoComplete="off"
                 />
-                <SaveButton />
+                {saveButton()}
               </div>
             }
           />
@@ -451,7 +515,7 @@ export default function AiTab() {
                     spellCheck={false}
                     autoComplete="off"
                   />
-                  <SaveButton />
+                  {saveButton()}
                 </div>
               }
             />
@@ -474,7 +538,7 @@ export default function AiTab() {
                   spellCheck={false}
                   autoComplete="off"
                 />
-                <SaveButton />
+                {saveButton()}
               </div>
             }
           />
@@ -483,11 +547,20 @@ export default function AiTab() {
         {/* ── Model selector (all providers) ── */}
         <SettingRow
           label="Model"
-          description={`${PROVIDER_LABELS[provider]} model to use for chat responses.`}
+          description={isCliProvider(provider) ? 'Optional model ID accepted by your installed CLI. Leave blank to use its configured default.' : `${AI_PROVIDER_LABELS[provider]} model to use for chat responses.`}
           isLast
           control={
             <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <select
+              {isCliProvider(provider) ? <input
+                aria-label="CLI model ID"
+                value={aiModel === 'default' ? '' : aiModel}
+                onChange={event => setAiModel(event.target.value)}
+                placeholder="CLI default"
+                style={{ ...inputStyle, width: 220 }}
+                autoComplete="off"
+                spellCheck={false}
+              /> : <select
+                aria-label="AI model"
                 value={aiModel}
                 onChange={e => setAiModel(e.target.value)}
                 style={{ ...selectStyle, minWidth: 200 }}
@@ -500,9 +573,9 @@ export default function AiTab() {
                   ))
                   : <option value={aiModel}>{aiModel}</option>
                 }
-              </select>
+              </select>}
               <button
-                onClick={() => loadModels()}
+                onClick={() => void loadModels(provider)}
                 disabled={modelsLoading}
                 title="Refresh model list"
                 style={{
@@ -514,11 +587,53 @@ export default function AiTab() {
               >
                 <RefreshCw size={12} style={modelsLoading ? { animation: 'spin 1s linear infinite' } : {}} />
               </button>
-              <SaveButton />
+              {saveButton()}
             </div>
           }
         />
 
+        {modelsError && <p role="alert" style={{ marginTop: 12, fontSize: 12, color: 'var(--color-destructive)' }}>{modelsError}</p>}
+      </fieldset>
+
+      <p style={sectionTitle}>Installed providers</p>
+      <div style={card}>
+        <p style={{ fontSize: 12, color: 'var(--color-muted-foreground)', marginBottom: 16, lineHeight: 1.5 }}>
+          Discovery runs on the active daemon host, including when you connect to a remote server. It checks installation and support without sending prompts or process data.
+          CLI tools use their existing login and cloud models. Apple Foundation Models runs on-device.
+        </p>
+        {LOCAL_AI_PROVIDERS.map(id => {
+          const info = localProviders.find(item => item.id === id)
+          return <div key={id} style={{ padding: '12px 0', borderTop: '1px solid var(--color-border)' }}>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'space-between', fontSize: 13 }}>
+              <strong>{AI_PROVIDER_LABELS[id]}</strong>
+              <span style={{ color: info?.available ? 'var(--color-status-running)' : 'var(--color-muted-foreground)' }}>{localProviderStatus(info, localLoading)}</span>
+            </div>
+            <p style={{ fontSize: 12, color: 'var(--color-muted-foreground)', marginTop: 4, lineHeight: 1.5 }}>{info?.detail || (id === 'apple-foundation' ? localProviderDisclosure(id) : 'Install and sign in to the CLI on the daemon host, then rescan.')}</p>
+            {(info?.path || info?.version) && <p style={{ fontSize: 11, fontFamily: 'monospace', overflowWrap: 'anywhere', marginTop: 4 }}>{[info.path, info.version].filter(Boolean).join(' · ')}</p>}
+            {isCliProvider(id) && <label style={{ display: 'block', fontSize: 11, color: 'var(--color-muted-foreground)', marginTop: 8 }}>
+              {AI_PROVIDER_LABELS[id]} executable path (optional)
+              <input
+                value={localPaths[id] ?? ''}
+                onChange={event => setLocalPaths(previous => ({ ...previous, [id]: event.target.value }))}
+                placeholder="Auto-detect on daemon host"
+                disabled={!settingsLoaded || pathsSaving || aiSaving}
+                style={{ ...inputStyle, display: 'block', marginTop: 4, maxWidth: 560, fontFamily: 'monospace' }}
+                spellCheck={false}
+                autoComplete="off"
+              />
+            </label>}
+          </div>
+        })}
+        <p style={{ fontSize: 11, color: 'var(--color-muted-foreground)', marginTop: 8 }}>Use an absolute path to the executable. Clear a saved path to restore automatic discovery.</p>
+        {localError && <p role="alert" style={{ fontSize: 12, color: 'var(--color-destructive)', marginTop: 12 }}>{localError}</p>}
+        <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
+          <button type="button" onClick={() => void savePathsAndRescan()} disabled={!settingsLoaded || pathsSaving || localLoading || aiSaving} style={selectStyle}>
+            {pathsSaving ? 'Saving paths…' : 'Save paths & rescan'}
+          </button>
+          <button type="button" onClick={() => void rescanLocalProviders()} disabled={localLoading || pathsSaving} style={selectStyle}>
+            {localLoading ? 'Checking…' : 'Rescan installed providers'}
+          </button>
+        </div>
       </div>
     </>
   )

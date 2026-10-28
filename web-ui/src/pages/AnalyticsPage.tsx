@@ -120,11 +120,11 @@ export default function AnalyticsPage({ processes, settings, reload }: Props) {
           <StatCell n={stats.total}                             label="Total" />
           <StatCell n={stats.activeCount}                      label="Running"  c={stats.activeCount > 0 ? 'var(--color-status-running)' : undefined} />
           <StatCell n={stats.stopped + stats.stopping}         label="Stopped" />
-          <StatCell n={stats.crashed + stats.errored}          label="Crashed"  c={hasCrashed ? '#ef4444' : undefined} />
+          <StatCell n={stats.crashed + stats.errored}          label="Crashed"  c={hasCrashed ? 'var(--color-destructive)' : undefined} />
           <div style={{ flex: 1 }} />
-          <StatCell n={formatCpu(stats.totalCpu)}              label="CPU"      c="#60a5fa" />
-          <StatCell n={formatBytes(stats.totalMem)}            label="Memory"   c="#a78bfa" />
-          <StatCell n={String(stats.totalRestarts)}            label="Restarts" c={stats.totalRestarts > 0 ? '#f59e0b' : undefined} />
+          <StatCell n={formatCpu(stats.totalCpu)}              label="CPU"      c="var(--color-info)" />
+          <StatCell n={formatBytes(stats.totalMem)}            label="Memory"   c="var(--color-notification)" />
+          <StatCell n={String(stats.totalRestarts)}            label="Restarts" c={stats.totalRestarts > 0 ? 'var(--color-warning)' : undefined} />
         </div>
       </div>
 
@@ -138,8 +138,8 @@ export default function AnalyticsPage({ processes, settings, reload }: Props) {
             {/* Crash alert */}
             {hasCrashed && (
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 14px', background: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.22)', borderLeft: '3px solid #ef4444', borderRadius: '0 6px 6px 0' }}>
-                <AlertTriangle size={13} color="#ef4444" style={{ flexShrink: 0 }} />
-                <span style={{ flex: 1, fontSize: 12.5, color: '#ef4444' }}>
+                <AlertTriangle size={13} color="var(--color-destructive)" style={{ flexShrink: 0 }} />
+                <span style={{ flex: 1, fontSize: 12.5, color: 'var(--color-destructive)' }}>
                   <strong>{stats.crashedList.length} crashed</strong>
                   <span style={{ fontWeight: 400, marginLeft: 6, opacity: 0.8 }}>— {stats.crashedList.map(p => p.name).join(', ')}</span>
                 </span>
@@ -199,10 +199,10 @@ export default function AnalyticsPage({ processes, settings, reload }: Props) {
                           <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 3 }}>
                             <span style={{ fontSize: 10, color: 'var(--color-muted-foreground)', minWidth: 14, textAlign: 'right' }}>{i + 1}</span>
                             <span style={{ flex: 1, fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name}</span>
-                            <span style={{ fontSize: 11, fontWeight: 700, color: '#a78bfa' }}>{formatBytes(p.memory_bytes ?? 0)}</span>
+                            <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--color-notification)' }}>{formatBytes(p.memory_bytes ?? 0)}</span>
                           </div>
                           <div style={{ height: 2, background: 'var(--color-border)', borderRadius: 2, overflow: 'hidden', marginLeft: 19 }}>
-                            <div style={{ width: `${Math.min(pct, 100)}%`, height: '100%', background: '#a78bfa' }} />
+                            <div style={{ width: `${Math.min(pct, 100)}%`, height: '100%', background: 'var(--color-notification)' }} />
                           </div>
                         </div>
                       )
@@ -214,7 +214,7 @@ export default function AnalyticsPage({ processes, settings, reload }: Props) {
                   <LeaderPanel icon={TrendingUp} title="Restart Leaders">
                     {stats.topRestarters.map((p, i) => (
                       <LRow key={p.id} rank={i + 1} name={p.name} dot={statusColor(p.status)}
-                        metric={`${p.restart_count}×`} mc="#ef4444"
+                        metric={`${p.restart_count}×`} mc="var(--color-destructive)"
                         onClick={() => navigate(`/processes/${p.id}`)} />
                     ))}
                   </LeaderPanel>
@@ -255,7 +255,7 @@ export default function AnalyticsPage({ processes, settings, reload }: Props) {
               <div style={sidePanel}>
                 <PanelLabel>System</PanelLabel>
                 <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column' }}>
-                  <KV k="Status"      v={health.status}             vc={health.status === 'running' ? 'var(--color-status-running)' : '#ef4444'} />
+                  <KV k="Status"      v={health.status}             vc={health.status === 'running' ? 'var(--color-status-running)' : 'var(--color-destructive)'} />
                   <KV k="Version"     v={`v${health.version}`} />
                   <KV k="Uptime"      v={formatUptime(health.uptime_secs)} />
                   <KV k="Processes"   v={String(health.process_count)} />
@@ -301,13 +301,13 @@ function StatCell({ n, label, c }: { n: number | string; label: string; c?: stri
 // @group BusinessLogic > NsListRow : One namespace row in the table
 function NsListRow({ ns, last, onNavigate, onStart }: { ns: NsRow; last: boolean; onNavigate: () => void; onStart: () => void }) {
   const [hov, setHov] = useState(false)
-  const dot = ns.crashed > 0 ? '#ef4444' : ns.running > 0 ? 'var(--color-status-running)' : 'var(--color-muted-foreground)'
+  const dot = ns.crashed > 0 ? 'var(--color-destructive)' : ns.running > 0 ? 'var(--color-status-running)' : 'var(--color-muted-foreground)'
   const pct = ns.total > 0 ? (ns.running / ns.total) * 100 : 0
   const statusLabel = ns.crashed > 0
     ? `${ns.crashed} crashed`
     : ns.running > 0 ? `${ns.running}/${ns.total} running`
     : 'all stopped'
-  const statusColor2 = ns.crashed > 0 ? '#ef4444' : ns.running > 0 ? 'var(--color-status-running)' : 'var(--color-muted-foreground)'
+  const statusColor2 = ns.crashed > 0 ? 'var(--color-destructive)' : ns.running > 0 ? 'var(--color-status-running)' : 'var(--color-muted-foreground)'
 
   return (
     <div
@@ -342,12 +342,12 @@ function NsListRow({ ns, last, onNavigate, onStart }: { ns: NsRow; last: boolean
       </div>
 
       {/* CPU */}
-      <span style={{ fontSize: 12, color: ns.totalCpu > 0 ? '#60a5fa' : 'var(--color-muted-foreground)', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
+      <span style={{ fontSize: 12, color: ns.totalCpu > 0 ? 'var(--color-info)' : 'var(--color-muted-foreground)', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
         {ns.totalCpu > 0 ? formatCpu(ns.totalCpu) : '—'}
       </span>
 
       {/* MEM */}
-      <span style={{ fontSize: 12, color: ns.totalMem > 0 ? '#a78bfa' : 'var(--color-muted-foreground)', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
+      <span style={{ fontSize: 12, color: ns.totalMem > 0 ? 'var(--color-notification)' : 'var(--color-muted-foreground)', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
         {ns.totalMem > 0 ? formatBytes(ns.totalMem) : '—'}
       </span>
 
@@ -476,7 +476,7 @@ function LogStatsSection({ processes }: { processes: ProcessInfo[] }) {
             <span style={{ width: 7, height: 7, borderRadius: 1, background: 'var(--color-status-running)', display: 'inline-block' }} />stdout
           </span>
           <span style={{ display: 'flex', alignItems: 'center', gap: 4, color: 'var(--color-muted-foreground)' }}>
-            <span style={{ width: 7, height: 7, borderRadius: 1, background: '#ef4444', display: 'inline-block' }} />stderr
+            <span style={{ width: 7, height: 7, borderRadius: 1, background: 'var(--color-destructive)', display: 'inline-block' }} />stderr
           </span>
         </div>
       </div>
@@ -500,7 +500,7 @@ function LogCard({ process, buckets }: { process: ProcessInfo; buckets: LogStats
         <span style={{ fontWeight: 600, fontSize: 12, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{process.name}</span>
         <span style={{ fontSize: 11, color: 'var(--color-status-running)', fontWeight: 600 }}>{totalOut} out</span>
         <span style={{ fontSize: 10, color: 'var(--color-muted-foreground)', margin: '0 2px' }}>·</span>
-        <span style={{ fontSize: 11, color: '#ef4444', fontWeight: 600 }}>{totalErr} err</span>
+        <span style={{ fontSize: 11, color: 'var(--color-destructive)', fontWeight: 600 }}>{totalErr} err</span>
       </div>
       <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', height: H, display: 'block' }}>
         <line x1={0} y1={H / 2} x2={W} y2={H / 2} stroke="var(--color-border)" strokeWidth={0.5} strokeDasharray="3 3" />
@@ -509,7 +509,7 @@ function LogCard({ process, buckets }: { process: ProcessInfo; buckets: LogStats
           const tH = (t / maxCount) * H; const oH = (b.stdout_count / maxCount) * H; const eH = tH - oH
           return (
             <g key={i}>
-              {eH > 0 && <rect x={x} y={H - tH} width={bW} height={eH} fill="#ef4444" fillOpacity={0.8} rx={1} />}
+              {eH > 0 && <rect x={x} y={H - tH} width={bW} height={eH} fill="var(--color-destructive)" fillOpacity={0.8} rx={1} />}
               {oH > 0 && <rect x={x} y={H - oH} width={bW} height={oH} fill="var(--color-status-running)" fillOpacity={0.8} rx={1} />}
             </g>
           )
@@ -536,7 +536,7 @@ const sidePanel: CSSProperties = {
 }
 const dangerBtn: CSSProperties = {
   padding: '4px 10px', fontSize: 11, fontWeight: 600, borderRadius: 4, cursor: 'pointer', flexShrink: 0,
-  background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', color: '#ef4444',
+  background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', color: 'var(--color-destructive)',
   display: 'flex', alignItems: 'center', gap: 4,
 }
 const ghostBtn: CSSProperties = {

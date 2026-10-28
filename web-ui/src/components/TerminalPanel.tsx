@@ -479,7 +479,7 @@ export const TerminalPanel = forwardRef<TerminalPanelHandle, TerminalPanelProps>
   }
 
   return (
-    <div style={panelStyle}>
+    <div className="terminal-panel" style={panelStyle}>
 
       {/* Header: icon + tabs + action buttons + window controls */}
       <div style={headerStyle}>
@@ -708,7 +708,7 @@ export function TerminalStatusBarBtn({
         <span style={{
           position: 'absolute', top: 2, right: 4,
           minWidth: 13, height: 13, borderRadius: 7,
-          background: 'var(--color-primary)', color: '#000',
+          background: 'var(--color-primary)', color: 'var(--color-primary-foreground)',
           fontSize: 8, fontWeight: 700,
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           padding: '0 2px', lineHeight: 1,

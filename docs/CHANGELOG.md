@@ -6,6 +6,30 @@ Format: `[version] — YYYY-MM-DD` with sections: **Added**, **Changed**, **Fixe
 
 ---
 
+## [1.4.0] — 2026-10-28
+
+### Added
+
+- **Dashboard themes** ([#16](https://github.com/thechandanbhagat/alter-pm/issues/16)): Dark (the existing default), Light, and System in Settings → UI, plus a synchronized theme menu in the sidebar footer. Changes apply immediately, persist with daemon settings, and System follows operating-system appearance changes. A per-daemon browser cache applies the saved appearance during startup and on the lock screen.
+- **Installed AI providers**: Claude Code, Codex, Cursor, and Devin CLI adapters for process and log analysis using existing CLI authentication. Settings → AI shows installation and availability, supports absolute executable path overrides, and accepts an optional CLI model ID. These providers use cloud inference.
+- **Apple Foundation Models**: on-device analysis on Apple silicon Macs with macOS 26+ and Apple Intelligence available. Native builds with a compatible SDK (Xcode 26+) bundle the helper; other builds remain usable and show this provider as unavailable. Automatic process/log context is trimmed to leave room for the response.
+- **Provider discovery**: checks the active daemon host without sending prompts or process data. Google Antigravity (`agy`) is detected but remains unavailable for chat because its documented headless options cannot enforce isolated analysis without tools. Authentication and model access are checked when a message is sent.
+
+### Changed
+
+- AI model refresh accepts a provider query and no longer saves a provider change. Provider and model selections are saved together, preventing a previous provider's model from carrying over.
+- CLI analysis uses a temporary workspace and provider-specific tool restrictions. Cursor's own account settings and startup hooks may still apply; Devin may save summaries in its own data directory.
+- Updated the README and user guides with theme controls, installed-provider requirements, authentication troubleshooting, and fresh dashboard screenshots.
+
+### Fixed
+
+- Adapted dashboard surfaces, status colors, logs, editors, and charts for readable light-mode rendering while retaining a dark ANSI terminal canvas.
+- AI request history no longer repeats the current question. Closing or clearing the chat cancels the active request, releases its response stream, and ignores late responses from a cancelled generation.
+- AI settings and provider failures are shown in the interface instead of being silently discarded. Missing or unsupported local providers cannot send chat requests.
+- Corrected UI settings documentation that listed controls unavailable in the current UI.
+
+---
+
 ## [1.3.2] — 2026-09-21
 
 ### Fixed

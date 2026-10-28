@@ -428,7 +428,7 @@ export default function CreateCronJobPage({ onDone, settings }: Props) {
                 <div style={{
                   padding: '8px 12px', background: 'rgba(234,179,8,0.1)',
                   border: '1px solid rgba(234,179,8,0.3)', borderRadius: 5,
-                  fontSize: 12, color: '#eab308',
+                  fontSize: 12, color: 'var(--color-warning)',
                 }}>
                   ⚠ Save the script first (left panel) before creating the cron job.
                 </div>

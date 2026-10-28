@@ -12,7 +12,7 @@ function highlightLine(line: string, i: number): React.ReactNode {
   // Comment line (optional leading whitespace + #)
   if (/^\s*#/.test(line)) {
     return (
-      <div key={i} style={{ color: '#6b7280', fontStyle: 'italic' }}>
+      <div key={i} style={{ color: 'var(--color-muted-foreground)', fontStyle: 'italic' }}>
         {line}
       </div>
     )
@@ -23,7 +23,7 @@ function highlightLine(line: string, i: number): React.ReactNode {
   let exportPrefix: React.ReactNode = null
   const exportMatch = rest.match(/^(export\s+)(.*)$/)
   if (exportMatch) {
-    exportPrefix = <span style={{ color: '#c084fc' }}>{exportMatch[1]}</span>
+    exportPrefix = <span style={{ color: 'var(--color-syntax-keyword)' }}>{exportMatch[1]}</span>
     rest = exportMatch[2]
   }
 
@@ -38,8 +38,8 @@ function highlightLine(line: string, i: number): React.ReactNode {
       return (
         <div key={i}>
           {exportPrefix}
-          <span style={{ color: '#93c5fd' }}>{key}</span>
-          <span style={{ color: '#64748b' }}>=</span>
+          <span style={{ color: 'var(--color-syntax-key)' }}>{key}</span>
+          <span style={{ color: 'var(--color-muted-foreground)' }}>=</span>
           {highlightValue(val)}
         </div>
       )
@@ -61,9 +61,9 @@ function highlightValue(val: string): React.ReactNode {
     const inner = val.slice(1, -1)
     return (
       <>
-        <span style={{ color: '#94a3b8' }}>{q}</span>
-        <span style={{ color: '#fbbf24' }}>{inner}</span>
-        <span style={{ color: '#94a3b8' }}>{q}</span>
+        <span style={{ color: 'var(--color-muted-foreground)' }}>{q}</span>
+        <span style={{ color: 'var(--color-warning)' }}>{inner}</span>
+        <span style={{ color: 'var(--color-muted-foreground)' }}>{q}</span>
       </>
     )
   }
@@ -73,14 +73,14 @@ function highlightValue(val: string): React.ReactNode {
   if (commentIdx > 0) {
     return (
       <>
-        <span style={{ color: '#86efac' }}>{val.slice(0, commentIdx)}</span>
-        <span style={{ color: '#6b7280', fontStyle: 'italic' }}>{val.slice(commentIdx)}</span>
+        <span style={{ color: 'var(--color-syntax-value)' }}>{val.slice(0, commentIdx)}</span>
+        <span style={{ color: 'var(--color-muted-foreground)', fontStyle: 'italic' }}>{val.slice(commentIdx)}</span>
       </>
     )
   }
 
   // Plain value
-  return <span style={{ color: '#86efac' }}>{val}</span>
+  return <span style={{ color: 'var(--color-syntax-value)' }}>{val}</span>
 }
 
 // @group BusinessLogic > EnvEditor : Highlighted editor component

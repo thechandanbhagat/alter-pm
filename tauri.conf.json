@@ -1,6 +1,6 @@
 {
   "productName": "alter",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "identifier": "io.alter.daemon",
   "build": {
     "devUrl": "http://localhost:2999",

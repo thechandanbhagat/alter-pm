@@ -37,6 +37,8 @@ export interface AiSettingsInfo {
   openai_base_url: string
   // Ollama
   ollama_base_url: string
+  // Installed provider executable overrides on the active daemon host
+  local_cli_paths: Record<string, string>
 }
 
 export interface AiAuthStartResponse {
@@ -57,6 +59,17 @@ export interface AiModelInfo {
   id: string
   label: string
   publisher: string
+}
+
+export interface AiLocalProviderInfo {
+  id: string
+  name: string
+  installed: boolean
+  available: boolean
+  path: string | null
+  version: string | null
+  detail: string
+  inference: 'cloud' | 'on-device'
 }
 
 function getBase(): string { return serverBaseUrl(getActiveServer()) }
@@ -298,6 +311,7 @@ export const api = {
     openai_key?: string
     openai_base_url?: string
     ollama_base_url?: string
+    local_cli_paths?: Record<string, string>
   }): Promise<{ success: boolean }> =>
     request('/ai/settings', { method: 'PUT', body: JSON.stringify(body) }),
 
@@ -313,9 +327,12 @@ export const api = {
   aiAuthLogout: (): Promise<{ success: boolean }> =>
     request('/ai/auth', { method: 'DELETE' }),
 
-  // @group APIEndpoints > AI : List GitHub Models catalog (chat-completion models only)
-  aiGetModels: (): Promise<{ models: AiModelInfo[] }> =>
-    request('/ai/models'),
+  // Model discovery is read-only and can target an unsaved provider selection.
+  aiGetModels: (provider?: string): Promise<{ models: AiModelInfo[] }> =>
+    request(`/ai/models${provider ? `?provider=${encodeURIComponent(provider)}` : ''}`),
+
+  aiGetLocalProviders: (): Promise<{ providers: AiLocalProviderInfo[] }> =>
+    request('/ai/local-providers'),
 
   // @group APIEndpoints > AI : Stream a chat response — returns AbortController to cancel
   aiChat(
@@ -326,6 +343,8 @@ export const api = {
   ): AbortController {
     const abort = new AbortController()
     ;(async () => {
+      let reader: ReadableStreamDefaultReader<Uint8Array> | undefined
+      const cancelReader = () => { void reader?.cancel().catch(() => {}) }
       try {
         const res = await fetch(`${getBase()}/ai/chat`, {
           method: 'POST',
@@ -335,20 +354,24 @@ export const api = {
         })
         if (!res.ok) {
           const data = await res.json().catch(() => ({}))
-          onError((data as { error?: string }).error ?? `HTTP ${res.status}`)
+          if (!abort.signal.aborted) onError((data as { error?: string }).error ?? `HTTP ${res.status}`)
           return
         }
-        const reader = res.body?.getReader()
+        reader = res.body?.getReader()
+        if (abort.signal.aborted) return
         if (!reader) { onDone(); return }
+        abort.signal.addEventListener('abort', cancelReader, { once: true })
         const decoder = new TextDecoder()
         let buf = ''
-        while (true) {
+        while (!abort.signal.aborted) {
           const { done, value } = await reader.read()
+          if (abort.signal.aborted) return
           if (done) break
           buf += decoder.decode(value, { stream: true })
           const lines = buf.split('\n')
           buf = lines.pop() ?? ''
           for (const line of lines) {
+            if (abort.signal.aborted) return
             const trimmed = line.trim()
             if (!trimmed.startsWith('data: ')) continue
             const payload = trimmed.slice(6)
@@ -360,10 +383,16 @@ export const api = {
             } catch { /* ignore malformed lines */ }
           }
         }
-        onDone()
+        if (!abort.signal.aborted) onDone()
       } catch (e: unknown) {
-        if ((e as Error)?.name !== 'AbortError') {
+        if (!abort.signal.aborted && (e as Error)?.name !== 'AbortError') {
           onError((e as Error)?.message ?? 'Connection error')
+        }
+      } finally {
+        abort.signal.removeEventListener('abort', cancelReader)
+        if (reader) {
+          try { await reader.cancel() } catch { /* Already closed or aborted. */ }
+          reader.releaseLock()
         }
       }
     })()

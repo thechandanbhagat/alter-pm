@@ -130,14 +130,14 @@ function EventPanels({
   return (
     <div style={{ display: 'flex', gap: 8 }}>
       <div style={{ flex: 1, borderRadius: 6, border: '1px solid rgba(99,102,241,0.35)', background: 'rgba(99,102,241,0.06)', padding: '8px 12px' }}>
-        <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.1em', color: '#818cf8', textTransform: 'uppercase', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 4 }}>
+        <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.1em', color: 'var(--color-notification)', textTransform: 'uppercase', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 4 }}>
           <span>⚙</span> Process
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
           {processEventKeys.map(key => (
             <label key={key} style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, cursor: 'pointer' }}>
               <input type="checkbox" checked={!!config.events[key]} onChange={e => setEvents({ [key]: e.target.checked })}
-                style={{ accentColor: '#818cf8', width: 13, height: 13 }} />
+                style={{ accentColor: 'var(--color-notification)', width: 13, height: 13 }} />
               {key.replace('on_', '')}
             </label>
           ))}
@@ -146,14 +146,14 @@ function EventPanels({
 
       {showCronEvents && (
         <div style={{ flex: 1, borderRadius: 6, border: '1px solid rgba(251,191,36,0.35)', background: 'rgba(251,191,36,0.06)', padding: '8px 12px' }}>
-          <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.1em', color: '#fbbf24', textTransform: 'uppercase', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 4 }}>
+          <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.1em', color: 'var(--color-warning)', textTransform: 'uppercase', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 4 }}>
             <span>⏰</span> Cron
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             {cronEventKeys.map(key => (
               <label key={key} style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, cursor: 'pointer' }}>
                 <input type="checkbox" checked={!!config.events[key]} onChange={e => setEvents({ [key]: e.target.checked })}
-                  style={{ accentColor: '#fbbf24', width: 13, height: 13 }} />
+                  style={{ accentColor: 'var(--color-warning)', width: 13, height: 13 }} />
                 {key.replace('on_cron_', '')}
               </label>
             ))}
@@ -214,7 +214,7 @@ export function ProcessNotifModal({ process, onClose }: { process: ProcessInfo; 
       style={{ position: 'fixed', inset: 0, zIndex: 1100, background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
       <div style={{ background: 'var(--color-card)', border: '1px solid var(--color-border)', borderRadius: 8, width: 460, maxWidth: '94vw', boxShadow: '0 8px 32px rgba(0,0,0,0.3)', display: 'flex', flexDirection: 'column' }}>
         <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--color-border)', display: 'flex', alignItems: 'center', gap: 8 }}>
-          <Bell size={14} style={{ color: '#a78bfa' }} />
+          <Bell size={14} style={{ color: 'var(--color-notification)' }} />
           <strong style={{ flex: 1, fontSize: 13 }}>Notify — {process.name}</strong>
           <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 16, color: 'var(--color-muted-foreground)' }}>×</button>
         </div>
@@ -287,7 +287,7 @@ export function NsNotifModal({ ns, onClose }: { ns: string; onClose: () => void 
       style={{ position: 'fixed', inset: 0, zIndex: 1100, background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
       <div style={{ background: 'var(--color-card)', border: '1px solid var(--color-border)', borderRadius: 8, width: 460, maxWidth: '94vw', boxShadow: '0 8px 32px rgba(0,0,0,0.3)' }}>
         <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--color-border)', display: 'flex', alignItems: 'center', gap: 8 }}>
-          <Bell size={14} style={{ color: '#a78bfa' }} />
+          <Bell size={14} style={{ color: 'var(--color-notification)' }} />
           <strong style={{ flex: 1, fontSize: 13 }}>Namespace Notify — {ns}</strong>
           <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 16, color: 'var(--color-muted-foreground)' }}>×</button>
         </div>

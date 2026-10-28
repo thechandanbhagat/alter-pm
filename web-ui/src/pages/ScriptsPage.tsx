@@ -9,18 +9,18 @@ import type { ScriptInfo } from '@/types'
 
 // @group Constants : Supported languages for the script editor
 const LANGUAGES = [
-  { value: 'python',     label: 'Python',      color: '#3b82f6' },
-  { value: 'node',       label: 'Node.js',     color: '#84cc16' },
-  { value: 'bash',       label: 'Bash',        color: '#f59e0b' },
-  { value: 'powershell', label: 'PowerShell',  color: '#818cf8' },
-  { value: 'ts-node',    label: 'TypeScript',  color: '#60a5fa' },
-  { value: 'cmd',        label: 'CMD',         color: '#94a3b8' },
-  { value: 'ruby',       label: 'Ruby',        color: '#ef4444' },
-  { value: 'php',        label: 'PHP',         color: '#a78bfa' },
-  { value: 'go',         label: 'Go',          color: '#34d399' },
-  { value: 'rust',       label: 'Rust',        color: '#fb923c' },
-  { value: 'julia',      label: 'Julia',       color: '#e879f9' },
-  { value: 'Rscript',    label: 'R',           color: '#2dd4bf' },
+  { value: 'python',     label: 'Python',      color: 'var(--color-info)' },
+  { value: 'node',       label: 'Node.js',     color: 'var(--color-success)' },
+  { value: 'bash',       label: 'Bash',        color: 'var(--color-warning)' },
+  { value: 'powershell', label: 'PowerShell',  color: 'var(--color-notification)' },
+  { value: 'ts-node',    label: 'TypeScript',  color: 'var(--color-info)' },
+  { value: 'cmd',        label: 'CMD',         color: 'var(--color-muted-foreground)' },
+  { value: 'ruby',       label: 'Ruby',        color: 'var(--color-destructive)' },
+  { value: 'php',        label: 'PHP',         color: 'var(--color-notification)' },
+  { value: 'go',         label: 'Go',          color: 'var(--color-success)' },
+  { value: 'rust',       label: 'Rust',        color: 'var(--color-warning)' },
+  { value: 'julia',      label: 'Julia',       color: 'var(--color-status-errored)' },
+  { value: 'Rscript',    label: 'R',           color: 'var(--color-status-watching)' },
 ]
 
 // @group Utilities : Format bytes into human-readable size
@@ -44,7 +44,7 @@ function fmtDate(iso: string): string {
 
 // @group Utilities : Return color for language badge
 function langColor(lang: string): string {
-  return LANGUAGES.find(l => l.value === lang)?.color ?? '#94a3b8'
+  return LANGUAGES.find(l => l.value === lang)?.color ?? 'var(--color-muted-foreground)'
 }
 
 // @group Utilities : Default starter content per language
@@ -179,8 +179,8 @@ function ScriptList({
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                   <span style={{
                     fontSize: 10, fontWeight: 600, padding: '1px 5px',
-                    borderRadius: 3, color, background: `${color}22`,
-                    border: `1px solid ${color}44`,
+                    borderRadius: 3, color, background: `color-mix(in srgb, ${color} 13%, transparent)`,
+                    border: `1px solid color-mix(in srgb, ${color} 27%, transparent)`,
                   }}>
                     {s.language}
                   </span>

@@ -425,7 +425,7 @@ Connect to alter daemons on remote machines. Click the **server switcher** (bott
 
 ## 12. AI Assistant
 
-![AI assistant — asking about an error log](../userguide/screenshots/ai-assistant.png)
+![AI assistant diagnosing sample-api startup logs with Codex CLI](../userguide/screenshots/ai-assistant.jpg)
 
 Click the **AI** button in the status bar to open the assistant panel.
 
@@ -437,6 +437,23 @@ Click the **AI** button in the status bar to open the assistant panel.
 | **GitHub Copilot** | Cloud | Active Copilot subscription + OAuth Device Flow sign-in |
 | **Claude (Anthropic)** | Cloud | API key from [console.anthropic.com](https://console.anthropic.com) |
 | **OpenAI** | Cloud | API key (`sk-…`); supports custom base URLs (Azure, Groq, LM Studio) |
+| **Claude Code CLI, Codex CLI, Cursor CLI, Devin CLI** | Installed CLI, cloud inference | Install and sign in on the daemon host; check availability in Settings → AI → Installed providers |
+| **Google Antigravity (agy)** | Detection only | Shown as unavailable: its documented headless options cannot enforce isolated analysis without tools |
+| **Apple Foundation Models** | On-device | macOS 26+, Apple silicon, and Apple Intelligence available on the daemon host |
+
+### Installed providers
+
+**Settings → AI → Installed providers** checks the active daemon host, which may be a remote server. Each option shows whether it is installed and available, with a reason when unsupported. An installed CLI may still be unavailable if it cannot run an isolated analysis request. Discovery does not send prompts or process data.
+
+For a CLI outside the daemon's search path, enter its absolute executable path and click **Save paths & rescan**. On Windows, select the native executable rather than a `.cmd` wrapper. Clear the path to restore automatic discovery. **Rescan installed providers** checks the saved paths without changing the selected provider. Apple Foundation Models does not use a CLI path.
+
+Choose an available provider, enable the assistant, and save. CLI providers use their existing login and configured default model; an optional **CLI model ID** overrides that default. Refreshing a model list does not save a provider change. The chat panel also offers provider and model selection, saving the pair together.
+
+Installed CLIs still use cloud inference: when you send a chat message, the prompt and included process/log context are sent to that provider. Apple Foundation Models processes the request on the daemon host. If a model reports a conversation or context limit, clear the chat and ask a more focused question.
+
+Use current CLI versions; older versions without the required analysis controls are marked unavailable. Cursor needs its standalone `agent` or `cursor-agent` executable, rather than just the desktop IDE. Claude Code and Codex run with customizations disabled in a temporary workspace; Devin uses its tool-free summarizer. Cursor uses Ask mode and tool-deny rules, but its own account settings and startup hooks can still apply. Discovery checks capabilities; login and model access are verified when you send a message. If Claude Code reports an expired login, open Claude Code under the same operating-system account as the daemon, sign in again, and retry. Rescanning alone does not renew a login.
+
+Apple support is bundled automatically when building natively on Apple silicon with an SDK that includes Foundation Models (Xcode 26+). Builds on other platforms remain supported and report this provider as unavailable. The helper keeps user messages intact and trims automatic process/log context to leave room for its response.
 
 ### Quick setup (Ollama)
 
@@ -481,12 +498,14 @@ Navigate to ⚙️ **Settings** (sidebar footer).
 
 | Setting | Description |
 |---------|-------------|
-| Theme | Dark, Light, or System |
-| Accent color | Primary color for buttons and highlights |
-| Process view mode | Default view: Table or Card |
-| Compact mode | Reduce padding for higher density |
+| Theme | Dark (default), Light, or System; System follows your operating system's appearance and updates automatically when it changes |
+| Process Row Actions | Choose which additional actions appear inline: Logs, Edit, Terminal, .env, Enable / Disable, Notify, Clone, and Delete; other actions remain in the ⋯ menu |
 
-![Settings — UI](../userguide/screenshots/settings-ui.png)
+The theme icon in the sidebar footer also offers Dark, Light, and System. This quick menu and the Theme selector stay in sync. Changes take effect immediately and are saved with the daemon's UI settings. Start, Stop, and Restart are always visible. **Reset to defaults** in the General tab restores the Dark theme.
+
+![Settings — UI with Light theme selected](../userguide/screenshots/settings-ui.jpg)
+
+![Dark, Light, and System options in the sidebar footer](../userguide/screenshots/theme-menu.jpg)
 
 ### Security
 
@@ -498,7 +517,7 @@ Navigate to ⚙️ **Settings** (sidebar footer).
 
 ### AI
 
-![Settings — AI](../userguide/screenshots/settings-ai.png)
+![Settings — AI with installed-provider availability and path overrides](../userguide/screenshots/settings-ai.jpg)
 
 Configure the AI assistant provider and model. See [AI Assistant](#12-ai-assistant).
 
