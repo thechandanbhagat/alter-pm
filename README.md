@@ -13,7 +13,7 @@
 
 ## Watch the demos
 
-Three short walkthroughs of the real application, with narration and background music. The videos use local sample services.
+Short walkthroughs of the real application, with narration and background music. The videos use local sample services and synthetic logs.
 
 <table>
   <tr>
@@ -27,6 +27,12 @@ Three short walkthroughs of the real application, with narration and background 
     <td><a href="https://youtu.be/TGzG2I--aw0"><strong>Logs and monitoring ↗</strong></a><br />53 seconds · Filter output and compare service activity.</td>
   </tr>
 </table>
+
+### AI log analysis in v1.4.0
+
+[![Watch the AI log analysis demo](https://img.youtube.com/vi/jxwD8zPBVxg/hqdefault.jpg)](https://youtu.be/jxwD8zPBVxg)
+
+[**Watch the AI log analysis demo ↗**](https://youtu.be/jxwD8zPBVxg) — 78 seconds · Set up Codex CLI with an existing login, analyze synthetic `sample-api` logs, and review a real Codex diagnosis and suggested read-only checks. Includes narration, light background music, and English captions.
 
 [Follow the illustrated user guide →](https://alter-pm.chandanbhagat.com.np/#video-demos)
 
