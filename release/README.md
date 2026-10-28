@@ -9,6 +9,10 @@
 
 ---
 
+## AI log analysis demo — v1.4.0
+
+[Watch the 78-second demo on YouTube](https://youtu.be/jxwD8zPBVxg): configure Codex CLI with an existing login, analyze synthetic process logs, and review suggested read-only checks. Includes narration, light background music, and English captions.
+
 ## Installation
 
 ### WinGet (recommended)

@@ -143,6 +143,8 @@ alter web                        # opens http://127.0.0.1:2999/
 
 Navigate to **http://127.0.0.1:2999/** after starting the daemon.
 
+[Watch the 78-second AI log analysis demo](https://youtu.be/jxwD8zPBVxg): configure Codex CLI, analyze synthetic process logs, and review suggested read-only checks. See the [AI Assistant guide](./USER_GUIDE.md#12-ai-assistant) for setup and requirements.
+
 **Dashboard features:**
 - Real-time process table with status, PID, uptime, restarts
 - Namespace grouping with collapse/expand
