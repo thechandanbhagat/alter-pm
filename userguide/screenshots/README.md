@@ -1,5 +1,16 @@
 # Guide screenshots
 
+## Release 1.4.0 — 28 October 2026
+
+- `settings-ui.jpg`: the appearance setting with Light selected and process row actions.
+- `theme-menu.jpg`: the sidebar footer menu with Dark, Light, and System options.
+- `settings-ai.jpg`: installed-provider availability and executable path overrides.
+- `ai-assistant.jpg`: a real Codex CLI response explaining the synthetic `sample-api` port-conflict logs and suggesting read-only diagnostic commands.
+
+These unaltered browser captures were taken from the running v1.4.0 dashboard on 28 October 2026 at 1280 × 720. They use an isolated local demonstration workspace with synthetic `sample-api` logs. The AI response was generated through the existing Codex CLI login; its suggested diagnostic commands were not executed. The README and both user guides reference the same files.
+
+## Existing process walkthrough captures
+
 The following screenshots were captured from the running Alter v1.3.2 dashboard
 on 27 September 2026 at 1600 × 900:
 
